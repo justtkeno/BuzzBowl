@@ -3,6 +3,7 @@
 
 import type { DailyEntry, DailyStatus, Filters } from '../../shared/types';
 import type { DailyOutcome } from '../rooms/room';
+import { CATALOG_TOSSUPS } from '../questions/catalog';
 import { SAMPLE_TOSSUPS } from '../questions/sample';
 import type { QuestionProvider, Tossup } from '../questions/types';
 import type { DailyRow, DailyStore } from './store';
@@ -93,7 +94,7 @@ export class Daily {
       }
     }
     if (out.length < DAILY_SIZE) {
-      for (const t of seededShuffle(SAMPLE_TOSSUPS, day)) {
+      for (const t of seededShuffle([...SAMPLE_TOSSUPS, ...CATALOG_TOSSUPS], day)) {
         if (out.length >= DAILY_SIZE) break;
         if (!seen.has(t.id)) { seen.add(t.id); out.push(t); }
       }

@@ -13,7 +13,7 @@ interface Props {
 export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen }: Props) {
   const r = roles(s);
   const reader = s.players.find((p) => p.id === s.readerId);
-  const sourceLabel = { qbreader: 'QBReader', sample: 'Sample packet', upload: `Uploaded packet (${s.uploadedCount?.tossups ?? 0} tossups)` }[s.settings.source];
+  const sourceLabel = { qbreader: 'QBReader', sample: 'Built-in questions', upload: `Uploaded packet (${s.uploadedCount?.tossups ?? 0} tossups)` }[s.settings.source];
   const f = s.settings.filters;
 
   return (
