@@ -52,7 +52,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
         <div>
           <h3>Reader</h3>
           {reader ? (
-            <p><b>{reader.name}</b> will read the questions aloud and run the game{r.isReader ? ' (that’s you!)' : ''}.</p>
+            <p><b>{reader.name}</b> will read the questions aloud and run the game{r.isReader ? ' (that’s you!)' : ''}.{r.isReader && <span className="muted small"> You can change settings and questions at any time, set up teams and captains, rule on answers and protests, and pause or end the match.</span>}</p>
           ) : (
             <p className="muted">No reader: the app reads each tossup on screen at {s.settings.wpm} wpm. A reader sees every question ahead of time, reads it out loud (in person or on a call), controls the pace, rules on answers, and decides when to move on.</p>
           )}
@@ -75,18 +75,24 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
                 <ul>
                   {t.playerIds.map((id) => {
                     const p = s.players.find((x) => x.id === id);
-                    return <li key={id} className={p?.online ? '' : 'offline'}>{p?.name}<Verified username={p?.username} admin={p?.admin} />{t.captainId === id && <span className="badge">captain</span>}</li>;
+                    return (
+                      <li key={id} className={`${p?.online ? '' : 'offline'} ${r.isController ? 'gm-row' : ''}`}>
+                        <span className="gm-name">{p?.name}<Verified username={p?.username} admin={p?.admin} />{t.captainId === id && <span className="badge">captain</span>}</span>
+                        {r.isController && <PlayerControls s={s} playerId={id} teamId={t.id} captain={t.captainId === id} />}
+                      </li>
+                    );
                   })}
                 </ul>
                 <div className="row gap">
                   {r.myTeam !== t.id && !r.isReader && <button className="btn small" disabled={t.playerIds.length >= 4} onClick={() => act('team:join', t.id)}>Join</button>}
                   {r.myTeam === t.id && t.captainId !== r.me && <button className="btn small ghost" onClick={() => act('team:captain')}>Be captain</button>}
-                  {r.isHost && s.teams.length > 2 && <button className="btn small ghost" onClick={() => act('team:remove', t.id)}>Remove</button>}
+                  {r.isController && s.teams.length > 2 && <button className="btn small ghost" onClick={() => act('team:remove', t.id)}>Remove</button>}
                 </div>
               </div>
             ))}
-            {r.isHost && s.teams.length < 8 && <button className="btn ghost add-team" onClick={() => act('team:create', '')}>+ Add team</button>}
+            {r.isController && s.teams.length < 8 && <button className="btn ghost add-team" onClick={() => act('team:create', '')}>+ Add team</button>}
           </div>
+          <Unassigned s={s} />
         </>
       )}
 
@@ -99,6 +105,40 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
           <p className="muted">Waiting for {s.readerId ? 'the reader' : 'the host'} to start…</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Host/reader: move a player to another team, or make them captain. */
+function PlayerControls({ s, playerId, teamId, captain }: { s: PublicState; playerId: string; teamId: string | null; captain?: boolean }) {
+  const name = s.players.find((p) => p.id === playerId)?.name ?? 'player';
+  return (
+    <span className="gm-controls">
+      {teamId && !captain && <button className="btn ghost small" title={`Make ${name} captain`} onClick={() => act('team:captain', playerId)}>Captain</button>}
+      <select className="gm-move" aria-label={`Move ${name} to a team`} value={teamId ?? ''} onChange={(e) => act('team:move', playerId, e.target.value || null)}>
+        {s.teams.map((t) => <option key={t.id} value={t.id} disabled={t.id !== teamId && t.playerIds.length >= 4}>{t.name}</option>)}
+        <option value="">No team</option>
+      </select>
+    </span>
+  );
+}
+
+/** Players in a teams game who are not on any team (and are not the reader). */
+function Unassigned({ s }: { s: PublicState }) {
+  const r = roles(s);
+  const loose = s.players.filter((p) => !p.teamId && p.id !== s.readerId);
+  if (!loose.length) return null;
+  return (
+    <div className="unassigned">
+      <h4>Not on a team</h4>
+      <ul>
+        {loose.map((p) => (
+          <li key={p.id} className={`${p.online ? '' : 'offline'} ${r.isController ? 'gm-row' : ''}`}>
+            <span className="gm-name">{p.name}<Verified username={p.username} admin={p.admin} /></span>
+            {r.isController && <PlayerControls s={s} playerId={p.id} teamId={null} />}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -175,7 +215,7 @@ function BotsPanel({ s }: { s: PublicState }) {
 
 function TeamName({ s, teamId, name }: { s: PublicState; teamId: string; name: string }) {
   const r = roles(s);
-  const canEdit = r.isHost || r.myTeam === teamId;
+  const canEdit = r.isController || r.myTeam === teamId;
   if (!canEdit) return <b>{name}</b>;
   return (
     <input className="team-name" defaultValue={name} maxLength={24} aria-label="Team name"

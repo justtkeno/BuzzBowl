@@ -385,12 +385,27 @@ export class Room {
 
   // ---------- settings, teams, reader ----------
 
+  private questionsKey() { const s = this.s.settings; return JSON.stringify([s.source, s.filters]); }
+
+  /** "QBReader: Science, History · difficulty 3, 4" for chat announcements. */
+  private questionsLabel() {
+    const s = this.s.settings, f = s.filters;
+    const source = { qbreader: 'QBReader', sample: 'the built-in questions', upload: 'the uploaded packet' }[s.source] ?? s.source;
+    const parts = [f.subcategories.length ? f.subcategories.join(', ') : f.categories.length ? f.categories.join(', ') : 'all categories'];
+    if (s.source === 'qbreader') {
+      if (f.difficulties.length) parts.push(`difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}`);
+      if (f.minYear || f.maxYear) parts.push(f.minYear && f.maxYear ? `${f.minYear}–${f.maxYear}` : f.minYear ? `${f.minYear} on` : `up to ${f.maxYear}`);
+    }
+    return `${source}: ${parts.join(' · ')}`;
+  }
+
   private midGame() { return ['loading', 'reading', 'buzz', 'bonus'].includes(this.s.phase); }
 
   updateSettings(by: string, patch: Partial<Settings>) {
     if (!this.isController(by)) fail('Only the host or reader can change settings.');
     if (this.s.daily) fail('The daily challenge uses the same settings for everyone.');
     const s = this.s.settings;
+    const questionsKey = this.questionsKey();
     if (patch.mode && patch.mode !== s.mode) {
       if (this.midGame()) fail('Change the mode between questions.');
       s.mode = patch.mode === 'teams' ? 'teams' : 'ffa';
@@ -422,12 +437,19 @@ export class Room {
         maxYear: f.maxYear ? clamp(f.maxYear, 1990, 2100, 0) || undefined : undefined,
       };
     }
-    if (patch.source || patch.filters) { this.clearQueue(); void this.fillQueue(); }
+    if (patch.source || patch.filters) {
+      const before = questionsKey;
+      if (this.questionsKey() !== before) {
+        this.clearQueue();
+        void this.fillQueue();
+        if (this.s.phase !== 'lobby') this.system(`${this.mustPlayer(by).name} changed the questions to ${this.questionsLabel()}. ${this.midGame() ? 'They start with the next tossup.' : ''}`.trim());
+      }
+    }
     this.broadcast();
   }
 
   createTeam(by: string, name: string) {
-    if (by !== this.s.hostId) fail('Only the host can add teams.');
+    if (!this.isController(by)) fail('Only the host or reader can add teams.');
     if (this.s.teams.length >= 8) fail('That is enough teams.');
     this.s.teams.push({ id: rid(), name: String(name || `Team ${String.fromCharCode(65 + this.s.teams.length)}`).slice(0, 24), playerIds: [] });
     this.broadcast();
@@ -435,14 +457,14 @@ export class Room {
 
   renameTeam(by: string, teamId: string, name: string) {
     const team = this.s.teams.find((t) => t.id === teamId) ?? fail('No such team.');
-    if (by !== this.s.hostId && !team.playerIds.includes(by)) fail('Only team members or the host can rename a team.');
+    if (!this.isController(by) && !team.playerIds.includes(by)) fail('Only team members, the host or the reader can rename a team.');
     const clean = String(name ?? '').trim().slice(0, 24);
     if (clean) team.name = clean;
     this.broadcast();
   }
 
   removeTeam(by: string, teamId: string) {
-    if (by !== this.s.hostId) fail('Only the host can remove teams.');
+    if (!this.isController(by)) fail('Only the host or reader can remove teams.');
     if (this.midGame()) fail('Remove teams between questions.');
     const team = this.s.teams.find((t) => t.id === teamId) ?? fail('No such team.');
     if (this.s.teams.length <= 2) fail('Keep at least two teams.');
@@ -465,9 +487,26 @@ export class Room {
     this.broadcast();
   }
 
+  /** The host or reader puts a player on a team (or takes them off every team). */
+  movePlayer(by: string, playerId: string, teamId: string | null) {
+    if (!this.isController(by)) fail('Only the host or reader can move players.');
+    if (this.s.settings.mode !== 'teams') fail('Teams are off in free-for-all.');
+    if (this.s.phase === 'buzz' || this.s.phase === 'bonus') fail('Move players between questions.');
+    const p = this.mustPlayer(playerId);
+    if (p.id === this.s.readerId) fail('The reader is not on a team.');
+    if (teamId === null) { this.removeFromTeam(p); this.broadcast(); return; }
+    const team = this.s.teams.find((t) => t.id === teamId) ?? fail('No such team.');
+    if (team.playerIds.includes(p.id)) return;
+    if (team.playerIds.length >= TIMING.teamSize) fail(`Teams have at most ${TIMING.teamSize} players.`);
+    this.removeFromTeam(p);
+    team.playerIds.push(p.id);
+    p.teamId = team.id;
+    this.broadcast();
+  }
+
   makeCaptain(by: string, target?: string) {
     const id = target ?? by;
-    if (target && target !== by && by !== this.s.hostId) fail('Only the host can pick another captain.');
+    if (target && target !== by && !this.isController(by)) fail('Only the host or reader can pick another captain.');
     const team = this.s.teams.find((t) => t.playerIds.includes(id)) ?? fail('Not on a team.');
     team.playerIds = [id, ...team.playerIds.filter((x) => x !== id)];
     this.broadcast();
@@ -484,8 +523,8 @@ export class Room {
       if (old && this.s.settings.mode === 'teams') this.autoAssign(old);
       if (old) this.system(`${old.name} is no longer reading.`);
     } else {
-      if (target !== by && by !== this.s.hostId) fail('Only the host can assign someone else.');
-      if (this.readerOnline() && this.s.readerId !== target) fail(`${this.player(this.s.readerId!)!.name} is already reading.`);
+      if (target !== by && by !== this.s.hostId && by !== this.s.readerId) fail('Only the host or reader can assign someone else.');
+      if (this.readerOnline() && this.s.readerId !== target && by !== this.s.readerId) fail(`${this.player(this.s.readerId!)!.name} is already reading.`);
       const p = this.mustPlayer(target);
       const old = this.s.readerId ? this.player(this.s.readerId) : undefined;
       if (old && old !== p && this.s.settings.mode === 'teams') this.autoAssign(old);

@@ -42,6 +42,7 @@ Anyone can click **Be the reader** in the lobby. The reader:
 - rules on answers with **A**ccept / **P**rompt / **R**eject (the auto-checker's verdict is shown as a suggestion; turn "Reader rules on answers" off to let the app rule)
 - decides when to move on. Players can't skip ahead, and after a neg the reader resumes when ready
 - can open **Review** to go back over previous questions before continuing
+- runs the room like the host: **📚 Change questions** on the Up next card switches the source, categories, subcategories or difficulty mid-match (the current tossup finishes, the next one uses the new questions, and chat tells everyone), and in the lobby the reader can add, rename and remove teams, move players between teams, pick captains, and hand the reader seat to someone else
 
 By default players don't see the text while the reader reads (they listen). Turn on "Show question text to players" to show it.
 

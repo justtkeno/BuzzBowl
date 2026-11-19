@@ -3,7 +3,8 @@ import { CATEGORIES, DIFFICULTIES, type PublicState, type Settings } from '../..
 import { call } from '../socket';
 import { act, toast } from './util';
 
-export function SettingsPanel({ s, onClose }: { s: PublicState; onClose: () => void }) {
+/** Room settings. `only="questions"` shows just the question source and filters (the reader's quick mid-match change). */
+export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: () => void; only?: 'questions' }) {
   const [f, setF] = useState<Settings>(structuredClone(s.settings));
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setF((x) => ({ ...x, [k]: v }));
   const setFilter = (patch: Partial<Settings['filters']>) => setF((x) => ({ ...x, filters: { ...x.filters, ...patch } }));
@@ -12,7 +13,7 @@ export function SettingsPanel({ s, onClose }: { s: PublicState; onClose: () => v
 
   const save = async () => {
     try {
-      await call('settings:update', f);
+      await call('settings:update', only === 'questions' ? { source: f.source, filters: f.filters } : f);
       onClose();
     } catch (e: any) { toast(e.message); }
   };
@@ -43,9 +44,11 @@ export function SettingsPanel({ s, onClose }: { s: PublicState; onClose: () => v
 
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Room settings">
-        <div className="row between"><h2>Settings</h2><button className="btn ghost icon" onClick={onClose} aria-label="Close">✕</button></div>
+      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={only ? 'Change questions' : 'Room settings'}>
+        <div className="row between"><h2>{only ? 'Change questions' : 'Settings'}</h2><button className="btn ghost icon" onClick={onClose} aria-label="Close">✕</button></div>
+        {s.phase !== 'lobby' && <p className="muted small settings-note">{midGame ? 'The question being read now finishes as is. New questions start with the next tossup, and everyone sees a note in chat.' : 'New questions start with the next tossup, and everyone sees a note in chat.'}</p>}
 
+        {!only && <>
         <section>
           <h3>Format</h3>
           <div className="seg">
@@ -85,9 +88,10 @@ export function SettingsPanel({ s, onClose }: { s: PublicState; onClose: () => v
           {check('showTextToPlayers', 'Show question text to players while the reader reads', 'off = players only hear it')}
           {check('readerRules', 'Reader rules on answers', 'auto-check becomes a suggestion')}
         </section>
+        </>}
 
         <section>
-          <h3>Questions</h3>
+          {!only && <h3>Questions</h3>}
           <div className="seg">
             <button className={f.source === 'qbreader' ? 'on' : ''} onClick={() => set('source', 'qbreader')}>QBReader</button>
             <button className={f.source === 'sample' ? 'on' : ''} onClick={() => set('source', 'sample')}>Built-in questions</button>
@@ -134,8 +138,8 @@ export function SettingsPanel({ s, onClose }: { s: PublicState; onClose: () => v
 
         <div className="row gap end">
           <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" onClick={save}>Save</button>
-          {s.phase === 'lobby' && <button className="btn primary" onClick={async () => { await save(); act('game:start'); }}>Save &amp; start</button>}
+          <button className="btn primary" onClick={save}>{only ? 'Use these questions' : 'Save'}</button>
+          {s.phase === 'lobby' && !only && <button className="btn primary" onClick={async () => { await save(); act('game:start'); }}>Save &amp; start</button>}
         </div>
       </div>
     </div>

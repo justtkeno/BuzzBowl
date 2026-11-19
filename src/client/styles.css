@@ -559,3 +559,16 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .daily-table td.num:first-child { text-align: left; color: var(--muted); width: 2rem; }
 .daily-table tr.me td { background: var(--accent-soft); }
 .daily-table a { color: inherit; }
+
+/* Host / reader team controls in the lobby */
+.team-pick li.gm-row, .unassigned li.gm-row { display: flex; align-items: center; justify-content: space-between; gap: .4rem; flex-wrap: wrap; padding: .15rem 0; }
+.team-pick ul:has(.gm-row), .unassigned ul { list-style: none; padding-left: 0; }
+.gm-name { min-width: 0; overflow-wrap: anywhere; }
+.gm-controls { display: inline-flex; align-items: center; gap: .3rem; margin-left: auto; }
+.gm-move { font: inherit; font-size: .8rem; padding: .2rem .3rem; max-width: 8.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+.unassigned { margin-top: .6rem; }
+.unassigned h4 { margin: 0 0 .3rem; }
+.unassigned ul { margin: 0; }
+.rq-top { flex-wrap: wrap; gap: .4rem; }
+.rq-filters { margin: .1rem 0 0; }
+.settings-note { margin: -.2rem 0 .6rem; }

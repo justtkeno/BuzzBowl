@@ -28,6 +28,7 @@ const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n 
 export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }: Props) {
   const r = roles(s);
   const [showSettings, setShowSettings] = useState(false);
+  const [showQuestions, setShowQuestions] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -147,7 +148,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
               <button className="btn" onClick={() => { if (confirm('End the match now and show the final scores?')) act('game:end'); }}>🏁 End match</button>
             </div>
           )}
-          {r.isReader && (s.phase === 'lobby' || midGame) && <ReaderQueue s={s} />}
+          {r.isReader && (s.phase === 'lobby' || midGame) && <ReaderQueue s={s} onChangeQuestions={s.daily ? undefined : () => setShowQuestions(true)} />}
           {r.isController && !r.isReader && midGame && (
             <div className="row gap end subtle-controls hide-sm">
               <button className="btn ghost small" onClick={openBigScreen}>Big-screen view</button>
@@ -184,6 +185,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
         </div>
       )}
       {showSettings && <SettingsPanel s={s} onClose={() => setShowSettings(false)} />}
+      {showQuestions && <SettingsPanel s={s} only="questions" onClose={() => setShowQuestions(false)} />}
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
       {showInvite && <InviteScreen code={s.code} onClose={() => setShowInvite(false)} />}
       {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
