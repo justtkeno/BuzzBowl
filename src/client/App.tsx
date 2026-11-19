@@ -5,6 +5,7 @@ import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
 import { randomName } from './names';
+import { dailyKey } from './daily';
 import { call, prefs, socket } from './socket';
 import { play } from './sounds';
 
@@ -107,6 +108,13 @@ function Player() {
     enter(code, name).then(() => setFresh(!saved), (e) => setError(e.message));
   }, [enter]);
 
+  // Daily challenge: a fresh solo room, or back into today's if it was interrupted.
+  const startDaily = useCallback(async (name: string) => {
+    const res = await call<{ resume?: string; code: string; playerId: string; token: string; chat: ChatMessage[] }>('daily:start', { name, key: dailyKey() });
+    if (res.resume) return enter(res.resume, name);
+    afterJoin(res, name);
+  }, [enter]);
+
   const rename = useCallback(async (name: string) => {
     await call('player:rename', name);
     prefs.setName(name);
@@ -124,7 +132,7 @@ function Player() {
   };
 
   if (!state) {
-    return <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} />;
+    return <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} onDaily={startDaily} dailyOpen={location.pathname === '/daily'} />;
   }
   return <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} />;
 }

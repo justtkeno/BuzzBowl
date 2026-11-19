@@ -5,7 +5,7 @@ import {
 } from '../../shared/types';
 import { checkAnswerDetailed } from '../game/answerCheck';
 import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, type Adjustment, type HeardEntry } from '../game/scoring';
-import { safeAnswerHtml } from '../game/text';
+import { stripHtml, safeAnswerHtml } from '../game/text';
 import { LocalProvider, parseUpload, QBReaderProvider } from '../questions/providers';
 import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
 import type { Bonus, QuestionProvider, Tossup } from '../questions/types';
@@ -37,6 +37,8 @@ export const TIMING = {
   startDelayMs: 900,
   maxPrompts: 2,
   teamSize: 4,
+  /** How many upcoming tossups the reader can preview. */
+  lookahead: 3,
 };
 
 interface Player { id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string; admin?: boolean }
@@ -85,6 +87,8 @@ interface LiveBonus {
 
 /** Everything about a room. Plain data except the Sets, so it can move to Redis later. */
 export interface RoomState {
+  /** Set for a daily-challenge room: one player, fixed questions, fixed settings. */
+  daily: DailyInfo | null;
   code: string;
   hostId: string | null;
   readerId: string | null;
@@ -127,6 +131,24 @@ export interface RoomDeps {
   qbreader?: QuestionProvider;
 }
 
+export interface DailyInfo { day: string; number: number; total: number; playerKey: string; done: boolean }
+/** One player's daily-challenge result, worked out by the server from their actual buzzes. */
+export interface DailyOutcome {
+  day: string; playerKey: string; playerId: string; name: string; accountId?: string;
+  points: number; powers: number; tens: number; negs: number;
+  /** One mark per tossup: P power, T ten, N neg, Z wrong without a neg, - no buzz. */
+  marks: string;
+  /** Average fraction of the question heard before correct buzzes (lower is earlier). */
+  depth: number | null;
+}
+
+/** Plays a fixed list of tossups in order (the daily set). */
+class InOrderProvider implements QuestionProvider {
+  constructor(private tossups: Tossup[]) {}
+  async nextTossup(_f: unknown, seen: Set<string>) { return this.tossups.find((t) => !seen.has(t.id)) ?? null; }
+  async nextBonus() { return null; }
+}
+
 export class Room {
   s: RoomState;
   /** Named timers. While the game is paused they stay here with no handle and resume on unpause. */
@@ -135,6 +157,10 @@ export class Room {
   private loadGen = 0;
   private qbreader: QuestionProvider;
   private uploadProvider: QuestionProvider | null = null;
+  /** The next few tossups, fetched ahead so the reader can look through them and skip any. */
+  private upcoming: Tossup[] = [];
+  private fillingQueue = false;
+  private queueGen = 0;
   /** After a restart, the old host keeps their seat this long before someone else can take it. */
   private hostReservedUntil = 0;
 
@@ -144,7 +170,7 @@ export class Room {
       code, hostId: null, readerId: null, settings: structuredClone(DEFAULT_SETTINGS), phase: 'lobby',
       players: [], teams: [], tossup: null, buzz: null, bonus: null, rulings: [], adjustments: [], heard: [],
       protests: [], review: [], chat: [], seenTossups: new Set(), seenBonuses: new Set(), upload: null,
-      tossupNum: 0, bonusNum: 0, message: null, lastActive: Date.now(), paused: false, pausedAt: null,
+      tossupNum: 0, bonusNum: 0, message: null, lastActive: Date.now(), paused: false, pausedAt: null, daily: null,
     };
   }
 
@@ -223,6 +249,7 @@ export class Room {
   /** Host / reader: freeze or resume the whole game, including answer and bonus clocks. */
   pauseGame(by: string, paused: boolean) {
     if (!this.isController(by)) fail('Only the host or reader can pause the game.');
+    if (this.s.daily && paused) fail('The daily challenge can’t be paused.');
     if (paused === this.s.paused) return;
     if (paused) {
       if (this.s.phase === 'lobby' || this.s.phase === 'gameOver') fail('Nothing to pause.');
@@ -286,6 +313,7 @@ export class Room {
       return { playerId: existing.id, token: existing.token };
     }
     if (!clean) fail('Pick a display name.');
+    if (this.s.daily && this.s.players.length) fail('The daily challenge is played solo. Start your own from the home page.');
     if (this.s.players.length >= 60) fail('This room is full.');
     const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null, ...(account ? { accountId: account.id, username: account.username, ...(account.admin ? { admin: true } : {}) } : {}) };
     this.s.players.push(p);
@@ -359,6 +387,7 @@ export class Room {
 
   updateSettings(by: string, patch: Partial<Settings>) {
     if (!this.isController(by)) fail('Only the host or reader can change settings.');
+    if (this.s.daily) fail('The daily challenge uses the same settings for everyone.');
     const s = this.s.settings;
     if (patch.mode && patch.mode !== s.mode) {
       if (this.midGame()) fail('Change the mode between questions.');
@@ -391,6 +420,7 @@ export class Room {
         maxYear: f.maxYear ? clamp(f.maxYear, 1990, 2100, 0) || undefined : undefined,
       };
     }
+    if (patch.source || patch.filters) { this.clearQueue(); void this.fillQueue(); }
     this.broadcast();
   }
 
@@ -443,6 +473,7 @@ export class Room {
 
   /** Take (target = self) or assign (host) the reader seat; null target frees it. */
   setReader(by: string, target: string | null) {
+    if (this.s.daily) fail('The daily challenge has no reader.');
     if (this.midGame()) fail('Change the reader between questions.');
     if (target === null) {
       if (by !== this.s.readerId && by !== this.s.hostId) fail('Only the reader or host can free the seat.');
@@ -459,6 +490,7 @@ export class Room {
       this.removeFromTeam(p);
       this.s.readerId = p.id;
       this.system(`${p.name} is now the reader.`);
+      void this.fillQueue();
     }
     this.broadcast();
   }
@@ -467,6 +499,7 @@ export class Room {
 
   start(by: string) {
     if (!this.isController(by)) fail('Only the host or reader can start.');
+    if (this.s.daily?.done) fail('You’ve played today’s challenge. Come back tomorrow for a new one!');
     if (this.s.phase === 'gameOver') this.resetScores();
     else if (this.s.phase !== 'lobby') fail('The game is already running.');
     this.s.message = null;
@@ -493,7 +526,51 @@ export class Room {
     this.s.phase = 'gameOver';
     this.system('Game over.');
     this.recordResults(false);
+    if (this.s.daily && !this.s.daily.done) {
+      this.s.daily.done = true;
+      const outcome = this.dailyOutcome();
+      if (outcome) this.onDailyDone?.(outcome);
+    }
     this.broadcast();
+  }
+
+  // ---------- daily challenge ----------
+
+  /** Called once when a daily-challenge room finishes. */
+  onDailyDone?: (outcome: DailyOutcome) => void;
+
+  /** Turn this fresh room into today's challenge: fixed questions, standard settings, no extras. */
+  makeDaily(info: Omit<DailyInfo, 'done' | 'total'>, tossups: Tossup[]) {
+    this.s.daily = { ...info, total: tossups.length, done: false };
+    this.useDailyQuestions(tossups);
+    this.s.settings = { ...structuredClone(DEFAULT_SETTINGS), mode: 'ffa', bonuses: false, deadSeconds: 3, source: 'upload' };
+  }
+
+  /** (Re)attach the daily questions, e.g. after a restart. */
+  useDailyQuestions(tossups: Tossup[]) { this.uploadProvider = new InOrderProvider(tossups); }
+
+  private dailyOutcome(): DailyOutcome | null {
+    const d = this.s.daily;
+    const p = this.s.players.find((x) => !x.bot);
+    if (!d || !p) return null;
+    const mine = this.s.rulings.filter((r) => r.type === 'tossup' && r.playerId === p.id && !r.overridden);
+    let points = 0, powers = 0, tens = 0, negs = 0;
+    const depths: number[] = [];
+    let marks = '';
+    for (let n = 1; n <= d.total; n++) {
+      const r = mine.filter((x) => x.num === n).at(-1);
+      if (!r) { marks += '-'; continue; }
+      points += r.points;
+      if (r.correct) {
+        if (r.kind === 'power') powers++; else tens++;
+        marks += r.kind === 'power' ? 'P' : 'T';
+        if (r.totalWords) depths.push((r.wordIndex ?? r.totalWords) / r.totalWords);
+      } else if (r.kind === 'neg') { negs++; marks += 'N'; } else marks += 'Z';
+    }
+    return {
+      day: d.day, playerKey: d.playerKey, playerId: p.id, name: p.name, accountId: (p as any).accountId,
+      points, powers, tens, negs, marks, depth: depths.length ? depths.reduce((a, b) => a + b, 0) / depths.length : null,
+    };
   }
 
   /** Save a game everyone walked away from (called before an idle room is deleted). */
@@ -542,6 +619,7 @@ export class Room {
     if (!this.canDirect(by)) fail('The reader decides when to move on.');
     this.notPaused();
     const { phase, tossup, bonus } = this.s;
+    if (phase === 'tossupEnd' && this.s.daily && this.s.tossupNum >= this.s.daily.total) return this.end(by);
     if (phase === 'tossupEnd') {
       if (tossup?.bonusTeam) void this.startBonus(tossup.bonusTeam);
       else void this.loadTossup();
@@ -564,9 +642,9 @@ export class Room {
     const gen = ++this.loadGen;
     Object.assign(this.s, { phase: 'loading', buzz: null, bonus: null, message: null });
     this.broadcast();
-    let q: Tossup | null = null;
+    let q: Tossup | null = this.upcoming.shift() ?? null;
     try {
-      q = await this.provider().nextTossup(this.s.settings.filters, this.s.seenTossups);
+      q ??= await this.provider().nextTossup(this.s.settings.filters, this.s.seenTossups);
     } catch (e: any) {
       if (gen !== this.loadGen) return;
       this.s.message = `${e?.message ?? e}. Try again, or switch the question source to the sample packet.`;
@@ -591,6 +669,49 @@ export class Room {
     this.s.phase = 'reading';
     this.broadcast();
     this.setTimer('read', TIMING.startDelayMs, () => this.readNext());
+    void this.fillQueue();
+  }
+
+  // ---------- the reader's look-ahead queue ----------
+
+  private wantsQueue() { return this.readerOnline(); }
+
+  /** Fetch tossups until the reader can see the next few. Queued questions count as seen, so they never repeat. */
+  private async fillQueue() {
+    if (this.fillingQueue || !this.wantsQueue()) return;
+    this.fillingQueue = true;
+    const gen = this.queueGen;
+    try {
+      while (this.upcoming.length < TIMING.lookahead && this.wantsQueue() && gen === this.queueGen) {
+        const q = await this.provider().nextTossup(this.s.settings.filters, this.s.seenTossups);
+        if (!q || gen !== this.queueGen) break;
+        this.s.seenTossups.add(q.id);
+        this.upcoming.push(q);
+        this.broadcast();
+      }
+    } catch { /* the reader can still play; the next tossup is fetched when it is needed */ }
+    finally {
+      this.fillingQueue = false;
+      if (gen !== this.queueGen) void this.fillQueue();
+      else this.broadcast();
+    }
+  }
+
+  /** Drop the queue (new filters or source). Unread questions go back into the pool. */
+  private clearQueue() {
+    this.queueGen++;
+    for (const q of this.upcoming) this.s.seenTossups.delete(q.id);
+    this.upcoming = [];
+  }
+
+  /** Reader: throw out an upcoming tossup before it is read; a new one takes its place. */
+  skipUpcoming(by: string, id: string) {
+    if (by !== this.s.readerId && by !== this.s.hostId) fail('Only the reader can skip upcoming questions.');
+    const i = this.upcoming.findIndex((q) => q.id === id);
+    if (i < 0) fail('That question is no longer in the queue.');
+    this.upcoming.splice(i, 1); // stays "seen", so it will not come back
+    this.broadcast();
+    void this.fillQueue();
   }
 
   private readNext() {
@@ -620,6 +741,7 @@ export class Room {
   /** Reader controls: pause / resume the teleprompter. */
   setPaused(by: string, paused: boolean) {
     if (!this.isController(by)) fail('Only the reader or host can pause.');
+    if (this.s.daily && paused) fail('The daily challenge can’t be paused.');
     this.notPaused();
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading') fail('Nothing is being read.');
@@ -891,6 +1013,7 @@ export class Room {
 
   resolveProtest(by: string, protestId: string, accept: boolean) {
     if (!this.isController(by)) fail('Only the host or reader resolves protests.');
+    if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
     const pr = this.s.protests.find((x) => x.id === protestId && !x.resolved) ?? fail('No open protest.');
     pr!.resolved = true;
     if (accept) this.flipRuling(pr!.rulingId);
@@ -900,6 +1023,7 @@ export class Room {
 
   override(by: string, rulingId: string) {
     if (!this.isController(by)) fail('Only the host or reader can override.');
+    if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
     this.flipRuling(rulingId);
     const r = this.s.rulings.find((x) => x.id === rulingId)!;
     this.system(`Ruling on "${r.given || '(no answer)'}" changed to ${r.correct ? 'correct' : 'incorrect'}.`);
@@ -929,6 +1053,7 @@ export class Room {
 
   adjust(by: string, playerId: string, delta: number) {
     if (!this.isController(by)) fail('Only the host or reader can adjust scores.');
+    if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
     const teamId = this.teamOf(playerId) ?? fail('That player is not playing.');
     const d = clamp(delta, -50, 50, 0);
     if (!d) return;
@@ -944,6 +1069,8 @@ export class Room {
     this.s.upload = parsed;
     this.uploadProvider = new LocalProvider(parsed.tossups, parsed.bonuses);
     this.s.settings.source = 'upload';
+    this.clearQueue();
+    void this.fillQueue();
     this.system(`Packet loaded: ${parsed.tossups.length} tossups, ${parsed.bonuses.length} bonuses.`);
     this.broadcast();
     return { tossups: parsed.tossups.length, bonuses: parsed.bonuses.length };
@@ -1164,6 +1291,14 @@ export class Room {
       paused: s.paused,
       history: shared.history,
       highlights: shared.highlights,
+      daily: s.daily ? { day: s.daily.day, number: s.daily.number, total: s.daily.total, done: s.daily.done } : undefined,
+      ...(isReader ? {
+        upcoming: this.upcoming.map((q) => ({
+          id: q.id, category: q.category, subcategory: q.subcategory, difficulty: q.difficulty, setName: q.setName, year: q.year,
+          text: stripHtml(q.question).replace(/\s*\(\*\)\s*/, ' (*) '), answerHtml: safeAnswerHtml(q.answer),
+        })),
+        upcomingLoading: this.fillingQueue,
+      } : {}),
     };
   }
 

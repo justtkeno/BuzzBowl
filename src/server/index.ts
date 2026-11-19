@@ -10,6 +10,9 @@ import { MemoryRoomStore, newRoomCode, type RoomStore } from './rooms/store';
 import { SPECTATOR, type Settings } from '../shared/types';
 import { Accounts } from './accounts/accounts';
 import { FileAccountStore, PgAccountStore } from './accounts/store';
+import { Daily, playerKeyFor } from './daily/daily';
+import { FileDailyStore, PgDailyStore } from './daily/store';
+import { QBReaderProvider } from './questions/providers';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -30,13 +33,38 @@ const store: RoomStore = new MemoryRoomStore();
 // Accounts live in Postgres when DATABASE_URL is set (production), otherwise in a local JSON file.
 const fileAccounts = process.env.DATABASE_URL ? null : new FileAccountStore(join(DATA_DIR, `accounts-${PORT}.json`));
 const accounts = new Accounts(fileAccounts ?? new PgAccountStore(process.env.DATABASE_URL!));
+// The daily challenge's questions and leaderboard sit next to the accounts.
+const daily = new Daily(
+  process.env.DATABASE_URL ? new PgDailyStore(process.env.DATABASE_URL) : new FileDailyStore(join(DATA_DIR, `daily-${PORT}.json`)),
+  new QBReaderProvider(),
+);
+
+/** Hook a daily room up to the leaderboard (also after a restart). */
+function attachDaily(room: Room) {
+  const d = room.s.daily;
+  if (!d) return;
+  room.onDailyDone = (o) => {
+    const username = (room.s.players.find((p) => p.id === o.playerId) as { username?: string } | undefined)?.username;
+    daily.record(o, username).catch((e) => console.error('Could not save a daily result:', e)).finally(() => room.broadcast());
+  };
+  if (!d.done) {
+    daily.active.set(d.playerKey, room.s.code);
+    daily.set(d.day).then((t) => room.useDailyQuestions(t)).catch(() => { /* the room shows an error when it asks for a question */ });
+  }
+}
 // Behind Render's / Fly's proxy: trust it for the client IP and https.
 app.set('trust proxy', 1);
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, rooms: [...store.all()].length, accounts: accounts.ready ? accounts.kind : 'off' }));
 app.use('/api', accounts.router());
 if (existsSync(CLIENT_DIR)) {
-  app.use(express.static(CLIENT_DIR));
+  app.use(express.static(CLIENT_DIR, {
+    setHeaders(res, path) {
+      // The service worker and page must always be re-checked; hashed assets never change.
+      if (path.endsWith('sw.js') || path.endsWith('.html') || path.endsWith('.webmanifest')) res.setHeader('Cache-Control', 'no-cache');
+      else if (path.includes('/assets/')) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    },
+  }));
   app.get('*', (_req, res) => res.sendFile(join(CLIENT_DIR, 'index.html')));
 } else {
   app.get('/', (_req, res) => res.send('Client not built. Run "npm run dev" and open http://localhost:5173, or "npm start".'));
@@ -96,7 +124,9 @@ function restoreRooms() {
     let n = 0;
     for (const saved of data.rooms ?? []) {
       if (Date.now() - (saved.lastActive ?? 0) > RESTORE_MAX_AGE_MS) continue;
-      store.set(Room.restore(saved, roomIO(saved.code)));
+      const room = Room.restore(saved, roomIO(saved.code));
+      attachDaily(room);
+      store.set(room);
       n++;
     }
     if (n) console.log(`Restored ${n} room${n === 1 ? '' : 's'} from ${SAVE_FILE}`);
@@ -179,6 +209,44 @@ io.on('connection', (socket) => {
     ack({ ok: true, code: room.s.code, state: room.snapshot(SPECTATOR) });
   });
 
+  // ---------- daily challenge ----------
+
+  socket.on('daily:status', async ({ key }: { key?: string } = {}, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    try {
+      const status = await daily.status(playerKeyFor(accounts.of(socket)?.id, key));
+      ack({ ok: true, status });
+    } catch (e) {
+      console.error('daily:status failed:', e);
+      ack({ ok: false, error: 'The daily challenge is unavailable right now.' });
+    }
+  });
+
+  socket.on('daily:start', async ({ name, key }: { name?: string; key?: string } = {}, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    const playerKey = playerKeyFor(accounts.of(socket)?.id, key);
+    if (!playerKey) return ack({ ok: false, error: 'Could not identify this browser. Reload and try again.' });
+    if (!String(name ?? '').trim()) return ack({ ok: false, error: 'Pick a display name.' });
+    try {
+      const day = daily.today();
+      if (await daily.result(day, playerKey)) return ack({ ok: false, error: 'You’ve already played today’s challenge. A new one comes out at midnight Eastern.' });
+      // Reloaded mid-challenge: send them back to their own room.
+      const activeCode = daily.active.get(playerKey);
+      const activeRoom = activeCode ? store.get(activeCode) : undefined;
+      if (activeRoom?.s.daily && !activeRoom.s.daily.done && activeRoom.s.daily.day === day) return ack({ ok: true, resume: activeRoom.s.code });
+      const tossups = await daily.set(day);
+      const room = makeRoom();
+      room.makeDaily({ day, number: (await daily.status(null, day)).number, playerKey }, tossups);
+      attachDaily(room);
+      enter(room, String(name), undefined, ack);
+      const host = (socket.data as SocketData).playerId;
+      if (host) room.start(host);
+    } catch (e) {
+      console.error('daily:start failed:', e);
+      ack({ ok: false, error: e instanceof ActionError ? e.message : 'Could not start the daily challenge.' });
+    }
+  });
+
   socket.on('room:join', ({ code, name, token }: { code: string; name: string; token?: string }, ack: Ack) => {
     const room = store.get(String(code ?? '').trim());
     if (!room) return ack({ ok: false, error: `No room with code ${String(code).toUpperCase()}.` });
@@ -200,6 +268,7 @@ io.on('connection', (socket) => {
   socket.on('game:start', handle(socket, (r, p) => r.start(p)));
   socket.on('game:next', handle(socket, (r, p) => r.next(p)));
   socket.on('game:end', handle(socket, (r, p) => r.end(p)));
+  socket.on('reader:skipUpcoming', handle(socket, (r, p, id) => r.skipUpcoming(p, String(id ?? ''))));
   socket.on('game:pause', handle(socket, (r, p, paused) => r.setPaused(p, !!paused)));
   socket.on('game:hold', handle(socket, (r, p, paused) => r.pauseGame(p, !!paused)));
   socket.on('game:revealTo', handle(socket, (r, p, count) => r.revealTo(p, count)));
@@ -237,6 +306,6 @@ setInterval(() => {
   }
 }, 60_000).unref();
 
-accounts.init().finally(() => {
+Promise.all([accounts.init(), daily.ready]).finally(() => {
   http.listen(PORT, () => console.log(`Quiz bowl server on http://localhost:${PORT} (accounts: ${accounts.ready ? accounts.kind : 'off'})`));
 });

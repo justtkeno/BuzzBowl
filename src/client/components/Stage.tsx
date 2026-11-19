@@ -72,7 +72,7 @@ export function Stage({ s }: { s: PublicState }) {
             <small>{canBuzz ? (isTouch() ? 'tap' : 'Space / tap') : ''}</small>
           </button>
         )}
-        {r.isController && t && s.phase === 'reading' && <ReaderControls s={s} />}
+        {r.isController && t && s.phase === 'reading' && !s.daily && <ReaderControls s={s} />}
         {r.isController && (s.phase === 'buzz' || (s.phase === 'bonus' && !bonusDone)) && (
           <button className="btn ghost" onClick={() => act('game:next')}>Skip {s.phase === 'bonus' ? 'bonus' : 'tossup'}</button>
         )}

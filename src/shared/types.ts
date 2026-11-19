@@ -261,6 +261,51 @@ export interface PublicState {
   history: ScorePoint[];
   /** End-of-game awards. Sent at game over. */
   highlights: Highlight[];
+  /** Present in a daily-challenge room. */
+  daily?: { day: string; number: number; total: number; done: boolean };
+  /** Reader only: the next tossups in line, so they can skip any before they are read. */
+  upcoming?: UpcomingTossup[];
+  upcomingLoading?: boolean;
+}
+
+/** One line of the daily-challenge leaderboard. */
+export interface DailyEntry {
+  rank: number;
+  name: string;
+  /** Account username when the player was signed in (links to their profile). */
+  username?: string;
+  points: number;
+  powers: number;
+  tens: number;
+  negs: number;
+  /** One mark per tossup: P power, T ten, N neg, Z wrong without a neg, - no buzz. */
+  marks: string;
+  depth: number | null;
+}
+
+export interface DailyStatus {
+  day: string;
+  /** Challenge number, counting up from #1 on launch day. */
+  number: number;
+  total: number;
+  players: number;
+  leaderboard: DailyEntry[];
+  /** This player's result, once they've played today. */
+  me: DailyEntry | null;
+  /** Seconds until the next challenge. */
+  nextIn: number;
+}
+
+export interface UpcomingTossup {
+  id: string;
+  category: string;
+  subcategory: string;
+  difficulty?: number;
+  setName?: string;
+  year?: number;
+  /** Full question text with the (*) power mark. */
+  text: string;
+  answerHtml: string;
 }
 
 export interface ScorePoint {
