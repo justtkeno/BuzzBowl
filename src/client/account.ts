@@ -88,6 +88,19 @@ export async function updateMe(patch: { displayName?: string; bio?: string }) {
   return user;
 }
 
+/** Admin: reset someone's display name (to their username) and/or clear their bio. */
+export async function adminResetProfile(username: string, what: { name: boolean; bio: boolean }) {
+  const body: { displayName?: false; bio?: false } = {};
+  if (!what.name) body.displayName = false;
+  if (!what.bio) body.bio = false;
+  return api<{ ok: true; displayName?: string; bio?: string }>(`/admin/users/${encodeURIComponent(username)}/reset`, { method: 'POST', body });
+}
+
+/** Admin: delete someone's account, sessions and saved games. */
+export async function adminDeleteAccount(username: string) {
+  return api<{ ok: true }>(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+}
+
 export async function fetchProfile(username: string) {
   const { profile } = await api<{ profile: PublicProfile }>(`/users/${encodeURIComponent(username)}`);
   return profile;

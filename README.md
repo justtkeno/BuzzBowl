@@ -63,6 +63,8 @@ Results are saved when the host ends a game, or when everyone walks away from a 
 
 Accounts live in Postgres when `DATABASE_URL` is set, otherwise in `data/accounts-<port>.json` (fine for local use).
 
+**Admins** (the account `Hao` by default; change with `ADMIN_USERNAMES`, comma-separated) get a creator badge, a **👑 Take host** button in any room, and on other players' profiles can reset an offensive display name, clear a bio, or delete the account.
+
 ### Protests and corrections
 
 Every ruling appears in the **Rulings** tab. Any player can protest one, and the host or reader upholds (which reverses the ruling and rescores) or denies it. The host or reader can also mark any ruling right/wrong directly or adjust a player's score by ±5. Reversing a ruling on the tossup that just ended also awards (or removes) that tossup's bonus.

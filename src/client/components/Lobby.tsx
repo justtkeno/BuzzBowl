@@ -75,7 +75,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
                 <ul>
                   {t.playerIds.map((id) => {
                     const p = s.players.find((x) => x.id === id);
-                    return <li key={id} className={p?.online ? '' : 'offline'}>{p?.name}<Verified username={p?.username} />{t.captainId === id && <span className="badge">captain</span>}</li>;
+                    return <li key={id} className={p?.online ? '' : 'offline'}>{p?.name}<Verified username={p?.username} admin={p?.admin} />{t.captainId === id && <span className="badge">captain</span>}</li>;
                   })}
                 </ul>
                 <div className="row gap">

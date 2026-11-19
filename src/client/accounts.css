@@ -78,3 +78,14 @@ a.btn.primary { color: var(--accent-ink); }
   .recent .result { width: 64px; }
   .profile-top .account-me .muted { display: none; }
 }
+
+/* ---------- admin ---------- */
+.creator-badge { display: inline-flex; align-items: center; gap: .2rem; vertical-align: 1px; margin-left: .35rem; padding: .05rem .45rem; border-radius: 999px; background: var(--power-soft); color: var(--power); font-size: .68rem; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; text-decoration: none; white-space: nowrap; line-height: 1.5; }
+a.creator-badge:hover { filter: brightness(1.1); }
+.profile h1 .creator-badge { font-size: .75rem; margin-left: .5rem; }
+.admin-card { border-color: var(--power); }
+.admin-card h2 { display: flex; align-items: center; gap: .4rem; }
+.admin-card .row { margin-top: .5rem; }
+.admin-card .confirm { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
+.btn.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(1.08); }

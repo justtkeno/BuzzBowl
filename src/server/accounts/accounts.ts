@@ -14,7 +14,14 @@ const PROFILE_GAMES = 1000;
 const RECENT_GAMES = 15;
 
 /** Who a socket is logged in as. */
-export interface SocketAccount { id: string; username: string }
+export interface SocketAccount { id: string; username: string; admin: boolean }
+
+/**
+ * Site admins, by username (case-insensitive, comma-separated). Usernames can't change after sign-up,
+ * so the name is enough. Override with ADMIN_USERNAMES (set it to "" to have no admins).
+ */
+const ADMINS = new Set((process.env.ADMIN_USERNAMES ?? 'Hao').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+export const isAdmin = (username: string) => ADMINS.has(username.toLowerCase());
 
 export async function hashPassword(pw: string): Promise<string> {
   const salt = randomBytes(16);
@@ -46,7 +53,7 @@ function readCookie(header: string | undefined, name: string): string | null {
 const cleanName = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
 
 export function toMe(u: User): Me {
-  return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, settings: u.settings };
+  return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u.username), settings: u.settings };
 }
 
 /** Tiny in-memory limiter for login/signup attempts, per IP. */
@@ -110,7 +117,7 @@ export class Accounts {
   /** Socket.IO middleware: remembers who each socket is logged in as (from the cookie sent with the handshake). */
   socketMiddleware = (socket: Socket, next: (err?: Error) => void) => {
     this.userFrom(socket.request.headers.cookie).then((u) => {
-      if (u) this.sockets.set(socket, { id: u.id, username: u.username });
+      if (u) this.sockets.set(socket, { id: u.id, username: u.username, admin: isAdmin(u.username) });
       next();
     }, () => next());
   };
@@ -131,7 +138,7 @@ export class Accounts {
     if (!u) return null;
     const games = await this.store.games(u.id, PROFILE_GAMES);
     return {
-      username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt,
+      username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u.username),
       ...summarize(games),
       recent: games.slice(0, RECENT_GAMES),
     };
@@ -216,6 +223,38 @@ export class Accounts {
       const p = await this.profile(String(req.params.username));
       if (!p) return res.status(404).json({ error: 'No player with that username.' });
       res.json({ profile: p });
+    }));
+
+    // ---------- admin moderation ----------
+
+    const target = async (req: Request, res: Response) => {
+      const me = await this.userFrom(req.headers.cookie);
+      if (!me || !isAdmin(me.username)) { res.status(403).json({ error: 'Admins only.' }); return null; }
+      const u = await this.store.userByName(String(req.params.username));
+      if (!u) { res.status(404).json({ error: 'No player with that username.' }); return null; }
+      if (isAdmin(u.username)) { res.status(400).json({ error: 'Admin accounts can’t be moderated here.' }); return null; }
+      return u;
+    };
+
+    /** Clear an offensive display name (back to the username) and/or bio. */
+    r.post('/admin/users/:username/reset', wrap(async (req, res) => {
+      const u = await target(req, res);
+      if (!u) return;
+      const patch: Partial<Pick<User, 'displayName' | 'bio'>> = {};
+      if (req.body?.displayName !== false) patch.displayName = u.username;
+      if (req.body?.bio !== false) patch.bio = '';
+      await this.store.updateUser(u.id, patch);
+      console.log(`Admin reset profile of @${u.username}`);
+      res.json({ ok: true, ...patch });
+    }));
+
+    /** Delete an account with its sessions and saved games. */
+    r.delete('/admin/users/:username', wrap(async (req, res) => {
+      const u = await target(req, res);
+      if (!u) return;
+      await this.store.deleteUser(u.id);
+      console.log(`Admin deleted account @${u.username}`);
+      res.json({ ok: true });
     }));
 
     r.use((_req, res) => res.status(404).json({ error: 'Not found.' }));

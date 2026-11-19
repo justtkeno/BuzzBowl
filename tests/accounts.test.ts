@@ -151,3 +151,67 @@ describe('game results', () => {
     expect(c.playerId).not.toBe(a.playerId);
   });
 });
+
+describe('admins', () => {
+  it('lets a logged-in admin take the host seat, and nobody else', () => {
+    const room = new Room('TEST', { emitEach: () => {}, emitTo: () => {} }, { qbreader: provider() });
+    const host = room.join('Host').playerId;
+    const guest = room.join('Guest').playerId;
+    const admin = room.join('Hao', undefined, { id: 'acct-hao', username: 'Hao', admin: true });
+    expect(() => room.claimHost(guest)).toThrow(/admins/);
+    expect(room.s.hostId).toBe(host);
+    room.claimHost(admin.playerId);
+    expect(room.s.hostId).toBe(admin.playerId);
+    expect(room.snapshot(guest).players.find((p) => p.id === admin.playerId)?.admin).toBe(true);
+    // Rejoining with the seat token while logged out drops the admin powers.
+    room.join('Hao', admin.token);
+    expect(room.snapshot(guest).players.find((p) => p.id === admin.playerId)?.admin).toBeUndefined();
+  });
+});
+
+describe('admin moderation API', () => {
+  let server: Server;
+  let base: string;
+  let dir: string;
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-admin-'));
+    const accounts = new Accounts(new FileAccountStore(join(dir, 'accounts.json')));
+    await accounts.init();
+    const app = express();
+    app.use('/api', accounts.router());
+    server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+  });
+  afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  const req = (method: string, path: string, body?: unknown, cookie?: string) =>
+    fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const signup = async (username: string, extra: Record<string, unknown> = {}) => {
+    const res = await req('POST', '/signup', { username, password: 'long-enough-pw', ...extra });
+    return { cookie: res.headers.get('set-cookie')!.split(';')[0], user: (await res.json()).user };
+  };
+
+  it('marks the admin account and lets only it reset or delete other accounts', async () => {
+    const hao = await signup('Hao');
+    const troll = await signup('troll', { displayName: 'Rude Name' });
+    expect(hao.user.admin).toBe(true);
+    expect(troll.user.admin).toBe(false);
+    expect((await (await fetch(`${base}/users/hao`)).json()).profile.admin).toBe(true);
+
+    expect((await req('POST', '/admin/users/troll/reset', {}, troll.cookie)).status).toBe(403);
+    expect((await req('POST', '/admin/users/hao/reset', {}, hao.cookie)).status).toBe(400);
+
+    await req('PATCH', '/me', { bio: 'bad bio' }, troll.cookie);
+    expect((await req('POST', '/admin/users/troll/reset', { bio: false }, hao.cookie)).status).toBe(200);
+    let p = (await (await fetch(`${base}/users/troll`)).json()).profile;
+    expect(p).toMatchObject({ displayName: 'troll', bio: 'bad bio' });
+
+    expect((await req('DELETE', '/admin/users/troll', undefined, troll.cookie)).status).toBe(403);
+    expect((await req('DELETE', '/admin/users/troll', undefined, hao.cookie)).status).toBe(200);
+    expect((await fetch(`${base}/users/troll`)).status).toBe(404);
+    // The deleted account's session is gone too.
+    expect((await (await fetch(`${base}/me`, { headers: { cookie: troll.cookie } })).json()).user).toBeNull();
+  });
+});

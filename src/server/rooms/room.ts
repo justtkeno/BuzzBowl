@@ -22,7 +22,7 @@ export interface RoomIO {
 }
 
 /** A logged-in player's account, attached when they join. */
-export interface JoinAccount { id: string; username: string }
+export interface JoinAccount { id: string; username: string; admin?: boolean }
 
 export class ActionError extends Error {}
 const fail = (msg: string): never => { throw new ActionError(msg); };
@@ -39,7 +39,7 @@ export const TIMING = {
   teamSize: 4,
 };
 
-interface Player { id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string }
+interface Player { id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string; admin?: boolean }
 interface Team { id: string; name: string; playerIds: string[] }
 
 interface LiveTossup {
@@ -278,6 +278,8 @@ export class Room {
       existing.online = true;
       if (clean) existing.name = clean;
       if (account && !existing.accountId) { existing.accountId = account.id; existing.username = account.username; }
+      // Admin powers need the admin to be logged in right now, not just a saved seat token.
+      existing.admin = (account && existing.accountId === account.id && account.admin) || undefined;
       const hostAway = !this.s.hostId || !this.player(this.s.hostId)?.online;
       if (hostAway && (existing.id === this.s.hostId || Date.now() > this.hostReservedUntil)) this.s.hostId = existing.id;
       this.broadcast();
@@ -285,13 +287,23 @@ export class Room {
     }
     if (!clean) fail('Pick a display name.');
     if (this.s.players.length >= 60) fail('This room is full.');
-    const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null, ...(account ? { accountId: account.id, username: account.username } : {}) };
+    const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null, ...(account ? { accountId: account.id, username: account.username, ...(account.admin ? { admin: true } : {}) } : {}) };
     this.s.players.push(p);
     if (this.s.settings.mode === 'teams') this.autoAssign(p);
     if (!this.s.hostId || (!this.player(this.s.hostId)?.online && Date.now() > this.hostReservedUntil)) this.s.hostId = p.id;
     this.system(`${p.name} joined.`);
     this.broadcast();
     return { playerId: p.id, token: p.token };
+  }
+
+  /** A site admin takes the host seat in any room. */
+  claimHost(by: string) {
+    const p = this.mustPlayer(by);
+    if (!p.admin) fail('Only site admins can take the host seat.');
+    if (this.s.hostId === by) return;
+    this.s.hostId = by;
+    this.system(`${p.name} (BuzzBowl creator) is now the host.`);
+    this.broadcast();
   }
 
   renamePlayer(playerId: string, name: string) {
@@ -946,7 +958,7 @@ export class Room {
       ? this.s.teams.map((t) => ({ id: t.id, name: t.name, playerIds: t.playerIds, captainId: this.captainOf(t.id), ...computeTeamTotals(t.id, this.s.rulings, this.s.adjustments) }))
       : [];
     const streaks = this.streaks();
-    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}) }));
+    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}), ...(p.admin ? { admin: true } : {}) }));
     // FFA bonus totals live on each player's "team" (themselves).
     const ffaTeams = this.s.settings.mode === 'ffa'
       ? this.s.players.map((p) => ({ id: p.id, name: p.name, playerIds: [p.id], captainId: p.id, ...computeTeamTotals(p.id, this.s.rulings, this.s.adjustments) }))

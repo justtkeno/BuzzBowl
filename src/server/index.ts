@@ -186,6 +186,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('player:rename', handle(socket, (r, p, name) => r.renamePlayer(p, name)));
+  socket.on('host:claim', handle(socket, (r, p) => r.claimHost(p)));
   socket.on('bot:add', handle(socket, (r, p, skill) => botsFor(r).add(p, skill)));
   socket.on('bot:skill', handle(socket, (r, p, id, skill) => botsFor(r).setSkill(p, id, skill)));
   socket.on('bot:remove', handle(socket, (r, p, id) => botsFor(r).remove(p, id)));
