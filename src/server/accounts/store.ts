@@ -25,6 +25,8 @@ export interface AccountStore {
   userById(id: string): Promise<User | null>;
   userByName(username: string): Promise<User | null>;
   updateUser(id: string, patch: UserPatch): Promise<void>;
+  /** Removes the user with their sessions and games. */
+  deleteUser(id: string): Promise<void>;
   createSession(tokenHash: string, userId: string, expiresAt: number): Promise<void>;
   /** The user id for a live session, or null. */
   session(tokenHash: string): Promise<string | null>;
@@ -96,6 +98,12 @@ export class FileAccountStore implements AccountStore {
     const u = this.d.users.find((x) => x.id === id);
     if (!u) return;
     Object.assign(u, structuredClone(patch));
+    this.save();
+  }
+  async deleteUser(id: string) {
+    this.d.users = this.d.users.filter((u) => u.id !== id);
+    this.d.sessions = this.d.sessions.filter((s) => s.userId !== id);
+    this.d.games = this.d.games.filter((g) => g.userId !== id);
     this.save();
   }
   async createSession(hash: string, userId: string, expiresAt: number) {
@@ -195,6 +203,10 @@ export class PgAccountStore implements AccountStore {
     if (!keys.length) return;
     const sets = keys.map((k, i) => `${cols[k]} = $${i + 2}`).join(', ');
     await this.pool.query(`UPDATE users SET ${sets} WHERE id = $1`, [id, ...keys.map((k) => patch[k])]);
+  }
+  async deleteUser(id: string) {
+    // sessions and games go with it (ON DELETE CASCADE).
+    await this.pool.query('DELETE FROM users WHERE id = $1', [id]);
   }
   async createSession(hash: string, userId: string, expiresAt: number) {
     await this.pool.query('INSERT INTO sessions (hash, user_id, expires_at) VALUES ($1,$2,$3)', [hash, userId, expiresAt]);

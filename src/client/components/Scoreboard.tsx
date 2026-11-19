@@ -73,7 +73,7 @@ export function Scoreboard({ s }: { s: PublicState }) {
       <td className="name">
         <span className="pdot" style={{ background: colorFor(p.id, order) }} />
         {p.name}
-        <Verified username={p.username} />
+        <Verified username={p.username} admin={p.admin} />
         {p.streak >= 2 && <span className="streak" title={`${p.streak} tossups in a row`}>×{p.streak}</span>}
         {p.bot && <span className="badge" title={`Computer player · ${BOT_SKILLS[p.bot].blurb}`}>bot · {BOT_SKILLS[p.bot].label.toLowerCase()}</span>}
         {p.id === s.hostId && <span className="badge">host</span>}

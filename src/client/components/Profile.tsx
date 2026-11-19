@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, type GameRecord, type PublicProfile } from '../../shared/accounts';
-import { fetchProfile, updateMe, useAccount } from '../account';
+import { adminDeleteAccount, adminResetProfile, fetchProfile, updateMe, useAccount } from '../account';
 import { useTheme } from '../App';
-import { AccountBar } from './Account';
+import { AccountBar, CreatorBadge } from './Account';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -22,9 +22,10 @@ export function Profile({ username }: { username: string }) {
   const [p, setP] = useState<PublicProfile | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [deleted, setDeleted] = useState(false);
 
   useEffect(() => {
-    setP(null); setErr(null);
+    setP(null); setErr(null); setDeleted(false);
     fetchProfile(username).then(setP, (e) => setErr(e.message));
   }, [username]);
 
@@ -41,12 +42,13 @@ export function Profile({ username }: { username: string }) {
       <main className="profile">
         {err && <div className="card"><h2>Player not found</h2><p className="muted">{err}</p><a className="btn" href="/">Back to BuzzBowl</a></div>}
         {!p && !err && <p className="muted">Loading profile…</p>}
-        {p && (
+        {deleted && <div className="card"><h2>Account deleted</h2><p className="muted">@{username} and its saved games are gone.</p><a className="btn" href="/">Back to BuzzBowl</a></div>}
+        {p && !deleted && (
           <>
             <section className="card profile-head">
               <span className="avatar big" aria-hidden="true">{p.displayName.slice(0, 1).toUpperCase()}</span>
               <div className="grow">
-                <h1>{p.displayName} <span className="verified" title="Verified BuzzBowl account"><Check /></span></h1>
+                <h1>{p.displayName} <span className="verified" title="Verified BuzzBowl account"><Check /></span>{p.admin && <CreatorBadge />}</h1>
                 <div className="muted small">@{p.username} · joined {new Date(p.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
                 {editing ? <EditProfile p={p} onDone={(np) => { if (np) setP(np); setEditing(false); }} /> : p.bio && <p className="bio">{p.bio}</p>}
               </div>
@@ -69,6 +71,7 @@ export function Profile({ username }: { username: string }) {
                 <Recent games={p.recent} />
               </>
             )}
+            {me?.admin && !mine && !p.admin && <AdminCard p={p} onChange={setP} onDeleted={() => setDeleted(true)} />}
           </>
         )}
       </main>
@@ -110,6 +113,44 @@ function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfil
       {err && <p className="error">{err}</p>}
       <div className="row gap"><button className="btn primary small" disabled={busy || !displayName.trim()}>Save</button><button type="button" className="btn ghost small" onClick={() => onDone(null)}>Cancel</button></div>
     </form>
+  );
+}
+
+/** Admin-only moderation tools for someone else's profile. */
+function AdminCard({ p, onChange, onDeleted }: { p: PublicProfile; onChange: (p: PublicProfile) => void; onDeleted: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true); setErr(null); setNote(null);
+    try { await fn(); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const reset = (name: boolean, bio: boolean) => run(async () => {
+    const r = await adminResetProfile(p.username, { name, bio });
+    onChange({ ...p, displayName: r.displayName ?? p.displayName, bio: r.bio ?? p.bio });
+    setNote(name ? 'Display name reset to the username.' : 'Bio cleared.');
+  });
+  return (
+    <section className="card admin-card">
+      <h2>👑 Admin</h2>
+      <p className="muted small">Only you can see this. Use it for offensive names or bios, or accounts that shouldn’t exist.</p>
+      <div className="row gap">
+        <button className="btn small" disabled={busy || p.displayName === p.username} onClick={() => reset(true, false)}>Reset display name</button>
+        <button className="btn small" disabled={busy || !p.bio} onClick={() => reset(false, true)}>Clear bio</button>
+        {confirming ? (
+          <span className="confirm">
+            <span className="small">Really delete @{p.username}? This can’t be undone.</span>
+            <button className="btn small danger" disabled={busy} onClick={() => run(async () => { await adminDeleteAccount(p.username); onDeleted(); })}>Yes, delete</button>
+            <button className="btn small ghost" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
+          </span>
+        ) : (
+          <button className="btn small bad" disabled={busy} onClick={() => setConfirming(true)}>Delete account</button>
+        )}
+      </div>
+      {note && <p className="small muted">{note}</p>}
+      {err && <p className="error small">{err}</p>}
+    </section>
   );
 }
 

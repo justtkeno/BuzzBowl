@@ -3,14 +3,29 @@ import { PASSWORD_MIN, USERNAME_RE } from '../../shared/accounts';
 import { login, logout, signup, useAccount } from '../account';
 import '../accounts.css';
 
-/** Small check mark next to a logged-in player's name, linking to their profile. */
-export function Verified({ username }: { username?: string }) {
+/** Small check mark next to a logged-in player's name, linking to their profile. Admins get a creator badge too. */
+export function Verified({ username, admin }: { username?: string; admin?: boolean }) {
   if (!username) return null;
   return (
-    <a className="verified" href={`/u/${username}`} target="_blank" rel="noreferrer" title={`Signed in as @${username} · view profile`} aria-label={`Verified account @${username}, view profile`}>
-      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M8 0l1.9 1.4 2.3-.2.8 2.2 2 1.2-.6 2.3.6 2.3-2 1.2-.8 2.2-2.3-.2L8 16l-1.9-1.4-2.3.2-.8-2.2-2-1.2.6-2.3L1 6.8l2-1.2.8-2.2 2.3.2L8 0zm-1 10.6l4.6-4.6-1-1L7 8.6 5.4 7l-1 1L7 10.6z" /></svg>
-    </a>
+    <>
+      <a className="verified" href={`/u/${username}`} target="_blank" rel="noreferrer" title={`Signed in as @${username} · view profile`} aria-label={`Verified account @${username}, view profile`}>
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M8 0l1.9 1.4 2.3-.2.8 2.2 2 1.2-.6 2.3.6 2.3-2 1.2-.8 2.2-2.3-.2L8 16l-1.9-1.4-2.3.2-.8-2.2-2-1.2.6-2.3L1 6.8l2-1.2.8-2.2 2.3.2L8 0zm-1 10.6l4.6-4.6-1-1L7 8.6 5.4 7l-1 1L7 10.6z" /></svg>
+      </a>
+      {admin && <CreatorBadge username={username} />}
+    </>
   );
+}
+
+/** The site creator's badge. */
+export function CreatorBadge({ username }: { username?: string }) {
+  const inner = <><Crown />creator</>;
+  return username
+    ? <a className="creator-badge" href={`/u/${username}`} target="_blank" rel="noreferrer" title="BuzzBowl creator · view profile">{inner}</a>
+    : <span className="creator-badge" title="BuzzBowl creator">{inner}</span>;
+}
+
+function Crown() {
+  return <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M1 4l3.5 3L8 2l3.5 5L15 4l-1.5 8h-11L1 4zm1.5 9.5h11V15h-11v-1.5z" /></svg>;
 }
 
 /** Log in / sign up buttons, or who you are when logged in. */
@@ -25,6 +40,7 @@ export function AccountBar() {
           <a className="account-me" href={`/u/${me.username}`}>
             <span className="avatar" aria-hidden="true">{me.displayName.slice(0, 1).toUpperCase()}</span>
             <span>{me.displayName}</span>
+            {me.admin && <CreatorBadge />}
             <span className="muted small">@{me.username}</span>
           </a>
           <button className="btn ghost small" onClick={() => void logout()}>Log out</button>

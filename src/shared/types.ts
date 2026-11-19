@@ -109,6 +109,8 @@ export interface PublicPlayer {
   bot?: BotSkill;
   /** Set when the player is logged in: their account username (shown as a verified badge). */
   username?: string;
+  /** Logged in as a site admin (shown as a creator badge). */
+  admin?: boolean;
 }
 
 export type BotSkill = 'easy' | 'medium' | 'hard' | 'expert';

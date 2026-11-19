@@ -13,6 +13,8 @@ export interface Me {
   displayName: string;
   bio: string;
   createdAt: number;
+  /** Site admin (the creator): can take the host seat in any room and moderate accounts. */
+  admin: boolean;
   /** Last room settings used as host, synced across devices. */
   settings: Record<string, unknown> | null;
 }
@@ -77,6 +79,8 @@ export interface PublicProfile {
   displayName: string;
   bio: string;
   createdAt: number;
+  /** Shows the creator badge. */
+  admin: boolean;
   totals: ProfileTotals;
   /** Subjects sorted best first. Only subjects with enough tossups heard get ranked. */
   subjects: SubjectStats[];
