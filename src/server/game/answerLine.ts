@@ -5,6 +5,8 @@ export interface Alt {
   full: string;
   /** Required (bold/underlined) segments. Equals [full] when nothing is marked. */
   required: string[];
+  /** Readable form for "accepted as …" feedback, e.g. "mitochondria". */
+  display?: string;
 }
 
 export interface AnswerLine {
@@ -46,7 +48,11 @@ function makeAlt(marked: string): Alt | null {
     const seg = normalize(m[1]);
     if (seg) required.push(seg);
   }
-  return { full, required: required.length ? required : [full] };
+  const marks = [...marked.matchAll(/\u0001([^\u0002]*)\u0002/g)].map((x) => x[1].trim()).filter(Boolean);
+  // Short answers read best in full ("Sikhism", "Leo Tolstoy"); long ones by their underlined part.
+  const tidy = (x: string) => x.replace(/["“”]/g, '').replace(/\s+/g, ' ').trim();
+  const display = tidy(plain).split(' ').length <= 4 || !marks.length ? tidy(plain) : tidy(marks.join(' '));
+  return { full, required: required.length ? required : [full], display };
 }
 
 type Directive = 'accept' | 'prompt' | 'reject';

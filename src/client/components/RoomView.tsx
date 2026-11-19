@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import type { ChatMessage, PublicState } from '../../shared/types';
 import { cycleTheme } from '../App';
 import { prefs } from '../socket';
+import { play, setSoundOn, soundOn } from '../sounds';
 import { Chat } from './Chat';
+import { FlashAnnouncer, ScreenFlash, useFeedback } from './Feedback';
 import { InviteScreen, shareInvite } from './Invite';
 import { Lobby } from './Lobby';
 import { Review } from './Review';
@@ -26,6 +28,9 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
   const [toastMsg, setToast] = useState<string | null>(null);
   const [theme, setTheme] = useState(prefs.theme());
   const [tab, setTab] = useState<'board' | 'chat' | 'rulings'>('board');
+  const [sound, setSound] = useState(soundOn());
+  const flash = useFeedback(s);
+  const toggleSound = () => { setSoundOn(!sound); setSound(!sound); if (!sound) play('correct'); };
 
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
@@ -51,6 +56,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
         <div className="grow" />
         <button className="btn ghost" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
         {r.isController && <button className="btn ghost" onClick={() => setShowSettings(true)}>Settings</button>}
+        <button className="btn ghost" onClick={toggleSound} title={sound ? 'Turn sound effects off' : 'Turn sound effects on'} aria-label={sound ? 'Sound on' : 'Sound off'} aria-pressed={sound}>{sound ? '🔊' : '🔇'}</button>
         <button className="btn ghost" title="Switch theme (auto / dark / light)" onClick={() => setTheme(cycleTheme())}>{theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}</button>
         <button className="btn ghost" onClick={onLeave}>Leave</button>
       </header>
@@ -89,6 +95,8 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
       {showInvite && <InviteScreen code={s.code} onClose={() => setShowInvite(false)} />}
       {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
+      <ScreenFlash flash={flash} />
+      <FlashAnnouncer flash={flash} />
     </div>
   );
 }

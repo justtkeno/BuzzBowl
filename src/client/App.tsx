@@ -3,7 +3,8 @@ import type { ChatMessage, PublicState } from '../shared/types';
 import { Home } from './components/Home';
 import { RoomView } from './components/RoomView';
 import { randomName } from './names';
-import { beep, call, prefs, socket } from './socket';
+import { call, prefs, socket } from './socket';
+import { play } from './sounds';
 
 const codeFromPath = () => location.pathname.match(/^\/r\/([A-Za-z]{4,8})/)?.[1]?.toUpperCase() ?? null;
 
@@ -44,7 +45,7 @@ export function App() {
     const onState = (s: PublicState) => {
       setState(s);
       const buzzer = s.buzz?.playerId ?? null;
-      if (buzzer && buzzer !== lastBuzzer.current) beep(buzzer === s.you ? 880 : 520);
+      if (buzzer && buzzer !== lastBuzzer.current) play(buzzer === s.you ? 'buzzMine' : 'buzzOther');
       lastBuzzer.current = buzzer;
     };
     const onTick = ({ num, i, word }: { num: number; i: number; word: string }) => {

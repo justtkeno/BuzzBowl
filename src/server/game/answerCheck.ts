@@ -26,15 +26,37 @@ export function matchesAlt(g: string, alt: Alt, exactOnly = false): boolean {
   return false;
 }
 
-export function checkAgainst(given: string, line: AnswerLine): Verdict {
+export interface CheckResult {
+  verdict: Verdict;
+  /** Set when a misspelled answer was accepted: what it was read as ("mitochondria"). */
+  correctedTo?: string;
+}
+
+/** True when the player typed one of the alternative's words exactly, so no auto-correction happened. */
+function exactly(g: string, alt: Alt): boolean {
+  if (g === alt.full || g === alt.required.join(' ')) return true;
+  const words = new Set(alt.full.split(' '));
+  return g.split(' ').every((t) => words.has(t) || STOPWORDS.has(t));
+}
+
+export function checkDetailed(given: string, line: AnswerLine): CheckResult {
   const g = normalize(given);
-  if (!g) return 'incorrect';
-  if (line.reject.some((a) => matchesAlt(g, a, true))) return 'incorrect';
-  if (line.accept.some((a) => matchesAlt(g, a))) return 'correct';
-  if (line.prompt.some((a) => matchesAlt(g, a))) return 'prompt';
-  return 'incorrect';
+  if (!g) return { verdict: 'incorrect' };
+  if (line.reject.some((a) => matchesAlt(g, a, true))) return { verdict: 'incorrect' };
+  const hit = line.accept.find((a) => matchesAlt(g, a));
+  if (hit) return exactly(g, hit) ? { verdict: 'correct' } : { verdict: 'correct', correctedTo: hit.display ?? hit.full };
+  if (line.prompt.some((a) => matchesAlt(g, a))) return { verdict: 'prompt' };
+  return { verdict: 'incorrect' };
+}
+
+export function checkAgainst(given: string, line: AnswerLine): Verdict {
+  return checkDetailed(given, line).verdict;
 }
 
 export function checkAnswer(given: string, answerLine: string): Verdict {
   return checkAgainst(given, parseAnswerLine(answerLine));
+}
+
+export function checkAnswerDetailed(given: string, answerLine: string): CheckResult {
+  return checkDetailed(given, parseAnswerLine(answerLine));
 }

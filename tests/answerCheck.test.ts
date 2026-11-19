@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkAnswer } from '../src/server/game/answerCheck';
+import { checkAnswer, checkAnswerDetailed } from '../src/server/game/answerCheck';
 import { parseAnswerLine } from '../src/server/game/answerLine';
 import { fuzzyEq, normalize, safeAnswerHtml } from '../src/server/game/text';
 
@@ -26,7 +26,7 @@ describe('parseAnswerLine', () => {
     const line = parseAnswerLine(MITO);
     expect(line.accept.map((a) => a.full)).toEqual(['mitochondria', 'mitochondrion', 'powerhouse of cell']);
     expect(line.accept[2].required).toEqual(['powerhouse']);
-    expect(line.prompt[0]).toEqual({ full: 'organelles', required: ['organelle'] });
+    expect(line.prompt[0]).toMatchObject({ full: 'organelles', required: ['organelle'] });
     expect(line.reject[0].full).toBe('chloroplast');
   });
   it('handles plain answer lines without markup', () => {
@@ -71,5 +71,42 @@ describe('safeAnswerHtml', () => {
   it('keeps b/u and strips scripts and attributes', () => {
     expect(safeAnswerHtml('<b class="x"><u>A</u></b><script>alert(1)</script> & co')).toBe('<b><u>A</u></b>alert(1) &amp; co');
     expect(safeAnswerHtml('<img src=x onerror=alert(1)>')).toBe('');
+  });
+});
+
+describe('forgiving near misses', () => {
+  const VG = 'Vincent <b><u>van Gogh</u></b> [or Vincent Willem <b><u>van Gogh</u></b>; accept <b><u>Gogh</u></b>]';
+  const HE = '<b><u>helium</u></b> [or <b><u>He</u></b>]';
+  it.each([
+    ['hleium', HE, 'correct'], // swapped letters
+    ['heluim', HE, 'correct'],
+    ['vangogh', VG, 'correct'], // missing space
+    ['van goh', VG, 'correct'],
+    ['missisippi', '<b><u>Mississippi</u></b> River', 'correct'], // doubled letters
+    ['colloseum', '<b><u>Colosseum</u></b>', 'correct'],
+    ['tolstoi', 'Leo <b><u>Tolstoy</u></b>', 'correct'],
+    ['vitamin b', '<b><u>vitamin A</u></b>', 'incorrect'],
+    ['vitaminb', '<b><u>vitamin A</u></b>', 'incorrect'],
+    ['cat', '<b><u>car</u></b>', 'incorrect'],
+    ['iron', '<b><u>neon</u></b>', 'incorrect'],
+    ['revolution of 1798', '<b><u>Revolution of 1789</u></b>', 'incorrect'],
+  ] as const)('%s → %s', (given, line, expected) => {
+    expect(checkAnswer(given, line)).toBe(expected);
+  });
+
+  it('says what a misspelled answer was accepted as, and stays quiet for exact ones', () => {
+    expect(checkAnswerDetailed('mitocondria', MITO)).toEqual({ verdict: 'correct', correctedTo: 'mitochondria' });
+    expect(checkAnswerDetailed('Mitochondria', MITO)).toEqual({ verdict: 'correct' });
+    expect(checkAnswerDetailed('tolstoy', 'Leo <b><u>Tolstoy</u></b>')).toEqual({ verdict: 'correct' });
+    expect(checkAnswerDetailed('vangogh', 'Vincent <b><u>van Gogh</u></b>')).toEqual({ verdict: 'correct', correctedTo: 'Vincent van Gogh' });
+    expect(checkAnswerDetailed('organelles', MITO)).toEqual({ verdict: 'prompt' });
+  });
+});
+
+describe('correction labels', () => {
+  it('names short answers in full and long ones by their underlined part', () => {
+    expect(checkAnswerDetailed('sikhsim', '<b><u>Sikh</u></b>ism [or <b><u>Sikhi</u></b>]').correctedTo).toBe('Sikhism');
+    expect(checkAnswerDetailed('hastngs', 'Battle of <b><u>Hastings</u></b>').correctedTo).toBe('Battle of Hastings');
+    expect(checkAnswerDetailed('cuban misile crisis', 'Cuban <b><u>Missile</u></b> <b><u>Crisis</u></b> of October 1962').correctedTo).toBe('Missile Crisis');
   });
 });

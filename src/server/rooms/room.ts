@@ -3,7 +3,7 @@ import {
   type BuzzMarker, type ChatMessage, type Phase, type Protest, type PublicState, type ReviewItem,
   type Ruling, type Settings, type Verdict,
 } from '../../shared/types';
-import { checkAnswer } from '../game/answerCheck';
+import { checkAnswerDetailed } from '../game/answerCheck';
 import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, type Adjustment, type HeardEntry } from '../game/scoring';
 import { safeAnswerHtml } from '../game/text';
 import { LocalProvider, parseUpload, QBReaderProvider } from '../questions/providers';
@@ -66,7 +66,7 @@ interface LiveBonus {
   teamId: string;
   q: Bonus;
   current: number;
-  results: { given: string; correct: boolean }[];
+  results: { given: string; correct: boolean; correctedTo?: string }[];
   deadline: number | null;
   typing: string;
   prompts: number;
@@ -578,13 +578,13 @@ export class Room {
     if (!b || b.playerId !== by || b.awaiting) { if (timedOut) return; fail('It is not your turn to answer.'); }
     const given = String(text ?? '').trim().slice(0, 200);
     this.clearTimer('answer');
-    const verdict = given ? checkAnswer(given, this.s.tossup!.q.answer) : 'incorrect';
+    const { verdict, correctedTo } = given ? checkAnswerDetailed(given, this.s.tossup!.q.answer) : { verdict: 'incorrect' as const, correctedTo: undefined };
     if (given && this.s.settings.readerRules && this.readerOnline()) {
       b!.awaiting = { given, suggestion: verdict };
       b!.deadline = null;
       return this.broadcast();
     }
-    this.applyTossupVerdict(verdict, given);
+    this.applyTossupVerdict(verdict, given, correctedTo);
   }
 
   /** The reader's ruling on the current tossup or bonus answer. */
@@ -596,7 +596,7 @@ export class Room {
     else fail('There is nothing to rule on.');
   }
 
-  private applyTossupVerdict(verdict: Verdict, given: string) {
+  private applyTossupVerdict(verdict: Verdict, given: string, correctedTo?: string) {
     const t = this.s.tossup!;
     const b = this.s.buzz!;
     const marker = t.markers[t.markers.length - 1];
@@ -617,8 +617,10 @@ export class Room {
       id: rid(), type: 'tossup', num: t.num, playerId: b.playerId, playerName: p?.name ?? '?', teamId: b.teamId,
       category: t.q.category, given, correct, overridden: false, points, kind,
       wordIndex: b.wordIndex, totalWords: t.words.length, powerIndex: t.powerIndex,
+      ...(correct && correctedTo ? { correctedTo } : {}),
     });
     marker.result = kind;
+    if (correct && correctedTo) marker.correctedTo = correctedTo;
     this.s.buzz = null;
     if (correct) return this.endTossup(b.teamId);
 
@@ -698,16 +700,16 @@ export class Room {
     if (!timedOut && this.captainOf(bn!.teamId) !== by) fail('Only your team captain submits bonus answers.');
     this.clearTimer('bonus');
     const given = String(text ?? '').trim().slice(0, 200);
-    const verdict = given ? checkAnswer(given, bn!.q.answers[bn!.current]) : 'incorrect';
+    const { verdict, correctedTo } = given ? checkAnswerDetailed(given, bn!.q.answers[bn!.current]) : { verdict: 'incorrect' as const, correctedTo: undefined };
     if (given && this.s.settings.readerRules && this.readerOnline()) {
       bn!.awaiting = { given, suggestion: verdict };
       bn!.deadline = null;
       return this.broadcast();
     }
-    this.applyBonusVerdict(verdict, given);
+    this.applyBonusVerdict(verdict, given, correctedTo);
   }
 
-  private applyBonusVerdict(verdict: Verdict, given: string) {
+  private applyBonusVerdict(verdict: Verdict, given: string, correctedTo?: string) {
     const bn = this.s.bonus!;
     bn.awaiting = undefined;
     if (verdict === 'prompt' && bn.prompts < TIMING.maxPrompts) {
@@ -722,8 +724,9 @@ export class Room {
     this.s.rulings.push({
       id: rid(), type: 'bonus', num: bn.num, playerId: captain, playerName: this.player(captain)?.name ?? '?', teamId: bn.teamId,
       category: bn.q.category, given, correct, overridden: false, points: correct ? this.s.settings.bonusPartValue : 0, partIndex: bn.current,
+      ...(correct && correctedTo ? { correctedTo } : {}),
     });
-    bn.results[bn.current] = { given, correct };
+    bn.results[bn.current] = { given, correct, ...(correct && correctedTo ? { correctedTo } : {}) };
     bn.revealing = true;
     bn.deadline = null;
     this.setTimer('bonusReveal', TIMING.partRevealMs, () => {
@@ -877,6 +880,7 @@ export class Room {
             answerHtml: shown ? safeAnswerHtml(bn.q.answers[i]) : undefined,
             given: bn.results[i]?.given,
             correct: bn.results[i]?.correct,
+            correctedTo: bn.results[i]?.correctedTo,
           };
         }),
         current: bn.current, deadline: bn.deadline, typing: seesBonusTyping ? bn.typing : '', prompts: bn.prompts,

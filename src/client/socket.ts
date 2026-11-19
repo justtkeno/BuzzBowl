@@ -43,20 +43,3 @@ export const prefs = {
   theme: () => (store.get('qb:theme') as 'auto' | 'light' | 'dark' | null) ?? 'auto',
   setTheme: (t: string) => store.set('qb:theme', t),
 };
-
-let audio: AudioContext | null = null;
-/** Short buzzer beep (no audio files needed). */
-export function beep(freq = 660, ms = 160) {
-  try {
-    audio ??= new AudioContext();
-    const osc = audio.createOscillator();
-    const gain = audio.createGain();
-    osc.type = 'square';
-    osc.frequency.value = freq;
-    gain.gain.setValueAtTime(0.06, audio.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + ms / 1000);
-    osc.connect(gain).connect(audio.destination);
-    osc.start();
-    osc.stop(audio.currentTime + ms / 1000);
-  } catch { /* audio unavailable */ }
-}

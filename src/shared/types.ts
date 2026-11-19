@@ -71,6 +71,8 @@ export interface BuzzMarker {
   wordIndex: number;
   result: BuzzKind | 'pending' | 'prompt';
   given: string;
+  /** A misspelled answer that was accepted, and what it was read as. */
+  correctedTo?: string;
 }
 
 export interface CategoryStats {
@@ -154,6 +156,7 @@ export interface PublicBonusPart {
   answerHtml?: string;
   given?: string;
   correct?: boolean;
+  correctedTo?: string;
 }
 
 export interface PublicBonus {
@@ -191,6 +194,8 @@ export interface Ruling {
   totalWords?: number;
   powerIndex?: number | null;
   partIndex?: number;
+  /** Set when auto-check accepted a misspelling: what the answer was read as. */
+  correctedTo?: string;
 }
 
 export interface Protest {

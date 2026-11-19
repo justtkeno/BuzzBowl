@@ -168,7 +168,7 @@ function EndSummary({ s }: { s: PublicState }) {
   const winner = t.buzzes.find((b) => b.result === 'power' || b.result === 'ten');
   return (
     <div className="end-line">
-      {winner ? <span><b>{winner.playerName}</b> got it for {winner.result === 'power' ? 15 : 10}{winner.given ? ` with “${winner.given}”` : ''}.</span> : <span className="muted">Dead tossup — nobody got it.</span>}
+      {winner ? <span><b>{winner.playerName}</b> got it for {winner.result === 'power' ? s.settings.powerValue : s.settings.tenValue}{winner.given ? ` with “${winner.given}”` : ''}.{winner.correctedTo && <span className="corrected"> Close enough: read as <b>{winner.correctedTo}</b>.</span>}</span> : <span className="muted">Dead tossup — nobody got it.</span>}
       {t.buzzes.filter((b) => b.result === 'neg' || b.result === 'zero').map((b, i) => (
         <span key={i} className="muted"> {b.playerName}: “{b.given || '—'}” ({b.result === 'neg' ? 'neg' : 'no points'})</span>
       ))}
@@ -268,7 +268,7 @@ function BonusCard({ s }: { s: PublicState }) {
               {(p.answerHtml || p.readerAnswer) && (
                 <div className="answer small"><span className="label">ANSWER</span> <span dangerouslySetInnerHTML={{ __html: p.answerHtml ?? p.readerAnswer }} /></div>
               )}
-              {p.given !== undefined && <div className="given">{bn.teamName}: “{p.given || '—'}” {p.correct ? '✓' : '✗'}</div>}
+              {p.given !== undefined && <div className="given">{bn.teamName}: “{p.given || '—'}” {p.correct ? '✓' : '✗'}{p.correctedTo && <span className="corrected"> read as <b>{p.correctedTo}</b></span>}</div>}
             </li>
           );
         })}
