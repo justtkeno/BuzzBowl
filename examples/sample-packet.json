@@ -1,0 +1,69 @@
+{
+  "tossups": [
+    {
+      "category": "Science",
+      "subcategory": "Biology",
+      "question": "The number of these structures in a cell can increase through fission, and a protein called Drp1 helps them divide. Their inner membrane is rich in cardiolipin, and the endosymbiotic theory holds that they descend from alphaproteobacteria. They have their own circular genome, which is usually inherited only from the mother. Folds called cristae line the inside of, for 10 points, (*) what organelle, the site of the Krebs cycle and oxidative phosphorylation, often called the \"powerhouse of the cell\"?",
+      "answer": "<b><u>mitochondria</u></b> [or <b><u>mitochondrion</u></b>; prompt on <u>organelle</u>s; do not accept \"chloroplast\"]",
+      "difficulty": 3,
+      "setName": "Sample Packet",
+      "year": 2026
+    },
+    {
+      "category": "Literature",
+      "subcategory": "European Literature",
+      "question": "This author described a peasant mowing scene in which a landowner loses himself in the rhythm of the scythe, and he wrote about a man who realizes on his deathbed that his proper life was a lie in The Death of Ivan Ilyich. In one novel, Konstantin Levin's happy marriage contrasts with an affair that ends at a railway station. For 10 points, name this author of (*) Anna Karenina and War and Peace.",
+      "answer": "Leo <b><u>Tolstoy</u></b> [or Lev Nikolayevich <b><u>Tolstoy</u></b>]",
+      "difficulty": 3,
+      "setName": "Sample Packet",
+      "year": 2026
+    },
+    {
+      "category": "History",
+      "subcategory": "European History",
+      "question": "During this event, the Brunswick Manifesto threatened Parisians if harm came to the royal family, and the Law of Suspects expanded arrests. The Thermidorian Reaction ended its most radical phase after the fall of Robespierre. It began after the Estates-General became a National Assembly, which swore the (*) Tennis Court Oath. For 10 points, name this revolution that began with the storming of the Bastille in 1789.",
+      "answer": "<b><u>French</u></b> Revolution [accept <b><u>Revolution of 1789</u></b>; prompt on <u>revolution</u>]",
+      "difficulty": 3,
+      "setName": "Sample Packet",
+      "year": 2026
+    }
+  ],
+  "bonuses": [
+    {
+      "category": "Science",
+      "subcategory": "Chemistry",
+      "leadin": "Answer the following about the periodic table, for 10 points each.",
+      "parts": [
+        "This Russian chemist published a periodic table in 1869 that left gaps for undiscovered elements.",
+        "Group 17 of the periodic table contains these reactive nonmetals, including fluorine and chlorine.",
+        "This element, number 79, has the chemical symbol Au."
+      ],
+      "answers": [
+        "Dmitri <b><u>Mendeleev</u></b>",
+        "<b><u>halogen</u></b>s",
+        "<b><u>gold</u></b>"
+      ],
+      "difficulty": 3,
+      "setName": "Sample Packet",
+      "year": 2026
+    },
+    {
+      "category": "Literature",
+      "subcategory": "British Literature",
+      "leadin": "Name these works by William Shakespeare, for 10 points each.",
+      "parts": [
+        "In this play, a prince of Denmark speaks the soliloquy beginning \"To be, or not to be.\"",
+        "In this play, three witches prophesy that a Scottish general will become king.",
+        "In this comedy, Puck puts a love potion on the wrong Athenian in an enchanted forest."
+      ],
+      "answers": [
+        "<b><u>Hamlet</u></b>",
+        "<b><u>Macbeth</u></b>",
+        "<b><u>A Midsummer Night's Dream</u></b>"
+      ],
+      "difficulty": 3,
+      "setName": "Sample Packet",
+      "year": 2026
+    }
+  ]
+}
