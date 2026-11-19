@@ -7,6 +7,7 @@ import { checkAnswerDetailed } from '../game/answerCheck';
 import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, type Adjustment, type HeardEntry } from '../game/scoring';
 import { stripHtml, safeAnswerHtml } from '../game/text';
 import { LocalProvider, parseUpload, QBReaderProvider } from '../questions/providers';
+import { CATALOG_BONUSES, CATALOG_TOSSUPS } from '../questions/catalog';
 import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
 import type { Bonus, QuestionProvider, Tossup } from '../questions/types';
 import type { GameRecord } from '../../shared/accounts';
@@ -125,7 +126,8 @@ const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
 };
 
-const sampleProvider = new LocalProvider(SAMPLE_TOSSUPS, SAMPLE_BONUSES);
+/** Built-in questions: the original sample packet plus the BuzzBowl catalog. Works offline. */
+const sampleProvider = new LocalProvider([...SAMPLE_TOSSUPS, ...CATALOG_TOSSUPS], [...SAMPLE_BONUSES, ...CATALOG_BONUSES]);
 
 export interface RoomDeps {
   qbreader?: QuestionProvider;
@@ -647,7 +649,7 @@ export class Room {
       q ??= await this.provider().nextTossup(this.s.settings.filters, this.s.seenTossups);
     } catch (e: any) {
       if (gen !== this.loadGen) return;
-      this.s.message = `${e?.message ?? e}. Try again, or switch the question source to the sample packet.`;
+      this.s.message = `${e?.message ?? e}. Try again, or switch the question source to Built-in questions.`;
       this.s.phase = this.s.tossupNum ? 'tossupEnd' : 'lobby';
       this.s.tossup = this.s.tossupNum ? this.s.tossup : null;
       if (this.s.tossup) this.s.tossup.bonusTeam = null;

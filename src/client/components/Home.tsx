@@ -68,7 +68,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
         )}
         {!connected && <p className="warn">Connecting to server…</p>}
         {(err || error) && <p className="error">{err || error}</p>}
-        <p className="muted small">Questions come from <a href="https://www.qbreader.org" target="_blank" rel="noreferrer">QBReader</a>, a built-in sample packet, or a packet you upload.</p>
+        <p className="muted small">Questions come from <a href="https://www.qbreader.org" target="_blank" rel="noreferrer">QBReader</a>, hundreds of built-in questions, or a packet you upload.</p>
         <InstallButton />
       </div>
     </div>
