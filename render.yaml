@@ -6,3 +6,7 @@ services:
     buildCommand: npm ci && npm run build
     startCommand: npm run serve
     healthCheckPath: /healthz
+    envVars:
+      # Postgres connection string for accounts (e.g. from neon.tech). Set it in the Render dashboard.
+      - key: DATABASE_URL
+        sync: false

@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PublicPlayer, PublicState } from '../../shared/types';
+import { BOT_SKILLS } from '../../shared/types';
 import { act, colorFor, fmtPct, roles } from './util';
+import { Verified } from './Account';
 
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -71,7 +73,9 @@ export function Scoreboard({ s }: { s: PublicState }) {
       <td className="name">
         <span className="pdot" style={{ background: colorFor(p.id, order) }} />
         {p.name}
+        <Verified username={p.username} />
         {p.streak >= 2 && <span className="streak" title={`${p.streak} tossups in a row`}>×{p.streak}</span>}
+        {p.bot && <span className="badge" title={`Computer player · ${BOT_SKILLS[p.bot].blurb}`}>bot · {BOT_SKILLS[p.bot].label.toLowerCase()}</span>}
         {p.id === s.hostId && <span className="badge">host</span>}
         {captain && <span className="badge">capt</span>}
       </td>

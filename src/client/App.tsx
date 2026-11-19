@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../shared/types';
 import { Home } from './components/Home';
+import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
 import { randomName } from './names';
@@ -9,10 +10,13 @@ import { play } from './sounds';
 
 const codeFromPath = () => location.pathname.match(/^\/r\/([A-Za-z]{4,8})/)?.[1]?.toUpperCase() ?? null;
 const watchCode = () => location.pathname.match(/^\/watch\/([A-Za-z]{4,8})/)?.[1]?.toUpperCase() ?? null;
+const profileName = () => location.pathname.match(/^\/u\/([A-Za-z0-9_]{1,20})\/?$/)?.[1] ?? null;
 
 export function App() {
   const watch = watchCode();
   if (watch) return <Spectate code={watch} />;
+  const profile = profileName();
+  if (profile) return <Profile username={profile} />;
   return <Player />;
 }
 
