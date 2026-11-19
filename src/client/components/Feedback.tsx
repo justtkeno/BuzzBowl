@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PublicState, Ruling } from '../../shared/types';
 import { play, type Cue } from '../sounds';
+import { colorFor, vibrate } from './util';
 
 type Tone = 'power' | 'correct' | 'neg' | 'wrong' | 'prompt';
 interface Flash { id: number; tone: Tone; label: string; sub?: string }
@@ -26,7 +27,7 @@ export function useFeedback(s: PublicState): Flash | null {
     play(cue);
     clearTimeout(timer.current);
     setFlash({ id: ++counter.current, tone, label, sub });
-    timer.current = setTimeout(() => setFlash(null), 1600);
+    timer.current = setTimeout(() => setFlash(null), 1200);
   };
   useEffect(() => () => clearTimeout(timer.current), []);
 
@@ -42,16 +43,10 @@ export function useFeedback(s: PublicState): Flash | null {
       const who = r.playerId === me ? '' : `${r.playerName}: `;
       const fixed = r.correct && r.correctedTo && r.given ? `“${r.given}” accepted as ${r.correctedTo}` : undefined;
       const sub = flipped ? 'Protest upheld — score updated' : fixed;
-      if (r.type === 'bonus') {
-        if (r.correct) show('correct', `${who}+${r.points}`, sub ?? 'Bonus part correct');
-        else show('wrong', `${who}Missed`, flipped ? sub : 'Bonus part');
-      } else if (r.correct) {
-        show(r.kind === 'power' ? 'power' : 'correct', `${who}${r.kind === 'power' ? 'POWER! ' : ''}+${r.points}`, sub);
-      } else if (r.kind === 'neg') {
-        show('neg', `${who}Neg ${r.points}`.replace('-', '−'), sub ?? (r.given ? `“${r.given}”` : 'Out of time'));
-      } else {
-        show('wrong', `${who}No points`, sub ?? (r.given ? `“${r.given}”` : 'Out of time'));
-      }
+      const pts = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+      if (r.type === 'bonus') show(r.correct ? 'correct' : 'wrong', `${who}${pts(r.points)}`, sub);
+      else if (r.correct) show(r.kind === 'power' ? 'power' : 'correct', `${who}${pts(r.points)}`, sub ?? (r.kind === 'power' ? 'Power' : undefined));
+      else show(r.kind === 'neg' ? 'neg' : 'wrong', `${who}${pts(r.points)}`, sub);
     }
   }, [s.rulings]);
 
@@ -85,4 +80,73 @@ export function ScreenFlash({ flash }: { flash: Flash | null }) {
 /** Screen-reader text for the same result. */
 export function FlashAnnouncer({ flash }: { flash: Flash | null }) {
   return <div className="sr-only" role="status" aria-live="polite">{flash ? `${flash.label}${flash.sub ? `. ${flash.sub}` : ''}` : ''}</div>;
+}
+
+interface BuzzFlashT { id: number; color: string; label: string; mine: boolean }
+
+/** A quick screen-edge glow in the buzzing player's color whenever someone wins a buzz. */
+export function useBuzzFlash(s: PublicState): BuzzFlashT | null {
+  const [flash, setFlash] = useState<BuzzFlashT | null>(null);
+  const last = useRef<string | null>(s.buzz ? `${s.tossup?.num}:${s.buzz.playerId}` : null);
+  const counter = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const key = s.buzz ? `${s.tossup?.num}:${s.buzz.playerId}` : null;
+  useEffect(() => {
+    if (key && key !== last.current && s.buzz) {
+      const mine = s.buzz.playerId === s.you;
+      if (mine) vibrate([40, 30, 40]);
+      clearTimeout(timer.current);
+      setFlash({ id: ++counter.current, color: colorFor(s.buzz.playerId), label: mine ? 'You buzzed' : `${s.buzz.playerName} buzzed`, mine });
+      timer.current = setTimeout(() => setFlash(null), 1000);
+    }
+    last.current = key;
+  }, [key]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return flash;
+}
+
+export function BuzzFlash({ flash }: { flash: BuzzFlashT | null }) {
+  if (!flash) return null;
+  return (
+    <div key={flash.id} className={`buzzflash ${flash.mine ? 'mine' : ''}`} style={{ ['--pc' as string]: flash.color }} aria-hidden="true">
+      <div className="buzzflash-label">{flash.label}</div>
+    </div>
+  );
+}
+
+interface Achievement { id: number; icon: string; text: string }
+
+/** Small badge pop-ups for this player's milestones: first power, and tossup streaks. */
+export function useAchievements(s: PublicState): Achievement | null {
+  const [cur, setCur] = useState<Achievement | null>(null);
+  const me = s.players.find((p) => p.id === s.you);
+  const prev = useRef<{ powers: number; streak: number } | null>(null);
+  const counter = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    if (!me) return;
+    const before = prev.current;
+    prev.current = { powers: me.stats.powers, streak: me.streak };
+    if (!before) return;
+    let a: Omit<Achievement, 'id'> | null = null;
+    if (before.powers === 0 && me.stats.powers === 1) a = { icon: '✦', text: 'First power' };
+    else if (me.streak > before.streak && [3, 5, 7, 10, 15].includes(me.streak)) a = { icon: '✦', text: `${me.streak} in a row` };
+    if (!a) return;
+    const shown = a;
+    // Let the correct-answer flash play first.
+    const t = setTimeout(() => {
+      play('streak');
+      clearTimeout(timer.current);
+      setCur({ id: ++counter.current, ...shown });
+      timer.current = setTimeout(() => setCur(null), 2600);
+    }, 900);
+    return () => clearTimeout(t);
+  }, [me?.stats.powers, me?.streak]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return cur;
+}
+
+export function AchievementPop({ a }: { a: Achievement | null }) {
+  if (!a) return null;
+  return <div key={a.id} className="achievement" role="status"><span className="ach-icon">{a.icon}</span>{a.text}</div>;
 }

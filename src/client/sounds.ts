@@ -37,37 +37,41 @@ function tone(a: AudioContext, freq: number, at: number, len: number, type: Osci
   osc.stop(t0 + len + 0.02);
 }
 
-export type Cue = 'power' | 'correct' | 'neg' | 'wrong' | 'prompt' | 'buzzMine' | 'buzzOther';
+export type Cue = 'power' | 'correct' | 'neg' | 'wrong' | 'prompt' | 'buzzMine' | 'buzzOther' | 'tick' | 'streak';
 
 export function play(cue: Cue) {
   const a = audio();
   if (!a) return;
   switch (cue) {
-    case 'power': // bright rising arpeggio with a sparkle on top
-      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(a, f, i * 0.07, 0.32, 'triangle', 0.09));
-      tone(a, 2093, 0.3, 0.4, 'sine', 0.035);
+    case 'power': // three soft rising notes
+      [659.25, 880, 1174.66].forEach((f, i) => tone(a, f, i * 0.06, 0.22, 'sine', 0.045));
       break;
-    case 'correct': // two-note "ding-ding"
-      tone(a, 659.25, 0, 0.22, 'triangle', 0.09);
-      tone(a, 987.77, 0.1, 0.35, 'triangle', 0.09);
+    case 'correct': // two soft notes
+      tone(a, 659.25, 0, 0.16, 'sine', 0.045);
+      tone(a, 880, 0.07, 0.24, 'sine', 0.045);
       break;
-    case 'neg': // low falling buzz
-      tone(a, 220, 0, 0.45, 'sawtooth', 0.05, 110);
-      tone(a, 233, 0, 0.45, 'square', 0.025, 116);
+    case 'neg': // gentle low drop
+      tone(a, 293.66, 0, 0.28, 'sine', 0.05, 196);
       break;
-    case 'wrong': // soft "bonk"
-      tone(a, 330, 0, 0.18, 'triangle', 0.07, 247);
-      tone(a, 247, 0.12, 0.28, 'triangle', 0.06, 196);
+    case 'wrong': // muted low note
+      tone(a, 261.63, 0, 0.2, 'sine', 0.035, 220);
       break;
-    case 'prompt': // questioning upturn
-      tone(a, 440, 0, 0.16, 'sine', 0.08);
-      tone(a, 587.33, 0.13, 0.24, 'sine', 0.08);
+    case 'prompt': // light questioning lift
+      tone(a, 523.25, 0, 0.12, 'sine', 0.04);
+      tone(a, 659.25, 0.09, 0.16, 'sine', 0.04);
       break;
     case 'buzzMine':
       tone(a, 880, 0, 0.16, 'square', 0.05);
       break;
     case 'buzzOther':
       tone(a, 520, 0, 0.16, 'square', 0.045);
+      break;
+    case 'tick': // faint clock tick for the last seconds of an answer
+      tone(a, 1000, 0, 0.04, 'sine', 0.015);
+      break;
+    case 'streak': // two soft high notes
+      tone(a, 880, 0, 0.14, 'sine', 0.035);
+      tone(a, 1318.5, 0.08, 0.2, 'sine', 0.035);
       break;
   }
 }

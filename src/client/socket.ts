@@ -42,4 +42,9 @@ export const prefs = {
   setToken: (code: string, t: string) => store.set(`qb:token:${code}`, t),
   theme: () => (store.get('qb:theme') as 'auto' | 'light' | 'dark' | null) ?? 'auto',
   setTheme: (t: string) => store.set('qb:theme', t),
+  /** The last room settings this player used as host, reused when they create a new room. */
+  settings: (): Record<string, unknown> | undefined => {
+    try { return JSON.parse(store.get('qb:settings') ?? 'null') ?? undefined; } catch { return undefined; }
+  },
+  setSettings: (s: unknown) => store.set('qb:settings', JSON.stringify(s)),
 };

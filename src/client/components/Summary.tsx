@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { PublicState } from '../../shared/types';
+import { ScoreGraph } from './ScoreGraph';
 import { act, fmtPct, roles } from './util';
 
 export function Summary({ s }: { s: PublicState }) {
@@ -12,6 +13,21 @@ export function Summary({ s }: { s: PublicState }) {
     <div className="card summary">
       <h2>Game summary</h2>
       <p className="muted">{s.tossupsRead} tossup{s.tossupsRead === 1 ? "" : "s"} heard.</p>
+
+      {s.highlights.length > 0 && (
+        <div className="highlights">
+          {s.highlights.map((h, i) => (
+            <div key={h.title} className="hl" style={{ animationDelay: `${i * 90}ms` }}>
+              <span className="hl-icon">{h.icon}</span>
+              <span className="hl-title">{h.title}</span>
+              <b className="hl-name">{h.name}</b>
+              <span className="hl-detail">{h.detail}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ScoreGraph s={s} />
 
       {s.settings.mode === 'teams' && (
         <table className="stats">

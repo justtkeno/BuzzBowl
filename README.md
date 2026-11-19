@@ -45,6 +45,12 @@ Anyone can click **Be the reader** in the lobby. The reader:
 
 By default players don't see the text while the reader reads (they listen). Turn on "Show question text to players" to show it.
 
+### Big screen, pause and restarts
+
+- **Big-screen view**: open `/watch/CODE` (or **📺 Big-screen view** in the lobby or ⋯ menu) on a projector or TV. It shows the question, buzzes and a large scoreboard, and never joins as a player.
+- **Pause**: the host or reader can pause the whole game (❚❚ in the top bar). Every clock freezes, including answer and bonus timers.
+- **Restarts**: rooms are saved to `data/rooms-<port>.json` every few seconds (set `DATA_DIR` to move it). After a restart, a running game comes back paused, players rejoin with their saved seat, and the old host keeps the host seat for 2 minutes. On free hosting with no persistent disk, a redeploy still wipes the file.
+
 ### Protests and corrections
 
 Every ruling appears in the **Rulings** tab. Any player can protest one, and the host or reader upholds (which reverses the ruling and rescores) or denies it. The host or reader can also mark any ruling right/wrong directly or adjust a player's score by ±5. Reversing a ruling on the tossup that just ended also awards (or removes) that tossup's bonus.

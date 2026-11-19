@@ -1,7 +1,7 @@
 import {
-  DEFAULT_SETTINGS,
-  type BuzzMarker, type ChatMessage, type Phase, type Protest, type PublicState, type ReviewItem,
-  type Ruling, type Settings, type Verdict,
+  DEFAULT_SETTINGS, SPECTATOR,
+  type BotSkill, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
+  type Ruling, type ScorePoint, type Settings, type Verdict,
 } from '../../shared/types';
 import { checkAnswerDetailed } from '../game/answerCheck';
 import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, type Adjustment, type HeardEntry } from '../game/scoring';
@@ -33,7 +33,7 @@ export const TIMING = {
   teamSize: 4,
 };
 
-interface Player { id: string; token: string; name: string; online: boolean; teamId: string | null }
+interface Player { id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill }
 interface Team { id: string; name: string; playerIds: string[] }
 
 interface LiveTossup {
@@ -63,6 +63,8 @@ interface LiveBuzz {
 
 interface LiveBonus {
   num: number;
+  /** The tossup this bonus followed. */
+  tossup: number;
   teamId: string;
   q: Bonus;
   current: number;
@@ -100,6 +102,9 @@ export interface RoomState {
   bonusNum: number;
   message: string | null;
   lastActive: number;
+  /** Whole-game pause by the host or reader: every timer is frozen. */
+  paused: boolean;
+  pausedAt: number | null;
 }
 
 const rid = (n = 10) => Array.from({ length: n }, () => 'abcdefghijkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 32)]).join('');
@@ -116,11 +121,14 @@ export interface RoomDeps {
 
 export class Room {
   s: RoomState;
-  private timers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Named timers. While the game is paused they stay here with no handle and resume on unpause. */
+  private timers = new Map<string, { h: ReturnType<typeof setTimeout> | null; fn: () => void; due: number }>();
   private pending: { playerId: string; teamId: string; count: number; at: number }[] = [];
   private loadGen = 0;
   private qbreader: QuestionProvider;
   private uploadProvider: QuestionProvider | null = null;
+  /** After a restart, the old host keeps their seat this long before someone else can take it. */
+  private hostReservedUntil = 0;
 
   constructor(code: string, private io: RoomIO, deps: RoomDeps = {}) {
     this.qbreader = deps.qbreader ?? new QBReaderProvider();
@@ -128,7 +136,7 @@ export class Room {
       code, hostId: null, readerId: null, settings: structuredClone(DEFAULT_SETTINGS), phase: 'lobby',
       players: [], teams: [], tossup: null, buzz: null, bonus: null, rulings: [], adjustments: [], heard: [],
       protests: [], review: [], chat: [], seenTossups: new Set(), seenBonuses: new Set(), upload: null,
-      tossupNum: 0, bonusNum: 0, message: null, lastActive: Date.now(),
+      tossupNum: 0, bonusNum: 0, message: null, lastActive: Date.now(), paused: false, pausedAt: null,
     };
   }
 
@@ -136,7 +144,13 @@ export class Room {
 
   private player(id: string) { return this.s.players.find((p) => p.id === id); }
   private mustPlayer(id: string) { return this.player(id) ?? fail('You are not in this room.'); }
-  private isController(id: string) { return id === this.s.hostId || id === this.s.readerId; }
+  private isController(id: string) {
+    // A host who never came back after a restart hands over to whoever is here.
+    if (id !== this.s.hostId && this.s.hostId && !this.player(this.s.hostId)?.online && Date.now() > this.hostReservedUntil && this.player(id)?.online) {
+      this.s.hostId = id;
+    }
+    return id === this.s.hostId || id === this.s.readerId;
+  }
   private readerOnline() { return !!this.s.readerId && !!this.player(this.s.readerId)?.online; }
 
   /** Who may advance / start / pause: the reader (and host) when there is a reader, otherwise anyone. */
@@ -186,10 +200,40 @@ export class Room {
 
   private setTimer(name: string, ms: number, fn: () => void) {
     this.clearTimer(name);
-    this.timers.set(name, setTimeout(() => { this.timers.delete(name); fn(); }, Math.max(0, ms)));
+    const entry = { h: null as ReturnType<typeof setTimeout> | null, fn, due: Date.now() + Math.max(0, ms) };
+    this.timers.set(name, entry);
+    if (!this.s.paused) this.arm(name, entry);
+  }
+  private arm(name: string, entry: { h: ReturnType<typeof setTimeout> | null; fn: () => void; due: number }) {
+    entry.h = setTimeout(() => { this.timers.delete(name); entry.fn(); }, Math.max(0, entry.due - Date.now()));
   }
   private clearTimer(...names: string[]) {
-    for (const n of names) { const t = this.timers.get(n); if (t) clearTimeout(t); this.timers.delete(n); }
+    for (const n of names) { const t = this.timers.get(n); if (t?.h) clearTimeout(t.h); this.timers.delete(n); }
+  }
+  private notPaused() { if (this.s.paused) fail('The game is paused.'); }
+
+  /** Host / reader: freeze or resume the whole game, including answer and bonus clocks. */
+  pauseGame(by: string, paused: boolean) {
+    if (!this.isController(by)) fail('Only the host or reader can pause the game.');
+    if (paused === this.s.paused) return;
+    if (paused) {
+      if (this.s.phase === 'lobby' || this.s.phase === 'gameOver') fail('Nothing to pause.');
+      this.s.paused = true;
+      this.s.pausedAt = Date.now();
+      for (const t of this.timers.values()) if (t.h) { clearTimeout(t.h); t.h = null; }
+      this.system(`${this.player(by)?.name ?? 'The host'} paused the game.`);
+    } else {
+      const shift = Date.now() - (this.s.pausedAt ?? Date.now());
+      this.s.paused = false;
+      this.s.pausedAt = null;
+      for (const [name, t] of this.timers) { t.due += shift; this.arm(name, t); }
+      const { tossup: t, buzz: b, bonus: bn } = this.s;
+      if (t) { if (t.deadline) t.deadline += shift; t.revealTimes = t.revealTimes.map((x) => x + shift); }
+      if (b?.deadline) b.deadline += shift;
+      if (bn?.deadline) bn.deadline += shift;
+      this.system('Game resumed.');
+    }
+    this.broadcast();
   }
   dispose() { for (const n of [...this.timers.keys()]) this.clearTimer(n); }
 
@@ -221,7 +265,8 @@ export class Room {
     if (existing) {
       existing.online = true;
       if (clean) existing.name = clean;
-      if (!this.s.hostId || !this.player(this.s.hostId)?.online) this.s.hostId = this.s.hostId && this.player(this.s.hostId)?.online ? this.s.hostId : existing.id;
+      const hostAway = !this.s.hostId || !this.player(this.s.hostId)?.online;
+      if (hostAway && (existing.id === this.s.hostId || Date.now() > this.hostReservedUntil)) this.s.hostId = existing.id;
       this.broadcast();
       return { playerId: existing.id, token: existing.token };
     }
@@ -230,7 +275,7 @@ export class Room {
     const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null };
     this.s.players.push(p);
     if (this.s.settings.mode === 'teams') this.autoAssign(p);
-    if (!this.s.hostId || !this.player(this.s.hostId)?.online) this.s.hostId = p.id;
+    if (!this.s.hostId || (!this.player(this.s.hostId)?.online && Date.now() > this.hostReservedUntil)) this.s.hostId = p.id;
     this.system(`${p.name} joined.`);
     this.broadcast();
     return { playerId: p.id, token: p.token };
@@ -251,7 +296,7 @@ export class Room {
     const p = this.player(playerId);
     if (!p) return;
     p.online = false;
-    if (this.s.hostId === playerId) this.s.hostId = this.s.players.find((x) => x.online)?.id ?? playerId;
+    if (this.s.hostId === playerId) this.s.hostId = this.s.players.find((x) => x.online && !x.bot)?.id ?? playerId;
     if (this.s.readerId === playerId) {
       this.s.readerId = null;
       this.system(`${p.name} left the reader's seat.`);
@@ -262,7 +307,8 @@ export class Room {
     this.broadcast();
   }
 
-  connectedCount() { return this.s.players.filter((p) => p.online).length; }
+  /** Humans only: bots never keep an empty room alive. */
+  connectedCount() { return this.s.players.filter((p) => p.online && !p.bot).length; }
 
   private autoAssign(p: Player) {
     if (p.id === this.s.readerId) return;
@@ -399,6 +445,8 @@ export class Room {
     if (this.s.phase === 'gameOver') this.resetScores();
     else if (this.s.phase !== 'lobby') fail('The game is already running.');
     this.s.message = null;
+    this.s.paused = false;
+    this.s.pausedAt = null;
     this.system('Game started. Good luck!');
     void this.loadTossup();
   }
@@ -414,6 +462,8 @@ export class Room {
     this.loadGen++;
     if (this.s.tossup && !this.s.tossup.ended) this.s.tossup.ended = true;
     this.s.buzz = null;
+    this.s.paused = false;
+    this.s.pausedAt = null;
     this.s.phase = 'gameOver';
     this.system('Game over.');
     this.broadcast();
@@ -421,6 +471,7 @@ export class Room {
 
   next(by: string) {
     if (!this.canDirect(by)) fail('The reader decides when to move on.');
+    this.notPaused();
     const { phase, tossup, bonus } = this.s;
     if (phase === 'tossupEnd') {
       if (tossup?.bonusTeam) void this.startBonus(tossup.bonusTeam);
@@ -500,6 +551,7 @@ export class Room {
   /** Reader controls: pause / resume the teleprompter. */
   setPaused(by: string, paused: boolean) {
     if (!this.isController(by)) fail('Only the reader or host can pause.');
+    this.notPaused();
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading') fail('Nothing is being read.');
     if (t!.paused === paused) return;
@@ -512,6 +564,7 @@ export class Room {
   /** Reader control: jump the cursor forward so `count` words are revealed (to resync with their voice). */
   revealTo(by: string, count: number) {
     if (!this.isController(by)) fail('Only the reader or host can move the cursor.');
+    this.notPaused();
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading' || this.pending.length) fail('Not reading right now.');
     const target = Math.min(t!.words.length, Math.floor(Number(count)) || 0);
@@ -524,6 +577,7 @@ export class Room {
   buzz(by: string, clientCount: number) {
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading' || t.ended) fail('You cannot buzz right now.');
+    this.notPaused();
     const teamId = this.teamOf(by) ?? fail(by === this.s.readerId ? 'The reader cannot buzz.' : 'Join a team to buzz.');
     if (t!.locked.has(teamId)) fail(this.s.settings.mode === 'teams' ? 'Your team already buzzed on this question.' : 'You already buzzed on this question.');
     if (this.pending.some((p) => p.teamId === teamId)) return;
@@ -562,7 +616,7 @@ export class Room {
     const b = this.s.buzz;
     if (b && b.playerId === by && !b.awaiting) {
       b.typing = clean;
-      this.io.emitTo(this.s.players.filter((p) => p.online && p.id !== by).map((p) => p.id), 'typing', { kind: 'tossup', text: clean });
+      this.io.emitTo([...this.s.players.filter((p) => p.online && p.id !== by).map((p) => p.id), SPECTATOR], 'typing', { kind: 'tossup', text: clean });
       return;
     }
     const bn = this.s.bonus;
@@ -576,6 +630,7 @@ export class Room {
   submitAnswer(by: string, text: string, timedOut = false) {
     const b = this.s.buzz;
     if (!b || b.playerId !== by || b.awaiting) { if (timedOut) return; fail('It is not your turn to answer.'); }
+    if (!timedOut) this.notPaused();
     const given = String(text ?? '').trim().slice(0, 200);
     this.clearTimer('answer');
     const { verdict, correctedTo } = given ? checkAnswerDetailed(given, this.s.tossup!.q.answer) : { verdict: 'incorrect' as const, correctedTo: undefined };
@@ -680,7 +735,7 @@ export class Room {
     }
     this.s.seenBonuses.add(q.id);
     this.s.bonus = {
-      num: ++this.s.bonusNum, teamId, q, current: 0, results: [], deadline: null, typing: '', prompts: 0, revealing: false, done: false,
+      num: ++this.s.bonusNum, tossup: this.s.tossupNum, teamId, q, current: 0, results: [], deadline: null, typing: '', prompts: 0, revealing: false, done: false,
     };
     this.s.phase = 'bonus';
     this.startBonusPart();
@@ -698,6 +753,7 @@ export class Room {
     const bn = this.s.bonus;
     if (!bn || this.s.phase !== 'bonus' || bn.revealing || bn.done || bn.awaiting) { if (timedOut) return; fail('There is no bonus part to answer.'); }
     if (!timedOut && this.captainOf(bn!.teamId) !== by) fail('Only your team captain submits bonus answers.');
+    if (!timedOut) this.notPaused();
     this.clearTimer('bonus');
     const given = String(text ?? '').trim().slice(0, 200);
     const { verdict, correctedTo } = given ? checkAnswerDetailed(given, bn!.q.answers[bn!.current]) : { verdict: 'incorrect' as const, correctedTo: undefined };
@@ -723,18 +779,22 @@ export class Room {
     const captain = this.captainOf(bn.teamId) ?? bn.teamId;
     this.s.rulings.push({
       id: rid(), type: 'bonus', num: bn.num, playerId: captain, playerName: this.player(captain)?.name ?? '?', teamId: bn.teamId,
-      category: bn.q.category, given, correct, overridden: false, points: correct ? this.s.settings.bonusPartValue : 0, partIndex: bn.current,
+      category: bn.q.category, given, correct, overridden: false, points: correct ? this.s.settings.bonusPartValue : 0, partIndex: bn.current, tossup: bn.tossup,
       ...(correct && correctedTo ? { correctedTo } : {}),
     });
     bn.results[bn.current] = { given, correct, ...(correct && correctedTo ? { correctedTo } : {}) };
     bn.revealing = true;
     bn.deadline = null;
-    this.setTimer('bonusReveal', TIMING.partRevealMs, () => {
-      bn.current++;
-      if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.broadcast(); }
-      else this.startBonusPart();
-    });
+    this.setTimer('bonusReveal', TIMING.partRevealMs, () => this.afterBonusReveal());
     this.broadcast();
+  }
+
+  private afterBonusReveal() {
+    const bn = this.s.bonus;
+    if (!bn) return;
+    bn.current++;
+    if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.broadcast(); }
+    else this.startBonusPart();
   }
 
   // ---------- chat, protests, overrides ----------
@@ -803,7 +863,7 @@ export class Room {
     const teamId = this.teamOf(playerId) ?? fail('That player is not playing.');
     const d = clamp(delta, -50, 50, 0);
     if (!d) return;
-    this.s.adjustments.push({ playerId, teamId: teamId!, delta: d });
+    this.s.adjustments.push({ playerId, teamId: teamId!, delta: d, num: this.s.tossupNum });
     this.system(`${this.player(playerId)?.name} ${d > 0 ? '+' : ''}${d} (score adjustment).`);
     this.broadcast();
   }
@@ -828,12 +888,149 @@ export class Room {
     const teams = this.s.settings.mode === 'teams'
       ? this.s.teams.map((t) => ({ id: t.id, name: t.name, playerIds: t.playerIds, captainId: this.captainOf(t.id), ...computeTeamTotals(t.id, this.s.rulings, this.s.adjustments) }))
       : [];
-    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id] }));
+    const streaks = this.streaks();
+    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}) }));
     // FFA bonus totals live on each player's "team" (themselves).
     const ffaTeams = this.s.settings.mode === 'ffa'
       ? this.s.players.map((p) => ({ id: p.id, name: p.name, playerIds: [p.id], captainId: p.id, ...computeTeamTotals(p.id, this.s.rulings, this.s.adjustments) }))
       : [];
-    return { players, teams: teams.length ? teams : ffaTeams };
+    const allTeams = teams.length ? teams : ffaTeams;
+    const over = this.s.phase === 'gameOver';
+    return {
+      players, teams: allTeams,
+      history: over ? this.scoreHistory() : [],
+      highlights: over ? this.computeHighlights(players, allTeams) : [],
+    };
+  }
+
+  /** Current and best run of converted tossups per player, over the tossups they heard. */
+  private streaks(): Record<string, { streak: number; bestStreak: number }> {
+    const out: Record<string, { streak: number; bestStreak: number }> = {};
+    for (const p of this.s.players) out[p.id] = { streak: 0, bestStreak: 0 };
+    const got = new Map<number, string>();
+    for (const r of this.s.rulings) if (r.type === 'tossup' && r.correct) got.set(r.num, r.playerId);
+    for (const h of [...this.s.heard].sort((a, b) => a.num - b.num)) {
+      for (const id of h.playerIds) {
+        const st = out[id];
+        if (!st) continue;
+        st.streak = got.get(h.num) === id ? st.streak + 1 : 0;
+        st.bestStreak = Math.max(st.bestStreak, st.streak);
+      }
+    }
+    return out;
+  }
+
+  /** Running score after each tossup (its bonus included), per team or per player. */
+  private scoreHistory(): ScorePoint[] {
+    const sides = this.s.settings.mode === 'teams'
+      ? this.s.teams.map((t) => t.id)
+      : this.s.players.filter((p) => p.id !== this.s.readerId).map((p) => p.id);
+    const delta = new Map<number, Record<string, number>>();
+    const add = (num: number, side: string, pts: number) => {
+      const d = delta.get(num) ?? {};
+      d[side] = (d[side] ?? 0) + pts;
+      delta.set(num, d);
+    };
+    for (const r of this.s.rulings) add(r.type === 'tossup' ? r.num : r.tossup ?? r.num, r.teamId, r.points);
+    for (const a of this.s.adjustments) add(a.num ?? this.s.tossupNum, a.teamId, a.delta);
+    const nums = [...new Set([...this.s.heard.map((h) => h.num), ...delta.keys()])].sort((a, b) => a - b);
+    const run: Record<string, number> = Object.fromEntries(sides.map((id) => [id, 0]));
+    const out: ScorePoint[] = [{ num: 0, totals: { ...run } }];
+    for (const num of nums) {
+      for (const [side, pts] of Object.entries(delta.get(num) ?? {})) if (side in run) run[side] += pts;
+      out.push({ num, totals: { ...run } });
+    }
+    return out;
+  }
+
+  private computeHighlights(
+    players: { id: string; name: string; stats: PlayerStats; bestStreak: number }[],
+    teams: { name: string; bonusesHeard: number; bonusPoints: number }[],
+  ): Highlight[] {
+    const out: Highlight[] = [];
+    const ps = players.filter((p) => p.id !== this.s.readerId);
+    const name = (id: string) => this.player(id)?.name ?? '?';
+    const best = <T,>(xs: T[], score: (x: T) => number) => xs.reduce<T | null>((m, x) => (m === null || score(x) > score(m) ? x : m), null);
+
+    const correct = this.s.rulings.filter((r) => r.type === 'tossup' && r.correct && r.totalWords);
+    const early = best(correct, (r) => -(r.wordIndex ?? 0) / r.totalWords!);
+    if (early) out.push({ icon: '⚡', title: 'Earliest buzz', name: name(early.playerId), detail: `${Math.round(((early.wordIndex ?? 0) / early.totalWords!) * 100)}% into tossup ${early.num}` });
+    const powers = best(ps, (p) => p.stats.powers);
+    if (powers && powers.stats.powers > 0) out.push({ icon: '💥', title: 'Most powers', name: powers.name, detail: `${powers.stats.powers} power${powers.stats.powers === 1 ? '' : 's'}` });
+    const streak = best(ps, (p) => p.bestStreak);
+    if (streak && streak.bestStreak >= 2) out.push({ icon: '🔥', title: 'Longest streak', name: streak.name, detail: `${streak.bestStreak} tossups in a row` });
+    const ppth = best(ps.filter((p) => p.stats.heard >= 3), (p) => p.stats.points / p.stats.heard);
+    if (ppth && ppth.stats.points > 0) out.push({ icon: '📈', title: 'Best points per tossup', name: ppth.name, detail: `${(ppth.stats.points / ppth.stats.heard).toFixed(2)} PPTH` });
+    if (this.s.settings.mode === 'teams') {
+      const ppb = best(teams.filter((t) => t.bonusesHeard > 0), (t) => t.bonusPoints / t.bonusesHeard);
+      if (ppb) out.push({ icon: '🎯', title: 'Best bonus conversion', name: ppb.name, detail: `${(ppb.bonusPoints / ppb.bonusesHeard).toFixed(1)} PPB` });
+    }
+    const negs = best(ps, (p) => p.stats.negs);
+    if (negs && negs.stats.negs > 0) out.push({ icon: '🎲', title: 'Boldest buzzer', name: negs.name, detail: `${negs.stats.negs} neg${negs.stats.negs === 1 ? '' : 's'}` });
+    return out;
+  }
+
+  // ---------- saving and restoring (survives a server restart) ----------
+
+  /** Plain JSON copy of the room. */
+  toJSON() {
+    const s = this.s;
+    return {
+      ...s,
+      seenTossups: [...s.seenTossups],
+      seenBonuses: [...s.seenBonuses],
+      tossup: s.tossup && { ...s.tossup, locked: [...s.tossup.locked] },
+    };
+  }
+
+  /** Rebuild a room saved with toJSON. Everyone starts offline and a running game comes back paused. */
+  static restore(data: ReturnType<Room['toJSON']>, io: RoomIO, deps: RoomDeps = {}): Room {
+    const room = new Room(data.code, io, deps);
+    room.s = {
+      ...room.s,
+      ...data,
+      seenTossups: new Set(data.seenTossups),
+      seenBonuses: new Set(data.seenBonuses),
+      tossup: data.tossup && { ...data.tossup, locked: new Set(data.tossup.locked) },
+      paused: false,
+      pausedAt: null,
+    };
+    for (const p of room.s.players) p.online = false;
+    room.hostReservedUntil = Date.now() + 2 * 60_000;
+    if (room.s.upload) room.uploadProvider = new LocalProvider(room.s.upload.tossups, room.s.upload.bonuses);
+    room.rearm();
+    return room;
+  }
+
+  private rearm() {
+    const s = this.s;
+    const now = Date.now();
+    if (s.phase === 'loading') {
+      s.phase = s.tossup ? 'tossupEnd' : s.tossupNum ? 'tossupEnd' : 'lobby';
+      if (s.tossup && !s.tossup.ended) s.tossup.ended = true;
+    }
+    if (!['reading', 'buzz', 'bonus'].includes(s.phase)) return;
+    s.paused = true;
+    s.pausedAt = now;
+    const t = s.tossup;
+    if (s.phase === 'reading' && t && !t.paused) {
+      if (t.revealed >= t.words.length) { t.deadline = now + s.settings.deadSeconds * 1000; this.setTimer('dead', s.settings.deadSeconds * 1000, () => this.endTossup(null)); }
+      else this.setTimer('read', 500, () => this.readNext());
+    } else if (s.phase === 'buzz' && s.buzz && !s.buzz.awaiting) {
+      const b = s.buzz;
+      const secs = b.prompts ? TIMING.promptSeconds : s.settings.answerSeconds;
+      b.deadline = now + secs * 1000;
+      this.setTimer('answer', secs * 1000, () => this.submitAnswer(b.playerId, this.s.buzz?.typing ?? '', true));
+    } else if (s.phase === 'bonus' && s.bonus && !s.bonus.done) {
+      const bn = s.bonus;
+      if (bn.revealing) this.setTimer('bonusReveal', TIMING.partRevealMs, () => this.afterBonusReveal());
+      else if (!bn.awaiting) {
+        const secs = bn.prompts ? TIMING.promptSeconds : s.settings.bonusSeconds;
+        bn.deadline = now + secs * 1000;
+        this.setTimer('bonus', secs * 1000, () => this.bonusSubmit(this.captainOf(bn.teamId) ?? '', bn.typing, true));
+      }
+    }
+    this.system('The server restarted. The host or reader can press Resume to carry on.');
   }
 
   snapshot(viewer: string | null, shared = this.sharedSnapshot()): PublicState {
@@ -895,6 +1092,9 @@ export class Room {
       tossupsRead: s.heard.length,
       uploadedCount: s.upload ? { tossups: s.upload.tossups.length, bonuses: s.upload.bonuses.length } : null,
       message: s.message,
+      paused: s.paused,
+      history: shared.history,
+      highlights: shared.highlights,
     };
   }
 

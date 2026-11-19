@@ -2,13 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../shared/types';
 import { Home } from './components/Home';
 import { RoomView } from './components/RoomView';
+import { Spectate } from './components/Spectate';
 import { randomName } from './names';
 import { call, prefs, socket } from './socket';
 import { play } from './sounds';
 
 const codeFromPath = () => location.pathname.match(/^\/r\/([A-Za-z]{4,8})/)?.[1]?.toUpperCase() ?? null;
+const watchCode = () => location.pathname.match(/^\/watch\/([A-Za-z]{4,8})/)?.[1]?.toUpperCase() ?? null;
 
 export function App() {
+  const watch = watchCode();
+  if (watch) return <Spectate code={watch} />;
+  return <Player />;
+}
+
+function Player() {
   const [state, setState] = useState<PublicState | null>(null);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [connected, setConnected] = useState(socket.connected);
@@ -36,7 +44,7 @@ export function App() {
   }
 
   const create = useCallback(async (name: string, solo: boolean) => {
-    const res = await call<{ code: string; playerId: string; token: string; chat: ChatMessage[] }>('room:create', { name, solo });
+    const res = await call<{ code: string; playerId: string; token: string; chat: ChatMessage[] }>('room:create', { name, solo, settings: prefs.settings() });
     afterJoin(res, name);
     if (solo) await call('game:start').catch((e) => setError(e.message));
   }, []);
@@ -117,7 +125,7 @@ export function App() {
   return <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} />;
 }
 
-function useTheme() {
+export function useTheme() {
   useEffect(() => {
     const apply = () => {
       const t = prefs.theme();
