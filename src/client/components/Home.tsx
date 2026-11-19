@@ -3,6 +3,8 @@ import { useAccount } from '../account';
 import { randomName } from '../names';
 import { prefs } from '../socket';
 import { AccountBar } from './Account';
+import { DailyCard } from './Daily';
+import { InstallButton } from './InstallButton';
 
 interface Props {
   initialCode: string | null;
@@ -10,9 +12,12 @@ interface Props {
   connected: boolean;
   onJoin: (code: string, name: string) => Promise<void>;
   onCreate: (name: string, solo: boolean) => Promise<void>;
+  onDaily: (name: string) => Promise<void>;
+  /** Opened at /daily: show today's results right away. */
+  dailyOpen: boolean;
 }
 
-export function Home({ initialCode, error, connected, onJoin, onCreate }: Props) {
+export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily, dailyOpen }: Props) {
   const [name, setName] = useState(() => prefs.name() || randomName());
   const [code, setCode] = useState(initialCode ?? '');
   const [busy, setBusy] = useState(false);
@@ -53,6 +58,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate }: Props)
               <button className="btn primary big grow" disabled={busy || !connected} onClick={() => run(() => onCreate(name.trim(), false))}>Create room</button>
               <button className="btn big grow" disabled={busy || !connected} onClick={() => run(() => onCreate(name.trim(), true))}>Solo practice</button>
             </div>
+            <DailyCard busy={busy} connected={connected} onPlay={() => run(() => onDaily(name.trim()))} openOnLoad={dailyOpen} />
             <div className="divider"><span>or join with a code</span></div>
             <form className="row gap" onSubmit={(e) => { e.preventDefault(); run(() => onJoin(code.trim().toUpperCase(), name.trim())); }}>
               <input className="grow code-input" value={code} maxLength={8} placeholder="ABCD" onChange={(e) => setCode(e.target.value.toUpperCase())} />
@@ -63,6 +69,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate }: Props)
         {!connected && <p className="warn">Connecting to server…</p>}
         {(err || error) && <p className="error">{err || error}</p>}
         <p className="muted small">Questions come from <a href="https://www.qbreader.org" target="_blank" rel="noreferrer">QBReader</a>, a built-in sample packet, or a packet you upload.</p>
+        <InstallButton />
       </div>
     </div>
   );
