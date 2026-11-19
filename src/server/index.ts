@@ -1,16 +1,23 @@
 import express from 'express';
 import { createServer } from 'node:http';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server, type Socket } from 'socket.io';
-import { ActionError, Room } from './rooms/room';
+import { ActionError, Room, type RoomIO } from './rooms/room';
 import { MemoryRoomStore, newRoomCode, type RoomStore } from './rooms/store';
+import { SPECTATOR, type Settings } from '../shared/types';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const CLIENT_DIR = join(ROOT, 'dist/client');
 const IDLE_ROOM_MS = 30 * 60_000;
+/** Rooms are saved here so a restart (or a deploy) doesn't wipe running games. */
+const DATA_DIR = process.env.DATA_DIR ?? join(ROOT, 'data');
+// One file per port, so two local servers (say dev and a preview) don't overwrite each other.
+const SAVE_FILE = join(DATA_DIR, `rooms-${PORT}.json`);
+/** Saved rooms older than this are dropped when the server starts. */
+const RESTORE_MAX_AGE_MS = 6 * 60 * 60_000;
 
 const app = express();
 const http = createServer(app);
@@ -25,24 +32,69 @@ if (existsSync(CLIENT_DIR)) {
   app.get('/', (_req, res) => res.send('Client not built. Run "npm run dev" and open http://localhost:5173, or "npm start".'));
 }
 
-interface SocketData { code?: string; playerId?: string }
+interface SocketData { code?: string; playerId?: string; watching?: boolean }
 
-function makeRoom(): Room {
-  const code = newRoomCode(store);
-  const room = new Room(code, {
+function roomIO(code: string): RoomIO {
+  return {
     emitEach(event, payload) {
+      let spectatorPayload: unknown;
       for (const s of io.sockets.adapter.rooms.get(code) ?? []) {
         const sock = io.sockets.sockets.get(s);
-        const pid = (sock?.data as SocketData | undefined)?.playerId;
-        if (sock && pid) sock.emit(event, payload(pid));
+        const data = sock?.data as SocketData | undefined;
+        if (!sock || !data) continue;
+        if (data.watching) sock.emit(event, (spectatorPayload ??= payload(SPECTATOR)));
+        else if (data.playerId) sock.emit(event, payload(data.playerId));
       }
     },
     emitTo(playerIds, event, payload) {
-      for (const id of playerIds) io.to(`p:${code}:${id}`).emit(event, payload);
+      for (const id of playerIds) io.to(id === SPECTATOR ? `w:${code}` : `p:${code}:${id}`).emit(event, payload);
     },
-  });
+  };
+}
+
+function makeRoom(): Room {
+  const code = newRoomCode(store);
+  const room = new Room(code, roomIO(code));
   store.set(room);
   return room;
+}
+
+// ---------- saving rooms across restarts ----------
+
+let lastSaved = 0;
+function saveRooms(force = false) {
+  const rooms = [...store.all()];
+  if (!force && !rooms.some((r) => r.s.lastActive > lastSaved)) return;
+  try {
+    mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = `${SAVE_FILE}.tmp`;
+    writeFileSync(tmp, JSON.stringify({ savedAt: Date.now(), rooms: rooms.map((r) => r.toJSON()) }));
+    renameSync(tmp, SAVE_FILE);
+    lastSaved = Date.now();
+  } catch (e) {
+    console.error('Could not save rooms:', e);
+  }
+}
+
+function restoreRooms() {
+  if (!existsSync(SAVE_FILE)) return;
+  try {
+    const data = JSON.parse(readFileSync(SAVE_FILE, 'utf8'));
+    let n = 0;
+    for (const saved of data.rooms ?? []) {
+      if (Date.now() - (saved.lastActive ?? 0) > RESTORE_MAX_AGE_MS) continue;
+      store.set(Room.restore(saved, roomIO(saved.code)));
+      n++;
+    }
+    if (n) console.log(`Restored ${n} room${n === 1 ? '' : 's'} from ${SAVE_FILE}`);
+  } catch (e) {
+    console.error('Could not restore saved rooms:', e);
+  }
+}
+restoreRooms();
+setInterval(() => saveRooms(), 3000).unref();
+for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(sig, () => { saveRooms(true); process.exit(0); });
 }
 
 type Ack = (res: { ok: true; [k: string]: unknown } | { ok: false; error: string }) => void;
@@ -71,6 +123,7 @@ io.on('connection', (socket) => {
     try {
       const prev = socket.data as SocketData;
       if (prev.code && prev.playerId && prev.code !== room.s.code) store.get(prev.code)?.disconnect(prev.playerId);
+      if (prev.watching && prev.code) { socket.leave(prev.code); socket.leave(`w:${prev.code}`); }
       const { playerId, token: tok } = room.join(name, token);
       socket.data = { code: room.s.code, playerId } satisfies SocketData;
       socket.join(room.s.code);
@@ -82,11 +135,30 @@ io.on('connection', (socket) => {
     }
   };
 
-  socket.on('room:create', ({ name, solo }: { name: string; solo?: boolean }, ack: Ack) => {
+  socket.on('room:create', ({ name, solo, settings }: { name: string; solo?: boolean; settings?: Partial<Settings> }, ack: Ack) => {
     if (!String(name ?? '').trim()) return ack({ ok: false, error: 'Pick a display name.' });
     const room = makeRoom();
-    if (solo) room.s.settings.deadSeconds = 3;
     enter(room, name, undefined, ack);
+    const host = (socket.data as SocketData).playerId;
+    // Start from the settings this host used last time (saved in their browser).
+    if (host && settings && typeof settings === 'object') {
+      const { source, ...rest } = settings;
+      try { room.updateSettings(host, { ...rest, ...(source && source !== 'upload' ? { source } : {}) }); } catch { /* ignore bad saved settings */ }
+    }
+    if (solo) { room.s.settings.deadSeconds = 3; room.broadcast(); }
+  });
+
+  // Big-screen spectator view: receives state, never plays.
+  socket.on('room:watch', ({ code }: { code: string }, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    const room = store.get(String(code ?? '').trim());
+    if (!room) return ack({ ok: false, error: `No room with code ${String(code).toUpperCase()}.` });
+    const prev = socket.data as SocketData;
+    if (prev.code && prev.playerId) store.get(prev.code)?.disconnect(prev.playerId);
+    socket.data = { code: room.s.code, watching: true } satisfies SocketData;
+    socket.join(room.s.code);
+    socket.join(`w:${room.s.code}`);
+    ack({ ok: true, code: room.s.code, state: room.snapshot(SPECTATOR) });
   });
 
   socket.on('room:join', ({ code, name, token }: { code: string; name: string; token?: string }, ack: Ack) => {
@@ -107,6 +179,7 @@ io.on('connection', (socket) => {
   socket.on('game:next', handle(socket, (r, p) => r.next(p)));
   socket.on('game:end', handle(socket, (r, p) => r.end(p)));
   socket.on('game:pause', handle(socket, (r, p, paused) => r.setPaused(p, !!paused)));
+  socket.on('game:hold', handle(socket, (r, p, paused) => r.pauseGame(p, !!paused)));
   socket.on('game:revealTo', handle(socket, (r, p, count) => r.revealTo(p, count)));
   socket.on('buzz', handle(socket, (r, p, count) => r.buzz(p, count)));
   socket.on('answer:typing', (text: string) => {

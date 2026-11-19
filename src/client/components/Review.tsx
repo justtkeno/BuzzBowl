@@ -1,3 +1,4 @@
+import { BuzzMap } from './Stage';
 import { useState } from 'react';
 import type { PublicState } from '../../shared/types';
 import { resultLabel } from './util';
@@ -29,6 +30,7 @@ export function Review({ s, onClose }: { s: PublicState; onClose: () => void }) 
                   {q.buzzes.filter((b) => b.wordIndex >= q.words.length).map((b, j) => <span key={`e${j}`} className={`marker m-${b.result}`}>{b.playerName} {resultLabel[b.result]}</span>)}
                 </p>
                 <div className="answer"><span className="label">ANSWER</span> <span dangerouslySetInnerHTML={{ __html: q.answerHtml }} /></div>
+                {q.buzzes.length > 0 && <BuzzMap buzzes={q.buzzes} totalWords={q.words.length} powerIndex={q.powerIndex} order={s.players.map((p) => p.id)} />}
                 {q.buzzes.length > 0 && (
                   <ul className="buzz-list">
                     {q.buzzes.map((b, i) => <li key={i}>{b.playerName} at word {b.wordIndex} of {q.words.length}: “{b.given || '—'}” → {resultLabel[b.result]}</li>)}

@@ -1,36 +1,44 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../../shared/types';
 import { cycleTheme } from '../App';
 import { prefs } from '../socket';
 import { play, setSoundOn, soundOn } from '../sounds';
 import { Chat } from './Chat';
-import { FlashAnnouncer, ScreenFlash, useFeedback } from './Feedback';
+import { AchievementPop, BuzzFlash, FlashAnnouncer, ScreenFlash, useAchievements, useBuzzFlash, useFeedback } from './Feedback';
 import { InviteScreen, shareInvite } from './Invite';
 import { Lobby } from './Lobby';
 import { Review } from './Review';
 import { Rulings } from './Rulings';
-import { Scoreboard } from './Scoreboard';
+import { AnimatedScore, Scoreboard } from './Scoreboard';
 import { SettingsPanel } from './SettingsPanel';
 import { Stage } from './Stage';
 import { Summary } from './Summary';
-import { act, roles } from './util';
+import { act, roles, toast } from './util';
 
 interface Props {
   state: PublicState; chat: ChatMessage[]; connected: boolean;
   fresh: boolean; onRename: (name: string) => Promise<void>; onLeave: () => void;
 }
 
+type Tab = 'board' | 'chat' | 'rulings';
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+
 export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }: Props) {
   const r = roles(s);
   const [showSettings, setShowSettings] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [drawer, setDrawer] = useState(false);
   const [toastMsg, setToast] = useState<string | null>(null);
   const [theme, setTheme] = useState(prefs.theme());
-  const [tab, setTab] = useState<'board' | 'chat' | 'rulings'>('board');
+  const [tab, setTab] = useState<Tab>('board');
   const [sound, setSound] = useState(soundOn());
   const flash = useFeedback(s);
+  const buzzFlash = useBuzzFlash(s);
+  const achievement = useAchievements(s);
   const toggleSound = () => { setSoundOn(!sound); setSound(!sound); if (!sound) play('correct'); };
+  const midGame = s.phase !== 'lobby' && s.phase !== 'gameOver';
 
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
@@ -39,46 +47,100 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
     return () => window.removeEventListener('qb-toast', on);
   }, []);
 
+  // "Back online" after a dropped connection.
+  const wasConnected = useRef(connected);
+  useEffect(() => {
+    if (connected && !wasConnected.current) toast('Back online');
+    wasConnected.current = connected;
+  }, [connected]);
+
+  // Remember the host's settings for the next room they create.
+  useEffect(() => { if (r.isHost) prefs.setSettings(s.settings); }, [s.settings, r.isHost]);
+
+  // Unread chat: messages that arrived while the chat wasn't on screen.
+  const isPhone = useIsPhone();
+  const chatVisible = tab === 'chat' && (!isPhone || drawer);
+  const seen = useRef(chat.length);
+  if (chatVisible) seen.current = chat.length;
+  const unread = chat.slice(seen.current).filter((m) => !m.system).length;
+
+  const openDrawer = (t: Tab) => { setTab(t); setDrawer(true); };
+  useEffect(() => {
+    if (!drawer && !menu) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setDrawer(false); setMenu(false); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawer, menu]);
+
   const phaseLabel: Record<string, string> = {
-    lobby: 'Lobby', loading: 'Loading…', reading: s.tossup?.paused ? 'Paused' : 'Reading', buzz: 'Buzz!', tossupEnd: 'Between questions', bonus: 'Bonus', gameOver: 'Game over',
+    lobby: 'Lobby', loading: 'Loading…', reading: s.tossup?.paused ? 'Paused' : 'Reading', buzz: 'Buzz!', tossupEnd: 'Up next', bonus: 'Bonus', gameOver: 'Game over',
   };
   const openProtests = s.protests.length;
+  const openBigScreen = () => window.open(`/watch/${s.code}`, '_blank', 'noopener');
 
   return (
-    <div className="room">
+    <div className={`room ${s.phase === 'reading' ? 'is-reading' : ''}`}>
+      {!connected && <div className="conn-banner" role="status"><span className="spinner" /> Connection lost — reconnecting…</div>}
       <header className="topbar">
         <div className="brand small"><span className="logo">QB</span><span className="hide-sm">BuzzBowl</span></div>
         <button className="chip" onClick={() => shareInvite(s.code)} title="Copy invite link">Room <b>{s.code}</b> ⧉</button>
-        <button className={`btn primary small ${s.phase === 'lobby' ? 'hide-sm' : ''}`} onClick={() => setShowInvite(true)} title="Show a big QR code people can scan">Invite</button>
-        <span className={`phase phase-${s.phase}`}>{phaseLabel[s.phase]}</span>
-        {r.isReader && <span className="badge reader">You are reading</span>}
-        {!connected && <span className="badge warn">Reconnecting…</span>}
+        <button className="btn primary small hide-sm" onClick={() => setShowInvite(true)} title="Show a big QR code people can scan">Invite</button>
+        <span className={`phase phase-${s.phase}`}>{s.paused ? 'Paused' : phaseLabel[s.phase]}</span>
+        {r.isReader && <span className="badge reader hide-sm">You are reading</span>}
         <div className="grow" />
-        <button className="btn ghost" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
-        {r.isController && <button className="btn ghost" onClick={() => setShowSettings(true)}>Settings</button>}
-        <button className="btn ghost" onClick={toggleSound} title={sound ? 'Turn sound effects off' : 'Turn sound effects on'} aria-label={sound ? 'Sound on' : 'Sound off'} aria-pressed={sound}>{sound ? '🔊' : '🔇'}</button>
-        <button className="btn ghost" title="Switch theme (auto / dark / light)" onClick={() => setTheme(cycleTheme())}>{theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}</button>
-        <button className="btn ghost" onClick={onLeave}>Leave</button>
+        {r.isController && midGame && (
+          <button className={`btn ${s.paused ? 'primary' : 'ghost'} pause-btn`} onClick={() => act('game:hold', !s.paused)} title={s.paused ? 'Resume the game' : 'Pause the whole game'}>
+            {s.paused ? '▶ Resume' : '❚❚'}<span className="hide-sm">{s.paused ? '' : ' Pause'}</span>
+          </button>
+        )}
+        <button className="btn ghost hide-sm" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
+        {r.isController && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Settings</button>}
+        <button className="btn ghost hide-sm" onClick={toggleSound} title={sound ? 'Turn sound effects off' : 'Turn sound effects on'} aria-label={sound ? 'Sound on' : 'Sound off'} aria-pressed={sound}>{sound ? '🔊' : '🔇'}</button>
+        <button className="btn ghost hide-sm" title="Switch theme (auto / dark / light)" onClick={() => setTheme(cycleTheme())}>{theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}</button>
+        <button className="btn ghost hide-sm" onClick={onLeave}>Leave</button>
+        <div className="menu-wrap show-sm">
+          <button className="btn ghost menu-btn" aria-label="More" aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯</button>
+          {menu && (
+            <>
+              <div className="menu-back" onClick={() => setMenu(false)} />
+              <div className="menu" role="menu" onClick={() => setMenu(false)}>
+                <button role="menuitem" onClick={() => setShowInvite(true)}>📷 Invite (QR code)</button>
+                <button role="menuitem" onClick={() => setShowReview(true)}>📜 Review questions{s.review.length ? ` (${s.review.length})` : ''}</button>
+                {r.isController && <button role="menuitem" onClick={() => setShowSettings(true)}>⚙️ Settings</button>}
+                <button role="menuitem" onClick={openBigScreen}>📺 Big-screen view</button>
+                <button role="menuitem" onClick={toggleSound}>{sound ? '🔇 Sound off' : '🔊 Sound on'}</button>
+                <button role="menuitem" onClick={() => setTheme(cycleTheme())}>🌓 Theme: {theme}</button>
+                {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm('End the game and show the summary?')) act('game:end'); }}>🏁 End game</button>}
+                <button role="menuitem" onClick={onLeave}>🚪 Leave room</button>
+              </div>
+            </>
+          )}
+        </div>
       </header>
+
+      <MobileStrip s={s} unread={unread} protests={openProtests} onOpen={openDrawer} />
 
       {s.message && <div className="banner">{s.message}</div>}
 
       <main className="layout">
         <section className="stage-col">
-          {s.phase === 'lobby' && <Lobby s={s} fresh={fresh} onRename={onRename} onSettings={() => setShowSettings(true)} onBigInvite={() => setShowInvite(true)} />}
+          {s.phase === 'lobby' && <Lobby s={s} fresh={fresh} onRename={onRename} onSettings={() => setShowSettings(true)} onBigInvite={() => setShowInvite(true)} onBigScreen={openBigScreen} />}
           {s.phase === 'gameOver' && <Summary s={s} />}
-          {s.phase !== 'lobby' && s.phase !== 'gameOver' && <Stage s={s} />}
-          {r.isController && s.phase !== 'lobby' && s.phase !== 'gameOver' && (
-            <div className="row gap end subtle-controls">
+          {midGame && <Stage s={s} />}
+          {r.isController && midGame && (
+            <div className="row gap end subtle-controls hide-sm">
+              <button className="btn ghost small" onClick={openBigScreen}>Big-screen view</button>
               <button className="btn ghost small" onClick={() => { if (confirm('End the game and show the summary?')) act('game:end'); }}>End game</button>
             </div>
           )}
         </section>
 
-        <aside className="side-col">
+        {drawer && <div className="drawer-back" onClick={() => setDrawer(false)} />}
+        <aside className={`side-col ${drawer ? 'drawer-open' : ''}`} aria-label="Scores, chat and rulings">
+          <div className="drawer-handle show-sm"><button className="btn ghost small" onClick={() => setDrawer(false)} aria-label="Close">Close ✕</button></div>
           <div className="tabs">
             <button className={tab === 'board' ? 'on' : ''} onClick={() => setTab('board')}>Scores</button>
-            <button className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>Chat</button>
+            <button className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>Chat{unread ? <span className="dot">{unread}</span> : null}</button>
             <button className={tab === 'rulings' ? 'on' : ''} onClick={() => setTab('rulings')}>
               Rulings{openProtests ? <span className="dot">{openProtests}</span> : null}
             </button>
@@ -91,12 +153,66 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
         </aside>
       </main>
 
+      {s.paused && (
+        <div className="paused-overlay" role="status">
+          <div>
+            ❚❚ Game paused
+            <small>{r.isController ? 'Timers are frozen until you resume.' : 'Waiting for the host to resume.'}</small>
+            {r.isController && <button className="btn primary big" onClick={() => act('game:hold', false)}>▶ Resume</button>}
+          </div>
+        </div>
+      )}
       {showSettings && <SettingsPanel s={s} onClose={() => setShowSettings(false)} />}
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
       {showInvite && <InviteScreen code={s.code} onClose={() => setShowInvite(false)} />}
       {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
+      <BuzzFlash flash={buzzFlash} />
       <ScreenFlash flash={flash} />
+      <AchievementPop a={achievement} />
       <FlashAnnouncer flash={flash} />
+    </div>
+  );
+}
+
+function useIsPhone() {
+  const q = '(max-width: 860px)';
+  const [m, setM] = useState(() => window.matchMedia?.(q).matches ?? false);
+  useEffect(() => {
+    const mq = window.matchMedia?.(q);
+    if (!mq) return;
+    const on = () => setM(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return m;
+}
+
+/** Phones: your score and rank at a glance, plus buttons that open the scores / chat drawer. */
+function MobileStrip({ s, unread, protests, onOpen }: { s: PublicState; unread: number; protests: number; onOpen: (t: Tab) => void }) {
+  const r = roles(s);
+  const teams = s.settings.mode === 'teams';
+  const sides = teams
+    ? [...s.teams].sort((a, b) => b.points - a.points).map((t) => ({ id: t.id, name: t.name, pts: t.points }))
+    : s.players.filter((p) => p.id !== s.readerId).sort((a, b) => b.stats.points - a.stats.points).map((p) => ({ id: p.id, name: p.name, pts: p.stats.points }));
+  const mineId = teams ? r.myTeam : r.me;
+  const rank = sides.findIndex((x) => x.id === mineId);
+  const mine = sides[rank];
+  const leader = sides[0];
+  const me = s.players.find((p) => p.id === r.me);
+  return (
+    <div className="mobile-strip show-sm">
+      <button className="ms-score" onClick={() => onOpen('board')}>
+        {mine ? (
+          <>
+            <AnimatedScore value={mine.pts} className="ms-pts" />
+            <span className="ms-sub">{ordinal(rank + 1)} of {sides.length}{me && me.streak >= 2 ? ` · ${me.streak} in a row` : ''}</span>
+          </>
+        ) : <span className="ms-sub">{r.isReader ? '🎙 Reading' : 'Spectating'}</span>}
+        {leader && leader.id !== mineId && <span className="ms-lead">Leader: {leader.name} {leader.pts}</span>}
+      </button>
+      <button className="btn ms-btn" onClick={() => onOpen('board')}>Scores</button>
+      <button className="btn ms-btn" onClick={() => onOpen('chat')}>Chat{unread ? <span className="dot">{unread}</span> : null}</button>
+      {protests > 0 && <button className="btn ms-btn" onClick={() => onOpen('rulings')}>Rulings<span className="dot">{protests}</span></button>}
     </div>
   );
 }

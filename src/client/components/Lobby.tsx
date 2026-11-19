@@ -5,10 +5,10 @@ import { act, roles, toast } from './util';
 
 interface Props {
   s: PublicState; fresh: boolean;
-  onRename: (name: string) => Promise<void>; onSettings: () => void; onBigInvite: () => void;
+  onRename: (name: string) => Promise<void>; onSettings: () => void; onBigInvite: () => void; onBigScreen: () => void;
 }
 
-export function Lobby({ s, fresh, onRename, onSettings, onBigInvite }: Props) {
+export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen }: Props) {
   const r = roles(s);
   const reader = s.players.find((p) => p.id === s.readerId);
   const sourceLabel = { qbreader: 'QBReader', sample: 'Sample packet', upload: `Uploaded packet (${s.uploadedCount?.tossups ?? 0} tossups)` }[s.settings.source];
@@ -27,7 +27,8 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite }: Props) {
           <code className="invite-link">{inviteUrl(s.code).replace(/^https?:\/\//, '')}</code>
           <div className="row gap wrap">
             <button className="btn primary" onClick={() => shareInvite(s.code)}>Copy link</button>
-            <button className="btn" onClick={onBigInvite}>Show on big screen</button>
+            <button className="btn" onClick={onBigInvite}>Show QR full screen</button>
+            <button className="btn" onClick={onBigScreen} title="Opens a scoreboard and question view for a projector or TV">📺 Big-screen view</button>
           </div>
         </div>
       </div>

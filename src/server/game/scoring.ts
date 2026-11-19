@@ -55,6 +55,8 @@ export interface Adjustment {
   playerId: string;
   teamId: string;
   delta: number;
+  /** Tossup number when the adjustment was made. */
+  num?: number;
 }
 
 const emptyCat = (): CategoryStats => ({ heard: 0, points: 0, powers: 0, tens: 0, negs: 0 });

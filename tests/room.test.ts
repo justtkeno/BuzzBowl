@@ -272,3 +272,89 @@ describe('players', () => {
     expect(room.s.players).toHaveLength(1);
   });
 });
+
+describe('game pause', () => {
+  it('freezes the answer clock and shifts the deadline on resume', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 3);
+    room.buzz(ids[1], 3);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    const deadline = room.s.buzz!.deadline!;
+    room.pauseGame(ids[0], true);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(room.s.phase).toBe('buzz'); // the answer timer did not fire
+    expect(() => room.submitAnswer(ids[1], 'mitochondria')).toThrow(/paused/);
+    room.pauseGame(ids[0], false);
+    expect(room.s.buzz!.deadline!).toBeGreaterThanOrEqual(deadline + 60_000);
+    room.submitAnswer(ids[1], 'mitochondria');
+    expect(room.s.phase).toBe('tossupEnd');
+  });
+
+  it('only lets the host or reader pause', async () => {
+    const { room, ids } = await setup();
+    expect(() => room.pauseGame(ids[1], true)).toThrow();
+  });
+});
+
+describe('saving and restoring', () => {
+  it('comes back paused mid-tossup with scores and tokens intact', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 3);
+    room.buzz(ids[0], 3);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    room.submitAnswer(ids[0], 'mitochondria');
+    room.next(ids[0]);
+    await flush();
+    await readTo(room, 2);
+    const token = room.s.players[0].token;
+    const saved = JSON.parse(JSON.stringify(room.toJSON()));
+    room.dispose();
+
+    const back = Room.restore(saved, io, { qbreader: fakeProvider() });
+    expect(back.s.phase).toBe('reading');
+    expect(back.s.paused).toBe(true);
+    expect(back.s.players.every((p) => !p.online)).toBe(true);
+    expect(back.s.seenTossups.size).toBe(2);
+    expect(back.snapshot(ids[0]).players.find((p) => p.id === ids[0])!.stats.points).toBe(15);
+    expect(back.join('Ann', token).playerId).toBe(ids[0]);
+    back.pauseGame(ids[0], false);
+    const before = back.s.tossup!.revealed;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(back.s.tossup!.revealed).toBeGreaterThan(before);
+    back.dispose();
+  });
+});
+
+describe('history and streaks', () => {
+  it('tracks running totals and streaks at game over', async () => {
+    const { room, ids } = await setup();
+    for (let i = 0; i < 2; i++) {
+      await readTo(room, 3);
+      room.buzz(ids[0], 3);
+      await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+      room.submitAnswer(ids[0], 'mitochondria');
+      room.next(ids[0]);
+      await flush();
+    }
+    expect(room.snapshot(ids[0]).players.find((p) => p.id === ids[0])!.streak).toBe(2);
+    room.end(ids[0]);
+    const snap = room.snapshot(ids[0]);
+    expect(snap.history.map((h) => h.totals[ids[0]])).toEqual([0, 15, 30]);
+    expect(snap.highlights.map((h) => h.title)).toContain('Longest streak');
+  });
+});
+
+describe('host seat after a restart', () => {
+  it('keeps the seat for the old host for a while', async () => {
+    const { room, ids } = await setup();
+    const saved = JSON.parse(JSON.stringify(room.toJSON()));
+    room.dispose();
+    const back = Room.restore(saved, io, { qbreader: fakeProvider() });
+    const late = back.join('Newcomer').playerId;
+    expect(back.s.hostId).toBe(ids[0]);
+    expect(() => back.pauseGame(late, false)).toThrow();
+    back.join('Ann', saved.players[0].token);
+    expect(back.s.hostId).toBe(ids[0]);
+    back.dispose();
+  });
+});

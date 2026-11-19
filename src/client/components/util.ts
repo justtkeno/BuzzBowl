@@ -40,3 +40,20 @@ export const resultLabel: Record<BuzzMarker['result'], string> = {
 };
 
 export const fmtPct = (x: number | null) => (x === null ? '—' : `${Math.round(x * 100)}%`);
+
+/** A stable, readable color per player (or team) id, for buzz flashes, pins and graph lines. */
+const PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6'];
+export function colorFor(id: string, order?: string[]) {
+  const i = order ? order.indexOf(id) : -1;
+  if (i >= 0) return PALETTE[i % PALETTE.length];
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+
+/** Short haptic tap on phones that support it. */
+export function vibrate(pattern: number | number[]) {
+  try { navigator.vibrate?.(pattern); } catch { /* not supported */ }
+}
+
+export const isTouch = () => typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;

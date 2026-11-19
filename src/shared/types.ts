@@ -102,7 +102,20 @@ export interface PublicPlayer {
   /** Team id in team mode, own id in free-for-all, null for the reader / unassigned. */
   teamId: string | null;
   stats: PlayerStats;
+  /** Tossups in a row this player has converted (resets on any tossup they heard and didn't get). */
+  streak: number;
+  bestStreak: number;
+  /** Set for computer players the host added. */
+  bot?: BotSkill;
 }
+
+export type BotSkill = 'easy' | 'medium' | 'hard' | 'expert';
+export const BOT_SKILLS: Record<BotSkill, { label: string; blurb: string }> = {
+  easy: { label: 'Easy', blurb: 'Buzzes late, misses a lot' },
+  medium: { label: 'Medium', blurb: 'A solid high-schooler' },
+  hard: { label: 'Hard', blurb: 'Strong player, early buzzes' },
+  expert: { label: 'Expert', blurb: 'Powers often, rarely wrong' },
+};
 
 export interface PublicTeam {
   id: string;
@@ -196,6 +209,8 @@ export interface Ruling {
   partIndex?: number;
   /** Set when auto-check accepted a misspelling: what the answer was read as. */
   correctedTo?: string;
+  /** Bonus rulings: the tossup this bonus followed (for the score graph). */
+  tossup?: number;
 }
 
 export interface Protest {
@@ -236,7 +251,28 @@ export interface PublicState {
   tossupsRead: number;
   uploadedCount: { tossups: number; bonuses: number } | null;
   message: string | null;
+  /** The host or reader paused the whole game (all timers frozen). */
+  paused: boolean;
+  /** Running totals after each tossup, keyed by team id (teams) or player id (free-for-all). Sent at game over. */
+  history: ScorePoint[];
+  /** End-of-game awards. Sent at game over. */
+  highlights: Highlight[];
 }
+
+export interface ScorePoint {
+  num: number;
+  totals: Record<string, number>;
+}
+
+export interface Highlight {
+  icon: string;
+  title: string;
+  name: string;
+  detail: string;
+}
+
+/** The viewer id the server uses for big-screen spectators. */
+export const SPECTATOR = '*watch*';
 
 export interface ChatMessage {
   id: string;

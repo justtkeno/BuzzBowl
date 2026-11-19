@@ -2,24 +2,35 @@ import { useEffect, useRef, useState } from 'react';
 import type { BuzzMarker, PublicState, Verdict } from '../../shared/types';
 import { DIFFICULTIES } from '../../shared/types';
 import { socket } from '../socket';
-import { act, resultLabel, roles, useNow } from './util';
+import { play } from '../sounds';
+import { act, colorFor, isTouch, resultLabel, roles, useNow, vibrate } from './util';
 
 export function Stage({ s }: { s: PublicState }) {
   const r = roles(s);
   const t = s.tossup;
   const inBonus = s.phase === 'bonus' && s.bonus;
   const myTeamLocked = !!r.myTeam && !!t?.lockedTeamIds.includes(r.myTeam);
-  const canBuzz = s.phase === 'reading' && !!t && !r.isReader && !!r.myTeam && !myTeamLocked;
+  const canBuzz = s.phase === 'reading' && !!t && !r.isReader && !!r.myTeam && !myTeamLocked && !s.paused;
   const iAmAnswering = s.phase === 'buzz' && s.buzz?.playerId === r.me && !s.buzz.awaitingRuling;
   const bonusDone = s.phase === 'bonus' && s.bonus?.done;
   const canNext = r.canDirect && (s.phase === 'tossupEnd' || !!bonusDone);
   const [buzzing, setBuzzing] = useState(false);
+  // Phones only open the keyboard when focus happens inside a tap, but the answer box appears a moment
+  // later (after the server awards the buzz). Focusing this hidden input during the tap opens the keyboard
+  // early; the answer box then takes focus and the keyboard stays up.
+  const keeper = useRef<HTMLInputElement>(null);
 
   useEffect(() => setBuzzing(false), [s.phase, t?.num]);
+  useEffect(() => {
+    if (s.phase !== 'buzz' || s.buzz?.playerId !== r.me) keeper.current?.blur();
+  }, [s.phase, s.buzz?.playerId]);
 
-  const buzz = () => {
+  const buzz = (e?: { preventDefault(): void }) => {
     if (!canBuzz || buzzing || !t) return;
+    e?.preventDefault();
     setBuzzing(true);
+    vibrate(25);
+    if (isTouch()) keeper.current?.focus();
     act('buzz', t.revealed.length);
   };
 
@@ -49,12 +60,16 @@ export function Stage({ s }: { s: PublicState }) {
       {inBonus && <BonusCard s={s} />}
 
       <div className="actionbar">
-        {iAmAnswering && <AnswerBox key={`${t?.num}-${s.buzz?.prompts}`} event="answer:submit" deadline={s.buzz!.deadline} prompted={s.buzz!.prompts > 0} />}
+        <input ref={keeper} className="keyboard-keeper" aria-hidden="true" tabIndex={-1} readOnly />
+        {iAmAnswering && (
+          <AnswerBox key={`${t?.num}-${s.buzz?.prompts}`} event="answer:submit" deadline={s.buzz!.deadline} total={s.buzz!.prompts ? 5 : s.settings.answerSeconds}
+            prompted={s.buzz!.prompts > 0} lastGiven={t?.buzzes.filter((b) => b.playerId === r.me).at(-1)?.given} paused={s.paused} />
+        )}
         {s.buzz?.awaitingRuling && r.isReader && <RulingBox given={s.buzz.awaitingRuling.given} suggestion={s.buzz.awaitingRuling.suggestion} />}
         {s.phase === 'reading' && !r.isReader && (
-          <button className={`buzzer ${canBuzz ? '' : 'disabled'}`} onPointerDown={buzz} onClick={buzz} disabled={!canBuzz}>
-            {!r.myTeam ? 'Spectating' : myTeamLocked ? 'Locked out' : buzzing ? '…' : 'BUZZ'}
-            <small>{canBuzz ? 'Space / tap' : ''}</small>
+          <button className={`buzzer ${canBuzz ? '' : 'disabled'} ${buzzing ? 'pressed' : ''}`} onPointerDown={buzz} onClick={() => buzz()} disabled={!canBuzz}>
+            {!r.myTeam ? 'Spectating' : myTeamLocked ? 'Locked out' : s.paused ? 'Paused' : buzzing ? '…' : 'BUZZ'}
+            <small>{canBuzz ? (isTouch() ? 'tap' : 'Space / tap') : ''}</small>
           </button>
         )}
         {r.isController && t && s.phase === 'reading' && <ReaderControls s={s} />}
@@ -62,7 +77,7 @@ export function Stage({ s }: { s: PublicState }) {
           <button className="btn ghost" onClick={() => act('game:next')}>Skip {s.phase === 'bonus' ? 'bonus' : 'tossup'}</button>
         )}
         {canNext && (
-          <button className="btn primary big" onClick={() => act('game:next')} autoFocus>
+          <button className="btn primary big next-btn" onClick={() => act('game:next')} disabled={s.paused}>
             {s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : 'Next tossup'} <kbd>N</kbd>
           </button>
         )}
@@ -72,19 +87,58 @@ export function Stage({ s }: { s: PublicState }) {
   );
 }
 
-function Countdown({ deadline, total }: { deadline: number | null | undefined; total: number }) {
-  const now = useNow(!!deadline);
+/** Time bar that goes green → yellow → red. With `ticks`, it also ticks each of the last 3 seconds. */
+function Countdown({ deadline, total, ticks, frozen }: { deadline: number | null | undefined; total: number; ticks?: boolean; frozen?: boolean }) {
+  const now = useNow(!!deadline && !frozen);
+  const frozenAt = useRef<number | null>(null);
+  if (frozen && frozenAt.current === null) frozenAt.current = now;
+  if (!frozen) frozenAt.current = null;
+  const left = deadline ? Math.max(0, deadline - (frozenAt.current ?? now)) : 0;
+  const secs = Math.ceil(left / 1000);
+  const lastTick = useRef<number | null>(null);
+  useEffect(() => {
+    if (!ticks || !deadline || frozen) return;
+    if (secs > 0 && secs <= 3 && lastTick.current !== secs) { play('tick'); if (secs === 1) vibrate(15); }
+    lastTick.current = secs;
+  }, [secs, ticks, deadline, frozen]);
   if (!deadline) return null;
-  const left = Math.max(0, deadline - now);
+  const frac = Math.min(1, left / (total * 1000));
+  const level = frac > 0.5 ? 'ok' : frac > 0.25 ? 'mid' : 'low';
   return (
-    <div className="countdown" aria-label={`${Math.ceil(left / 1000)} seconds left`}>
-      <div className="bar" style={{ width: `${Math.min(100, (left / (total * 1000)) * 100)}%` }} />
+    <div className={`countdown cd-${level}`} aria-label={`${secs} seconds left`}>
+      <div className="bar" style={{ width: `${frac * 100}%` }} />
       <span>{(left / 1000).toFixed(1)}s</span>
     </div>
   );
 }
 
-function TossupCard({ s }: { s: PublicState }) {
+/**
+ * Where everyone buzzed, drawn on a strip the length of the question. The power zone is shaded,
+ * and during reading a cursor shows how far the reader has got.
+ */
+export function BuzzMap({ buzzes, totalWords, powerIndex, revealed, order }: {
+  buzzes: BuzzMarker[]; totalWords: number; powerIndex?: number | null; revealed?: number; order?: string[];
+}) {
+  if (!totalWords) return null;
+  const pct = (i: number) => `${Math.min(100, (i / totalWords) * 100)}%`;
+  return (
+    <div className="buzzmap" role="img" aria-label={`Buzzes: ${buzzes.map((b) => `${b.playerName} at word ${b.wordIndex} of ${totalWords}`).join(', ') || 'none'}`}>
+      <div className="bm-track">
+        {powerIndex !== undefined && powerIndex !== null && <div className="bm-power" style={{ width: pct(powerIndex) }} />}
+        {revealed !== undefined && <div className="bm-read" style={{ width: pct(revealed) }} />}
+        {buzzes.map((b, i) => (
+          <div key={i} className={`bm-pin r-${b.result}`} style={{ left: pct(b.wordIndex), ['--pc' as string]: colorFor(b.playerId, order) }} title={`${b.playerName}: ${b.given || '…'} (${resultLabel[b.result]})`}>
+            <span className="bm-dot" />
+            <span className="bm-name">{b.playerName.split(' ')[0]} <b>{resultLabel[b.result]}</b></span>
+          </div>
+        ))}
+      </div>
+      <div className="bm-scale"><span>start</span>{powerIndex ? <span className="bm-star" style={{ left: pct(powerIndex) }}>(*)</span> : null}<span>end</span></div>
+    </div>
+  );
+}
+
+export function TossupCard({ s }: { s: PublicState }) {
   const r = roles(s);
   const t = s.tossup!;
   const ended = s.phase === 'tossupEnd' || s.phase === 'gameOver';
@@ -111,7 +165,7 @@ function TossupCard({ s }: { s: PublicState }) {
           <div className="listen-icon">🎙</div>
           <p>Listen to the reader{s.readerId ? ` (${s.players.find((p) => p.id === s.readerId)?.name})` : ''}. Buzz when you know it.</p>
           <div className="progress"><div style={{ width: `${(t.revealed.length / Math.max(1, t.totalWords)) * 100}%` }} /></div>
-          <div className="buzz-row">{t.buzzes.map((b, i) => <Marker key={i} m={b} />)}</div>
+          <BuzzMap buzzes={t.buzzes} totalWords={t.totalWords} revealed={t.revealed.length} order={s.players.map((p) => p.id)} />
         </div>
       ) : (
         <p className={`qtext ${teleprompter ? 'prompter' : ''}`}>
@@ -136,9 +190,10 @@ function TossupCard({ s }: { s: PublicState }) {
       {(ended || r.isReader) && t.answerHtml && (
         <div className="answer"><span className="label">ANSWER</span> <span dangerouslySetInnerHTML={{ __html: t.answerHtml }} /></div>
       )}
+      {ended && t.buzzes.length > 0 && <BuzzMap buzzes={t.buzzes} totalWords={t.totalWords} powerIndex={t.powerIndex} order={s.players.map((p) => p.id)} />}
 
       {s.phase === 'reading' && t.deadline && !t.paused && (
-        <div className="status"><span>Last chance to buzz</span><Countdown deadline={t.deadline} total={s.settings.deadSeconds} /></div>
+        <div className="status"><span>Last chance to buzz</span><Countdown deadline={t.deadline} total={s.settings.deadSeconds} frozen={s.paused} /></div>
       )}
       {s.phase === 'reading' && t.paused && <div className="status muted">Paused{r.isReader ? ' — press Space to resume' : ' by the reader'}</div>}
       {s.buzz && <BuzzStatus s={s} />}
@@ -148,17 +203,17 @@ function TossupCard({ s }: { s: PublicState }) {
 }
 
 function Marker({ m }: { m: BuzzMarker }) {
-  return <span className={`marker m-${m.result}`} title={`${m.playerName}: ${m.given || '…'}`}>{m.playerName} {resultLabel[m.result]}</span>;
+  return <span className={`marker m-${m.result}`} style={{ ['--pc' as string]: colorFor(m.playerId) }} title={`${m.playerName}: ${m.given || '…'}`}>{m.playerName} {resultLabel[m.result]}</span>;
 }
 
 function BuzzStatus({ s }: { s: PublicState }) {
   const b = s.buzz!;
   const mine = b.playerId === s.you;
   return (
-    <div className="status buzz-status">
-      <span><b>{mine ? 'You' : b.playerName}</b> buzzed{b.prompts ? ' — prompted, say more' : ''}</span>
+    <div className="status buzz-status" style={{ ['--pc' as string]: colorFor(b.playerId) }}>
+      <span><span className="who-dot" /><b>{mine ? 'You' : b.playerName}</b> buzzed{b.prompts ? ' — prompted, say more' : ''}</span>
       {!mine && <span className="typing">{b.awaitingRuling ? `“${b.awaitingRuling.given}”` : b.typing ? `“${b.typing}”` : '…'}</span>}
-      {b.awaitingRuling ? <span className="muted">Waiting for the reader’s ruling</span> : <Countdown deadline={b.deadline} total={b.prompts ? 5 : s.settings.answerSeconds} />}
+      {b.awaitingRuling ? <span className="muted">Waiting for the reader’s ruling</span> : !mine && <Countdown deadline={b.deadline} total={b.prompts ? 5 : s.settings.answerSeconds} frozen={s.paused} />}
     </div>
   );
 }
@@ -176,23 +231,40 @@ function EndSummary({ s }: { s: PublicState }) {
   );
 }
 
-function AnswerBox({ event, deadline, prompted, placeholder }: { event: string; deadline: number | null; prompted: boolean; placeholder?: string }) {
+function AnswerBox({ event, deadline, total, prompted, placeholder, lastGiven, paused }: {
+  event: string; deadline: number | null; total?: number; prompted: boolean; placeholder?: string; lastGiven?: string; paused?: boolean;
+}) {
   const [text, setText] = useState('');
   const sent = useRef(false);
+  const box = useRef<HTMLFormElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    input.current?.focus({ preventScroll: true });
+    // Keep the box visible above the phone keyboard.
+    const t = setTimeout(() => box.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
+    return () => clearTimeout(t);
+  }, []);
   const submit = () => {
     if (sent.current) return;
     sent.current = true;
     act(event, text);
   };
   return (
-    <form className="answerbox" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-      {prompted && <div className="prompt-note">Prompt: be more specific.</div>}
-      <div className="row gap">
-        <input autoFocus className="grow big" value={text} placeholder={placeholder ?? 'Type your answer, then Enter'} autoComplete="off" autoCapitalize="off" spellCheck={false}
+    <form ref={box} className={`answerbox ${prompted ? 'prompted' : ''}`} onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      {prompted && (
+        <div className="prompt-note">
+          <b>Prompt — be more specific.</b>
+          {lastGiven && <span> You said “{lastGiven}”.</span>}
+        </div>
+      )}
+      <div className="row gap answer-row">
+        <input ref={input} className="grow big" value={text} placeholder={placeholder ?? (prompted ? 'More specific answer…' : 'Type your answer')}
+          autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="send" aria-label="Your answer"
           onChange={(e) => { setText(e.target.value); socket.emit('answer:typing', e.target.value); }} />
         <button className="btn primary big">Submit</button>
       </div>
-      <Countdown deadline={deadline} total={prompted ? 5 : 7} />
+      <Countdown deadline={deadline} total={total ?? (prompted ? 5 : 7)} ticks frozen={paused} />
+      <div className="muted small hint">Spelling and accents don’t need to be exact.</div>
     </form>
   );
 }
@@ -239,7 +311,7 @@ function ReaderControls({ s }: { s: PublicState }) {
   );
 }
 
-function BonusCard({ s }: { s: PublicState }) {
+export function BonusCard({ s }: { s: PublicState }) {
   const r = roles(s);
   const bn = s.bonus!;
   const mineTeam = r.myTeam === bn.teamId;
@@ -279,11 +351,11 @@ function BonusCard({ s }: { s: PublicState }) {
           {iAmCaptain ? <span>You are captain — confer with your team, then submit.</span>
             : mineTeam ? <span>Talk it over in <b>team chat</b>. {captainName} submits{bn.typing ? `: “${bn.typing}”` : '.'}</span>
               : <span>{bn.teamName} is conferring{r.isReader && bn.typing ? `: “${bn.typing}”` : '…'}</span>}
-          <Countdown deadline={bn.deadline} total={bn.prompts ? 5 : s.settings.bonusSeconds} />
+          <Countdown deadline={bn.deadline} total={bn.prompts ? 5 : s.settings.bonusSeconds} ticks={mineTeam} frozen={s.paused} />
         </div>
       )}
       {iAmCaptain && answering && (
-        <AnswerBox key={`${bn.num}-${bn.current}-${bn.prompts}`} event="bonus:submit" deadline={null} prompted={bn.prompts > 0} placeholder="Team answer, then Enter" />
+        <AnswerBox key={`${bn.num}-${bn.current}-${bn.prompts}`} event="bonus:submit" deadline={null} prompted={bn.prompts > 0} placeholder="Team answer" />
       )}
       {bn.awaitingRuling && (r.isReader
         ? <RulingBox given={bn.awaitingRuling.given} suggestion={bn.awaitingRuling.suggestion} />
