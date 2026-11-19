@@ -26,7 +26,7 @@ function shuffle<T>(xs: T[]): T[] {
   return a;
 }
 
-/** Questions from a fixed list (the built-in sample packet or an uploaded file). */
+/** Questions from a fixed list (the built-in questions or an uploaded file). */
 export class LocalProvider implements QuestionProvider {
   constructor(private tossups: Tossup[], private bonuses: Bonus[]) {}
 

@@ -90,7 +90,7 @@ export function SettingsPanel({ s, onClose }: { s: PublicState; onClose: () => v
           <h3>Questions</h3>
           <div className="seg">
             <button className={f.source === 'qbreader' ? 'on' : ''} onClick={() => set('source', 'qbreader')}>QBReader</button>
-            <button className={f.source === 'sample' ? 'on' : ''} onClick={() => set('source', 'sample')}>Sample packet</button>
+            <button className={f.source === 'sample' ? 'on' : ''} onClick={() => set('source', 'sample')}>Built-in questions</button>
             <button className={f.source === 'upload' ? 'on' : ''} disabled={!s.uploadedCount} onClick={() => set('source', 'upload')}>
               Uploaded{s.uploadedCount ? ` (${s.uploadedCount.tossups})` : ''}
             </button>
