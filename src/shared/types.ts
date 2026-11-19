@@ -107,6 +107,8 @@ export interface PublicPlayer {
   bestStreak: number;
   /** Set for computer players the host added. */
   bot?: BotSkill;
+  /** Set when the player is logged in: their account username (shown as a verified badge). */
+  username?: string;
 }
 
 export type BotSkill = 'easy' | 'medium' | 'hard' | 'expert';

@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAccount } from '../account';
 import { randomName } from '../names';
 import { prefs } from '../socket';
+import { AccountBar } from './Account';
 
 interface Props {
   initialCode: string | null;
@@ -15,6 +17,9 @@ export function Home({ initialCode, error, connected, onJoin, onCreate }: Props)
   const [code, setCode] = useState(initialCode ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { me } = useAccount();
+  // Logging in fills in the account's display name.
+  useEffect(() => { if (me) setName(me.displayName); }, [me?.id]);
 
   const run = async (fn: () => Promise<void>) => {
     if (!name.trim()) return setErr('Pick a display name first.');
@@ -26,6 +31,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate }: Props)
   return (
     <div className="home">
       <div className="home-card">
+        <AccountBar />
         <div className="brand"><span className="logo">QB</span> BuzzBowl</div>
         <p className="muted">Pyramidal tossups, real buzzer races, powers, negs and bonuses. Play in real time with friends or drill alone.</p>
 

@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import type { PublicState } from '../../shared/types';
+import type { BotSkill, PublicState } from '../../shared/types';
+import { BOT_SKILLS } from '../../shared/types';
 import { InviteQR, inviteUrl, shareInvite } from './Invite';
 import { act, roles, toast } from './util';
+import { Verified } from './Account';
 
 interface Props {
   s: PublicState; fresh: boolean;
@@ -73,7 +75,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
                 <ul>
                   {t.playerIds.map((id) => {
                     const p = s.players.find((x) => x.id === id);
-                    return <li key={id} className={p?.online ? '' : 'offline'}>{p?.name}{t.captainId === id && <span className="badge">captain</span>}</li>;
+                    return <li key={id} className={p?.online ? '' : 'offline'}>{p?.name}<Verified username={p?.username} />{t.captainId === id && <span className="badge">captain</span>}</li>;
                   })}
                 </ul>
                 <div className="row gap">
@@ -87,6 +89,8 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
           </div>
         </>
       )}
+
+      <BotsPanel s={s} />
 
       <div className="row gap start-row">
         {r.isController ? (
@@ -122,6 +126,50 @@ function NameBox({ s, fresh, onRename }: { s: PublicState; fresh: boolean; onRen
         <button type="button" className="btn ghost" onClick={() => setEditing(false)}>{fresh ? 'Keep it' : 'Cancel'}</button>
       </div>
     </form>
+  );
+}
+
+const SKILLS = Object.keys(BOT_SKILLS) as BotSkill[];
+
+/** Computer players: the host adds them and picks how strong each one is. */
+function BotsPanel({ s }: { s: PublicState }) {
+  const r = roles(s);
+  const [skill, setSkill] = useState<BotSkill>('medium');
+  const bots = s.players.filter((p) => p.bot);
+  if (!r.isController && !bots.length) return null;
+  const teamName = (id: string | null) => s.teams.find((t) => t.id === id)?.name;
+  return (
+    <div className="bots">
+      <h3>Bots</h3>
+      {bots.length === 0 && <p className="muted small">Practice against computer players. Each bot buzzes and answers on its own, and joins a team in teams mode.</p>}
+      {bots.length > 0 && (
+        <ul className="bot-list">
+          {bots.map((b) => (
+            <li key={b.id}>
+              <span className="bot-name">{b.name}</span>
+              {s.settings.mode === 'teams' && teamName(b.teamId) && <span className="muted small">{teamName(b.teamId)}</span>}
+              <span className="grow" />
+              {r.isController ? (
+                <>
+                  <select aria-label={`${b.name} skill`} value={b.bot} onChange={(e) => act('bot:skill', b.id, e.target.value)}>
+                    {SKILLS.map((k) => <option key={k} value={k}>{BOT_SKILLS[k].label}</option>)}
+                  </select>
+                  <button className="btn ghost small" aria-label={`Remove ${b.name}`} title="Remove bot" onClick={() => act('bot:remove', b.id)}>✕</button>
+                </>
+              ) : <span className="badge">{BOT_SKILLS[b.bot!].label}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {r.isController && (
+        <div className="row gap bot-add">
+          <select aria-label="New bot skill" value={skill} onChange={(e) => setSkill(e.target.value as BotSkill)}>
+            {SKILLS.map((k) => <option key={k} value={k}>{BOT_SKILLS[k].label} · {BOT_SKILLS[k].blurb}</option>)}
+          </select>
+          <button className="btn" disabled={bots.length >= 8} onClick={() => act('bot:add', skill)}>+ Add bot</button>
+        </div>
+      )}
+    </div>
   );
 }
 

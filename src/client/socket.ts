@@ -46,5 +46,11 @@ export const prefs = {
   settings: (): Record<string, unknown> | undefined => {
     try { return JSON.parse(store.get('qb:settings') ?? 'null') ?? undefined; } catch { return undefined; }
   },
-  setSettings: (s: unknown) => store.set('qb:settings', JSON.stringify(s)),
+  /** `sync` tells a logged-in account to save them too (see account.ts). */
+  setSettings: (s: unknown, sync = true) => {
+    const json = JSON.stringify(s);
+    if (json === store.get('qb:settings')) return;
+    store.set('qb:settings', json);
+    if (sync) window.dispatchEvent(new CustomEvent('qb-settings', { detail: s }));
+  },
 };

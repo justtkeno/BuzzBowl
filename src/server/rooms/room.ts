@@ -9,6 +9,7 @@ import { safeAnswerHtml } from '../game/text';
 import { LocalProvider, parseUpload, QBReaderProvider } from '../questions/providers';
 import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
 import type { Bonus, QuestionProvider, Tossup } from '../questions/types';
+import type { GameRecord } from '../../shared/accounts';
 
 /** How the room talks to the outside world (Socket.IO in production, a fake in tests). */
 export interface RoomIO {
@@ -16,7 +17,12 @@ export interface RoomIO {
   emitEach(event: string, payload: (viewerId: string) => unknown): void;
   /** Send the same payload to specific players. */
   emitTo(playerIds: string[], event: string, payload: unknown): void;
+  /** A game finished: one record per logged-in player who played in it. */
+  gameOver?(records: { accountId: string; game: GameRecord }[]): void;
 }
+
+/** A logged-in player's account, attached when they join. */
+export interface JoinAccount { id: string; username: string }
 
 export class ActionError extends Error {}
 const fail = (msg: string): never => { throw new ActionError(msg); };
@@ -33,7 +39,7 @@ export const TIMING = {
   teamSize: 4,
 };
 
-interface Player { id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill }
+interface Player { id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string }
 interface Team { id: string; name: string; playerIds: string[] }
 
 interface LiveTossup {
@@ -105,9 +111,11 @@ export interface RoomState {
   /** Whole-game pause by the host or reader: every timer is frozen. */
   paused: boolean;
   pausedAt: number | null;
+  /** This game's results were already saved to players' profiles. */
+  recorded?: boolean;
 }
 
-const rid = (n = 10) => Array.from({ length: n }, () => 'abcdefghijkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 32)]).join('');
+const rid =(n = 10) => Array.from({ length: n }, () => 'abcdefghijkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 32)]).join('');
 const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
@@ -259,12 +267,17 @@ export class Room {
 
   // ---------- membership ----------
 
-  join(name: string, token?: string): { playerId: string; token: string } {
+  join(name: string, token?: string, account?: JoinAccount): { playerId: string; token: string } {
     const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
-    const existing = token ? this.s.players.find((p) => p.token === token) : undefined;
+    let existing = token ? this.s.players.find((p) => p.token === token) : undefined;
+    // A seat that belongs to a different account isn't yours, even with its token.
+    if (existing?.accountId && account && existing.accountId !== account.id) existing = undefined;
+    // Logged-in players get their seat back from any device.
+    if (!existing && account) existing = this.s.players.find((p) => p.accountId === account.id);
     if (existing) {
       existing.online = true;
       if (clean) existing.name = clean;
+      if (account && !existing.accountId) { existing.accountId = account.id; existing.username = account.username; }
       const hostAway = !this.s.hostId || !this.player(this.s.hostId)?.online;
       if (hostAway && (existing.id === this.s.hostId || Date.now() > this.hostReservedUntil)) this.s.hostId = existing.id;
       this.broadcast();
@@ -272,7 +285,7 @@ export class Room {
     }
     if (!clean) fail('Pick a display name.');
     if (this.s.players.length >= 60) fail('This room is full.');
-    const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null };
+    const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null, ...(account ? { accountId: account.id, username: account.username } : {}) };
     this.s.players.push(p);
     if (this.s.settings.mode === 'teams') this.autoAssign(p);
     if (!this.s.hostId || (!this.player(this.s.hostId)?.online && Date.now() > this.hostReservedUntil)) this.s.hostId = p.id;
@@ -447,6 +460,7 @@ export class Room {
     this.s.message = null;
     this.s.paused = false;
     this.s.pausedAt = null;
+    this.s.recorded = false;
     this.system('Game started. Good luck!');
     void this.loadTossup();
   }
@@ -466,7 +480,50 @@ export class Room {
     this.s.pausedAt = null;
     this.s.phase = 'gameOver';
     this.system('Game over.');
+    this.recordResults(false);
     this.broadcast();
+  }
+
+  /** Save a game everyone walked away from (called before an idle room is deleted). */
+  recordIfUnfinished() {
+    if (this.s.phase !== 'lobby' && this.s.phase !== 'gameOver' && this.s.heard.length >= 3) this.recordResults(true);
+  }
+
+  /** Hand each logged-in player's results to io.gameOver, once per game. */
+  private recordResults(abandoned: boolean) {
+    if (this.s.recorded || !this.s.heard.length || !this.io.gameOver) return;
+    this.s.recorded = true;
+    const { players, teams } = this.sharedSnapshot();
+    const statsOf = new Map(players.map((p) => [p.id, p]));
+    const played = (id: string) => { const st = statsOf.get(id)?.stats; return !!st && (st.heard > 0 || st.buzzes > 0); };
+    const teamsMode = this.s.settings.mode === 'teams';
+    // Competing sides: teams with someone who played, or (free-for-all) players other than the reader who played.
+    const sides = teams.filter((t) => (teamsMode ? t.playerIds.some(played) : t.id !== this.s.readerId && played(t.id)));
+    const ranked = [...sides].sort((a, b) => b.points - a.points);
+    const records: { accountId: string; game: GameRecord }[] = [];
+    for (const p of this.s.players) {
+      if (!p.accountId || !played(p.id)) continue;
+      const side = sides.find((t) => t.id === this.teamOf(p.id));
+      const pub = statsOf.get(p.id)!;
+      const st = pub.stats;
+      const correct = st.powers + st.tens;
+      records.push({
+        accountId: p.accountId,
+        game: {
+          at: Date.now(), room: this.s.code, mode: this.s.settings.mode, sides: sides.length,
+          rank: side ? 1 + sides.filter((t) => t.points > side.points).length : sides.length,
+          standings: ranked.slice(0, 8).map((t) => ({ name: t.name, points: t.points, you: t.id === side?.id })),
+          ...(abandoned ? { abandoned: true } : {}),
+          tossups: this.s.heard.length,
+          points: st.points, powers: st.powers, tens: st.tens, negs: st.negs, buzzes: st.buzzes, heard: st.heard,
+          correctDepthSum: st.avgCorrectDepth != null ? st.avgCorrectDepth * correct : 0,
+          bestStreak: pub.bestStreak,
+          bonusPoints: side?.bonusPoints ?? 0, bonusesHeard: side?.bonusesHeard ?? 0,
+          categories: st.categories,
+        },
+      });
+    }
+    if (records.length) this.io.gameOver(records);
   }
 
   next(by: string) {
@@ -889,7 +946,7 @@ export class Room {
       ? this.s.teams.map((t) => ({ id: t.id, name: t.name, playerIds: t.playerIds, captainId: this.captainOf(t.id), ...computeTeamTotals(t.id, this.s.rulings, this.s.adjustments) }))
       : [];
     const streaks = this.streaks();
-    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}) }));
+    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}) }));
     // FFA bonus totals live on each player's "team" (themselves).
     const ffaTeams = this.s.settings.mode === 'ffa'
       ? this.s.players.map((p) => ({ id: p.id, name: p.name, playerIds: [p.id], captainId: p.id, ...computeTeamTotals(p.id, this.s.rulings, this.s.adjustments) }))

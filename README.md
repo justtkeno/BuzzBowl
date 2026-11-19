@@ -51,6 +51,18 @@ By default players don't see the text while the reader reads (they listen). Turn
 - **Pause**: the host or reader can pause the whole game (❚❚ in the top bar). Every clock freezes, including answer and bonus timers.
 - **Restarts**: rooms are saved to `data/rooms-<port>.json` every few seconds (set `DATA_DIR` to move it). After a restart, a running game comes back paused, players rejoin with their saved seat, and the old host keeps the host seat for 2 minutes. On free hosting with no persistent disk, a redeploy still wipes the file.
 
+### Accounts and profiles
+
+Anyone can still play as a guest. **Sign up** on the home screen (username + password) to get:
+
+- a public profile at `/u/<username>` with games, wins, points per game and per tossup, powers/tens/negs, buzz accuracy and depth, best game, a per-subject breakdown with your **best subject**, and recent games
+- a green check next to your name in rooms (links to your profile), and your seat back if you rejoin from another device
+- your display name and room settings remembered on any device
+
+Results are saved when the host ends a game, or when everyone walks away from a game with at least 3 tossups heard. Solo games count toward stats but not wins. Passwords are hashed with scrypt, sessions are an HTTP-only cookie, and login/signup are rate-limited. There is no email password reset.
+
+Accounts live in Postgres when `DATABASE_URL` is set, otherwise in `data/accounts-<port>.json` (fine for local use).
+
 ### Protests and corrections
 
 Every ruling appears in the **Rulings** tab. Any player can protest one, and the host or reader upholds (which reverses the ruling and rescores) or denies it. The host or reader can also mark any ruling right/wrong directly or adjust a player's score by ±5. Reversing a ruling on the tossup that just ended also awards (or removes) that tossup's bonus.
@@ -100,6 +112,8 @@ tests/                       Vitest unit tests (answer checking, scoring, room f
 ## Deploy for free
 
 **Render**: push this folder to GitHub, then in Render choose *New → Blueprint* and select the repo. `render.yaml` sets it up (build `npm ci && npm run build`, start `npm run serve`). Free instances sleep when idle, so the first visit after a while takes ~30 s.
+
+**Accounts need a database** on Render's free plan, because its disk is wiped on every deploy and restart. A free [Neon](https://neon.tech) Postgres works: create a project, copy its connection string (`postgresql://…`), and in Render open the service → *Environment* → add `DATABASE_URL` with that value. The server creates its tables on startup; `/healthz` shows `"accounts":"postgres"` when it's connected. Without `DATABASE_URL` the live site still runs, but accounts are lost on each restart.
 
 **Fly.io**: install `flyctl`, then from this folder:
 

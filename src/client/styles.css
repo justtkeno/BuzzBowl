@@ -499,3 +499,11 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
   .topbar .chip { white-space: nowrap; flex: none; }
   .mobile-strip { top: 48px; }
 }
+
+/* ---------- bots ---------- */
+.bots { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: .25rem; }
+.bot-list { list-style: none; padding: 0; margin: .4rem 0 .6rem; display: flex; flex-direction: column; gap: .35rem; }
+.bot-list li { display: flex; align-items: center; gap: .5rem; padding: .35rem .6rem; background: var(--surface-2); border-radius: 8px; }
+.bot-name { font-weight: 600; }
+.bot-list select, .bot-add select { padding: .3rem .5rem; }
+.bot-add select { min-width: 0; flex: 1; max-width: 320px; }

@@ -1,0 +1,224 @@
+import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
+import express, { type Request, type Response } from 'express';
+import type { Socket } from 'socket.io';
+import { BIO_MAX, PASSWORD_MIN, USERNAME_RE, summarize, type GameRecord, type Me, type PublicProfile } from '../../shared/accounts';
+import type { AccountStore, User } from './store';
+
+const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
+
+const COOKIE = 'bb_session';
+const SESSION_DAYS = 60;
+/** Profiles are built from at most this many recent games. */
+const PROFILE_GAMES = 1000;
+const RECENT_GAMES = 15;
+
+/** Who a socket is logged in as. */
+export interface SocketAccount { id: string; username: string }
+
+export async function hashPassword(pw: string): Promise<string> {
+  const salt = randomBytes(16);
+  const hash = await scrypt(pw, salt, 64);
+  return `scrypt$${salt.toString('base64')}$${hash.toString('base64')}`;
+}
+
+export async function verifyPassword(pw: string, stored: string): Promise<boolean> {
+  const [kind, salt, hash] = stored.split('$');
+  if (kind !== 'scrypt' || !salt || !hash) return false;
+  const want = Buffer.from(hash, 'base64');
+  const got = await scrypt(pw, Buffer.from(salt, 'base64'), want.length);
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+const newId = () => randomBytes(9).toString('base64url');
+
+function readCookie(header: string | undefined, name: string): string | null {
+  for (const part of (header ?? '').split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0 && part.slice(0, i).trim() === name) {
+      try { return decodeURIComponent(part.slice(i + 1).trim()); } catch { return null; }
+    }
+  }
+  return null;
+}
+
+const cleanName = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
+
+export function toMe(u: User): Me {
+  return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, settings: u.settings };
+}
+
+/** Tiny in-memory limiter for login/signup attempts, per IP. */
+function limiter(max: number, windowMs: number) {
+  const hits = new Map<string, number[]>();
+  setInterval(() => {
+    const cut = Date.now() - windowMs;
+    for (const [k, v] of hits) { const keep = v.filter((t) => t > cut); if (keep.length) hits.set(k, keep); else hits.delete(k); }
+  }, windowMs).unref();
+  return (key: string) => {
+    const cut = Date.now() - windowMs;
+    const list = (hits.get(key) ?? []).filter((t) => t > cut);
+    list.push(Date.now());
+    hits.set(key, list);
+    return list.length <= max;
+  };
+}
+
+export class Accounts {
+  /** False when the database could not be reached at startup. */
+  ready = false;
+  private sockets = new WeakMap<Socket, SocketAccount>();
+  private allow = limiter(20, 10 * 60_000);
+
+  constructor(private store: AccountStore) {}
+
+  get kind() { return this.store.kind; }
+
+  async init() {
+    try {
+      await this.store.init();
+      this.ready = true;
+    } catch (e) {
+      console.error(`Accounts are disabled: could not open the ${this.store.kind} store.`, e);
+    }
+  }
+
+  /** The account a request's session cookie belongs to. */
+  private async userFrom(cookieHeader: string | undefined): Promise<User | null> {
+    if (!this.ready) return null;
+    const token = readCookie(cookieHeader, COOKIE);
+    if (!token) return null;
+    try {
+      const id = await this.store.session(sha256(token));
+      return id ? await this.store.userById(id) : null;
+    } catch (e) {
+      console.error('Session lookup failed:', e);
+      return null;
+    }
+  }
+
+  private async startSession(req: Request, res: Response, userId: string) {
+    const token = randomBytes(32).toString('base64url');
+    const maxAge = SESSION_DAYS * 86_400_000;
+    await this.store.createSession(sha256(token), userId, Date.now() + maxAge);
+    res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: req.secure, maxAge, path: '/' });
+  }
+
+  // ---------- sockets ----------
+
+  /** Socket.IO middleware: remembers who each socket is logged in as (from the cookie sent with the handshake). */
+  socketMiddleware = (socket: Socket, next: (err?: Error) => void) => {
+    this.userFrom(socket.request.headers.cookie).then((u) => {
+      if (u) this.sockets.set(socket, { id: u.id, username: u.username });
+      next();
+    }, () => next());
+  };
+
+  of(socket: Socket): SocketAccount | undefined { return this.sockets.get(socket); }
+
+  // ---------- game results ----------
+
+  /** Save finished games to their players' profiles. Never throws. */
+  record(entries: { accountId: string; game: GameRecord }[]) {
+    if (!this.ready || !entries.length) return;
+    this.store.addGames(entries.map((e) => ({ userId: e.accountId, game: e.game })))
+      .catch((e) => console.error('Could not save game results:', e));
+  }
+
+  async profile(username: string): Promise<PublicProfile | null> {
+    const u = await this.store.userByName(username);
+    if (!u) return null;
+    const games = await this.store.games(u.id, PROFILE_GAMES);
+    return {
+      username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt,
+      ...summarize(games),
+      recent: games.slice(0, RECENT_GAMES),
+    };
+  }
+
+  // ---------- HTTP ----------
+
+  router() {
+    const r = express.Router();
+    r.use(express.json({ limit: '64kb' }));
+
+    const wrap = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Request, res: Response) => {
+      if (!this.ready) return res.status(503).json({ error: 'Accounts are unavailable right now. You can still play as a guest.' });
+      fn(req, res).catch((e) => {
+        console.error(e);
+        if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Try again.' });
+      });
+    };
+    const limited = (req: Request, res: Response) => {
+      if (this.allow(req.ip ?? '?')) return false;
+      res.status(429).json({ error: 'Too many attempts. Wait a few minutes and try again.' });
+      return true;
+    };
+
+    r.get('/me', wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      res.json({ user: u ? toMe(u) : null });
+    }));
+
+    r.post('/signup', wrap(async (req, res) => {
+      if (limited(req, res)) return;
+      const username = String(req.body?.username ?? '').trim();
+      const password = String(req.body?.password ?? '');
+      const displayName = cleanName(req.body?.displayName) || username;
+      if (!USERNAME_RE.test(username)) return res.status(400).json({ error: 'Usernames are 3–20 letters, numbers or underscores.' });
+      if (password.length < PASSWORD_MIN) return res.status(400).json({ error: `Passwords need at least ${PASSWORD_MIN} characters.` });
+      if (password.length > 200) return res.status(400).json({ error: 'That password is too long.' });
+      const settings = req.body?.settings && typeof req.body.settings === 'object' ? req.body.settings : null;
+      const user: User = {
+        id: newId(), username, key: username.toLowerCase(), passwordHash: await hashPassword(password),
+        displayName, bio: '', settings, createdAt: Date.now(),
+      };
+      if (!(await this.store.createUser(user))) return res.status(409).json({ error: 'That username is taken.' });
+      await this.startSession(req, res, user.id);
+      res.json({ user: toMe(user) });
+    }));
+
+    r.post('/login', wrap(async (req, res) => {
+      if (limited(req, res)) return;
+      const username = String(req.body?.username ?? '').trim();
+      const password = String(req.body?.password ?? '');
+      const u = username ? await this.store.userByName(username) : null;
+      if (!u || !(await verifyPassword(password, u.passwordHash))) return res.status(401).json({ error: 'Wrong username or password.' });
+      await this.startSession(req, res, u.id);
+      res.json({ user: toMe(u) });
+    }));
+
+    r.post('/logout', wrap(async (req, res) => {
+      const token = readCookie(req.headers.cookie, COOKIE);
+      if (token) await this.store.deleteSession(sha256(token));
+      res.clearCookie(COOKIE, { path: '/' });
+      res.json({ ok: true });
+    }));
+
+    r.patch('/me', wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) return res.status(401).json({ error: 'Log in first.' });
+      const b = req.body ?? {};
+      const patch: Partial<Pick<User, 'displayName' | 'bio' | 'settings'>> = {};
+      if ('displayName' in b) {
+        const n = cleanName(b.displayName);
+        if (!n) return res.status(400).json({ error: 'Pick a display name.' });
+        patch.displayName = n;
+      }
+      if ('bio' in b) patch.bio = String(b.bio ?? '').trim().slice(0, BIO_MAX);
+      if ('settings' in b) patch.settings = b.settings && typeof b.settings === 'object' ? b.settings : null;
+      await this.store.updateUser(u.id, patch);
+      res.json({ user: toMe({ ...u, ...patch }) });
+    }));
+
+    r.get('/users/:username', wrap(async (req, res) => {
+      const p = await this.profile(String(req.params.username));
+      if (!p) return res.status(404).json({ error: 'No player with that username.' });
+      res.json({ profile: p });
+    }));
+
+    r.use((_req, res) => res.status(404).json({ error: 'Not found.' }));
+    return r;
+  }
+}

@@ -5,8 +5,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server, type Socket } from 'socket.io';
 import { ActionError, Room, type RoomIO } from './rooms/room';
+import { botsFor } from './rooms/bots';
 import { MemoryRoomStore, newRoomCode, type RoomStore } from './rooms/store';
 import { SPECTATOR, type Settings } from '../shared/types';
+import { Accounts } from './accounts/accounts';
+import { FileAccountStore, PgAccountStore } from './accounts/store';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -24,7 +27,14 @@ const http = createServer(app);
 const io = new Server(http, { maxHttpBufferSize: 8e6, pingInterval: 10_000 });
 const store: RoomStore = new MemoryRoomStore();
 
-app.get('/healthz', (_req, res) => res.json({ ok: true, rooms: [...store.all()].length }));
+// Accounts live in Postgres when DATABASE_URL is set (production), otherwise in a local JSON file.
+const fileAccounts = process.env.DATABASE_URL ? null : new FileAccountStore(join(DATA_DIR, `accounts-${PORT}.json`));
+const accounts = new Accounts(fileAccounts ?? new PgAccountStore(process.env.DATABASE_URL!));
+// Behind Render's / Fly's proxy: trust it for the client IP and https.
+app.set('trust proxy', 1);
+
+app.get('/healthz', (_req, res) => res.json({ ok: true, rooms: [...store.all()].length, accounts: accounts.ready ? accounts.kind : 'off' }));
+app.use('/api', accounts.router());
 if (existsSync(CLIENT_DIR)) {
   app.use(express.static(CLIENT_DIR));
   app.get('*', (_req, res) => res.sendFile(join(CLIENT_DIR, 'index.html')));
@@ -48,6 +58,9 @@ function roomIO(code: string): RoomIO {
     },
     emitTo(playerIds, event, payload) {
       for (const id of playerIds) io.to(id === SPECTATOR ? `w:${code}` : `p:${code}:${id}`).emit(event, payload);
+    },
+    gameOver(records) {
+      accounts.record(records);
     },
   };
 }
@@ -93,8 +106,10 @@ function restoreRooms() {
 }
 restoreRooms();
 setInterval(() => saveRooms(), 3000).unref();
+// Bots watch every room a few times a second and buzz / answer when their moment comes.
+setInterval(() => { for (const room of store.all()) botsFor(room).tick(); }, 100).unref();
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => { saveRooms(true); process.exit(0); });
+  process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); process.exit(0); });
 }
 
 type Ack = (res: { ok: true; [k: string]: unknown } | { ok: false; error: string }) => void;
@@ -116,6 +131,9 @@ function handle(socket: Socket, fn: (room: Room, playerId: string, ...args: any[
   };
 }
 
+// Logged-in players: the session cookie rides along with the socket handshake.
+io.use(accounts.socketMiddleware);
+
 io.on('connection', (socket) => {
   socket.on('time', (ack: (t: number) => void) => typeof ack === 'function' && ack(Date.now()));
 
@@ -124,7 +142,7 @@ io.on('connection', (socket) => {
       const prev = socket.data as SocketData;
       if (prev.code && prev.playerId && prev.code !== room.s.code) store.get(prev.code)?.disconnect(prev.playerId);
       if (prev.watching && prev.code) { socket.leave(prev.code); socket.leave(`w:${prev.code}`); }
-      const { playerId, token: tok } = room.join(name, token);
+      const { playerId, token: tok } = room.join(name, token, accounts.of(socket));
       socket.data = { code: room.s.code, playerId } satisfies SocketData;
       socket.join(room.s.code);
       socket.join(`p:${room.s.code}:${playerId}`);
@@ -168,6 +186,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('player:rename', handle(socket, (r, p, name) => r.renamePlayer(p, name)));
+  socket.on('bot:add', handle(socket, (r, p, skill) => botsFor(r).add(p, skill)));
+  socket.on('bot:skill', handle(socket, (r, p, id, skill) => botsFor(r).setSkill(p, id, skill)));
+  socket.on('bot:remove', handle(socket, (r, p, id) => botsFor(r).remove(p, id)));
   socket.on('settings:update', handle(socket, (r, p, patch) => r.updateSettings(p, patch ?? {})));
   socket.on('team:create', handle(socket, (r, p, name) => r.createTeam(p, name)));
   socket.on('team:rename', handle(socket, (r, p, teamId, name) => r.renameTeam(p, teamId, name)));
@@ -208,8 +229,13 @@ io.on('connection', (socket) => {
 setInterval(() => {
   const now = Date.now();
   for (const room of [...store.all()]) {
-    if (room.connectedCount() === 0 && now - room.s.lastActive > IDLE_ROOM_MS) store.delete(room.s.code);
+    if (room.connectedCount() === 0 && now - room.s.lastActive > IDLE_ROOM_MS) {
+      room.recordIfUnfinished();
+      store.delete(room.s.code);
+    }
   }
 }, 60_000).unref();
 
-http.listen(PORT, () => console.log(`Quiz bowl server on http://localhost:${PORT}`));
+accounts.init().finally(() => {
+  http.listen(PORT, () => console.log(`Quiz bowl server on http://localhost:${PORT} (accounts: ${accounts.ready ? accounts.kind : 'off'})`));
+});

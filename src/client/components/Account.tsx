@@ -1,0 +1,111 @@
+import { useEffect, useRef, useState } from 'react';
+import { PASSWORD_MIN, USERNAME_RE } from '../../shared/accounts';
+import { login, logout, signup, useAccount } from '../account';
+import '../accounts.css';
+
+/** Small check mark next to a logged-in player's name, linking to their profile. */
+export function Verified({ username }: { username?: string }) {
+  if (!username) return null;
+  return (
+    <a className="verified" href={`/u/${username}`} target="_blank" rel="noreferrer" title={`Signed in as @${username} · view profile`} aria-label={`Verified account @${username}, view profile`}>
+      <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M8 0l1.9 1.4 2.3-.2.8 2.2 2 1.2-.6 2.3.6 2.3-2 1.2-.8 2.2-2.3-.2L8 16l-1.9-1.4-2.3.2-.8-2.2-2-1.2.6-2.3L1 6.8l2-1.2.8-2.2 2.3.2L8 0zm-1 10.6l4.6-4.6-1-1L7 8.6 5.4 7l-1 1L7 10.6z" /></svg>
+    </a>
+  );
+}
+
+/** Log in / sign up buttons, or who you are when logged in. */
+export function AccountBar() {
+  const { me, loaded } = useAccount();
+  const [open, setOpen] = useState<null | 'login' | 'signup'>(null);
+  if (!loaded) return <div className="account-bar" />;
+  return (
+    <div className="account-bar">
+      {me ? (
+        <>
+          <a className="account-me" href={`/u/${me.username}`}>
+            <span className="avatar" aria-hidden="true">{me.displayName.slice(0, 1).toUpperCase()}</span>
+            <span>{me.displayName}</span>
+            <span className="muted small">@{me.username}</span>
+          </a>
+          <button className="btn ghost small" onClick={() => void logout()}>Log out</button>
+        </>
+      ) : (
+        <>
+          <span className="muted small grow">Playing as a guest</span>
+          <button className="btn ghost small" onClick={() => setOpen('login')}>Log in</button>
+          <button className="btn small" onClick={() => setOpen('signup')}>Sign up</button>
+        </>
+      )}
+      {open && <AccountDialog initial={open} onClose={() => setOpen(null)} />}
+    </div>
+  );
+}
+
+export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup'; onClose: () => void }) {
+  const [tab, setTab] = useState(initial);
+  const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const first = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { first.current?.focus(); setErr(null); }, [tab]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const u = username.trim();
+    if (tab === 'signup') {
+      if (!USERNAME_RE.test(u)) return setErr('Usernames are 3–20 letters, numbers or underscores.');
+      if (password.length < PASSWORD_MIN) return setErr(`Passwords need at least ${PASSWORD_MIN} characters.`);
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      if (tab === 'signup') await signup(u, password, displayName.trim() || u);
+      else await login(u, password);
+      onClose();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <form className="modal account-dialog" onSubmit={submit} aria-label={tab === 'signup' ? 'Create an account' : 'Log in'}>
+        <div className="tabs" role="tablist">
+          <button type="button" role="tab" aria-selected={tab === 'login'} className={tab === 'login' ? 'on' : ''} onClick={() => setTab('login')}>Log in</button>
+          <button type="button" role="tab" aria-selected={tab === 'signup'} className={tab === 'signup' ? 'on' : ''} onClick={() => setTab('signup')}>Sign up</button>
+        </div>
+        {tab === 'signup' && <p className="muted small">An account keeps your stats from every game on a public profile, puts a check mark by your name, and remembers your name and room settings on any device.</p>}
+        <label className="field">
+          <span>Username</span>
+          <input ref={first} value={username} maxLength={20} autoComplete="username" autoCapitalize="off" spellCheck={false} onChange={(e) => setUsername(e.target.value)} placeholder={tab === 'signup' ? 'letters, numbers, _' : ''} />
+        </label>
+        {tab === 'signup' && (
+          <label className="field">
+            <span>Display name <span className="muted">(what others see in games; optional)</span></span>
+            <input value={displayName} maxLength={24} onChange={(e) => setDisplayName(e.target.value)} placeholder={username || 'e.g. Alex'} />
+          </label>
+        )}
+        <label className="field">
+          <span>Password</span>
+          <input type="password" value={password} autoComplete={tab === 'signup' ? 'new-password' : 'current-password'} onChange={(e) => setPassword(e.target.value)} placeholder={tab === 'signup' ? `at least ${PASSWORD_MIN} characters` : ''} />
+        </label>
+        {err && <p className="error">{err}</p>}
+        <div className="row gap end">
+          <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn primary" disabled={busy || !username.trim() || !password}>{tab === 'signup' ? 'Create account' : 'Log in'}</button>
+        </div>
+        {tab === 'signup' && <p className="muted small">There’s no email reset yet, so pick a password you’ll remember.</p>}
+      </form>
+    </div>
+  );
+}
