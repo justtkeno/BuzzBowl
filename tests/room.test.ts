@@ -358,3 +358,82 @@ describe('host seat after a restart', () => {
     back.dispose();
   });
 });
+
+describe('reader as game master', () => {
+  function filterProvider(calls: string[][]): QuestionProvider {
+    let n = 0;
+    return {
+      nextTossup: async (f) => { calls.push([...f.categories]); return { ...TOSSUP, id: `t${++n}`, category: f.categories[0] ?? 'Science' }; },
+      nextBonus: async () => ({ ...BONUS, id: `b${++n}` }),
+    };
+  }
+
+  it('changes the questions mid-match: the current tossup stays, the next one uses the new filters', async () => {
+    const calls: string[][] = [];
+    const room = new Room('TEST', io, { qbreader: filterProvider(calls) });
+    const host = room.join('Host').playerId;
+    const reader = room.join('Reader').playerId;
+    room.setReader(reader, reader);
+    room.start(reader);
+    await flush();
+    await readTo(room, 2);
+    const current = room.s.tossup!.q.id;
+
+    expect(() => room.updateSettings(room.join('Player').playerId, { filters: { ...room.s.settings.filters, categories: ['History'] } })).toThrow(/host or reader/);
+    room.updateSettings(reader, { filters: { ...room.s.settings.filters, categories: ['History'] } });
+    await flush();
+    expect(room.s.tossup!.q.id).toBe(current);
+    expect(current).toBeTruthy();
+    expect(room.s.chat.at(-1)?.text).toMatch(/Reader changed the questions to QBReader: History\. They start with the next tossup\./);
+    expect(room.snapshot(reader).upcoming!.every((q) => q.category === 'History')).toBe(true);
+
+    room.next(reader); // skip ahead
+    await flush();
+    room.next(reader);
+    await flush();
+    expect(room.s.tossup!.q.category).toBe("History");
+
+    // Saving the same questions again does not post another note.
+    const notes = room.s.chat.length;
+    room.updateSettings(reader, { filters: { ...room.s.settings.filters } });
+    expect(room.s.chat.length).toBe(notes);
+    void host;
+  });
+
+  it('lets the reader manage teams and captains like the host', async () => {
+    const room = new Room('TEST', io, { qbreader: fakeProvider() });
+    const host = room.join('Host').playerId;
+    const a = room.join('A').playerId;
+    const b = room.join('B').playerId;
+    const reader = room.join('Reader').playerId;
+    room.updateSettings(host, { mode: 'teams' });
+    room.setReader(reader, reader);
+
+    room.createTeam(reader, 'Gamma');
+    const gamma = room.s.teams.find((t) => t.name === 'Gamma')!;
+    room.renameTeam(reader, gamma.id, 'Delta');
+    expect(gamma.name).toBe('Delta');
+    room.movePlayer(reader, a, gamma.id);
+    room.movePlayer(reader, b, gamma.id);
+    expect(gamma.playerIds).toEqual([a, b]);
+    room.makeCaptain(reader, b);
+    expect(gamma.playerIds[0]).toBe(b);
+    expect(() => room.movePlayer(reader, reader, gamma.id)).toThrow(/reader is not on a team/);
+    expect(() => room.movePlayer(a, b, null)).toThrow(/host or reader/);
+    room.movePlayer(reader, b, null);
+    expect(room.s.players.find((p) => p.id === b)!.teamId).toBeNull();
+    room.removeTeam(reader, gamma.id);
+    expect(room.s.teams.some((t) => t.id === gamma.id)).toBe(false);
+  });
+
+  it('lets the reader hand the seat to someone else', () => {
+    const room = new Room('TEST', io, { qbreader: fakeProvider() });
+    const host = room.join('Host').playerId;
+    const reader = room.join('Reader').playerId;
+    const next = room.join('Next').playerId;
+    room.setReader(reader, reader);
+    expect(() => room.setReader(host, next)).toThrow(/already reading/);
+    room.setReader(reader, next);
+    expect(room.s.readerId).toBe(next);
+  });
+});

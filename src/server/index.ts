@@ -264,6 +264,7 @@ io.on('connection', (socket) => {
   socket.on('team:remove', handle(socket, (r, p, teamId) => r.removeTeam(p, teamId)));
   socket.on('team:join', handle(socket, (r, p, teamId) => r.joinTeam(p, teamId)));
   socket.on('team:captain', handle(socket, (r, p, target) => r.makeCaptain(p, target)));
+  socket.on('team:move', handle(socket, (r, p, playerId, teamId) => r.movePlayer(p, String(playerId), teamId ? String(teamId) : null)));
   socket.on('reader:set', handle(socket, (r, p, target) => r.setReader(p, target ?? null)));
   socket.on('game:start', handle(socket, (r, p) => r.start(p)));
   socket.on('game:next', handle(socket, (r, p) => r.next(p)));
