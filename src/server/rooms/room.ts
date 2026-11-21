@@ -92,6 +92,8 @@ interface LiveTossup {
   paused: boolean;
   ended: boolean;
   bonusTeam: string | null;
+  /** Where the question came from (a question report names it). Missing in rooms saved before reports. */
+  source?: string;
 }
 
 interface LiveBuzz {
@@ -160,6 +162,8 @@ export interface RoomState {
   nextCategory?: string | null;
   /** Seat tokens and account ids that were banned from this room. */
   banned?: { tokens: string[]; accounts: string[] };
+  /** Review items (tossup numbers) each player reported, so their Report buttons say "Reported". */
+  reported?: Record<string, number[]>;
 }
 
 const rid =(n = 10) => Array.from({ length: n }, () => 'abcdefghijkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 32)]).join('');
@@ -817,7 +821,35 @@ export class Room {
   }
 
   private resetScores() {
-    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null, vote: null, nextCategory: null });
+    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], reported: {}, tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null, vote: null, nextCategory: null });
+  }
+
+  // ---------- question reports ----------
+
+  /**
+   * The question behind one of this room's review items, for a player's report. Only finished tossups are in the
+   * review, so nobody can report (or learn anything about) a question that is still being read.
+   */
+  reportTarget(by: string, num: unknown) {
+    const p = this.mustPlayer(by);
+    if (p.bot) fail('Bots can’t report questions.');
+    const item = this.s.review.find((r) => r.num === Number(num));
+    if (!item?.ref) fail('You can report a question once it has been read.');
+    if (this.s.reported?.[by]?.includes(item!.num)) fail('You already reported this question.');
+    const words = [...item!.words];
+    if (item!.powerIndex !== null && item!.powerIndex <= words.length) words.splice(item!.powerIndex, 0, '(*)');
+    return {
+      questionId: item!.ref!.id, source: item!.ref!.source, category: item!.category, subcategory: item!.subcategory,
+      setName: item!.setName ?? null, question: words.join(' '), answer: item!.answerHtml,
+    };
+  }
+
+  /** Remember that this player reported this review item (their Report button turns into "Reported"). */
+  markReported(by: string, num: number) {
+    const mine = ((this.s.reported ??= {})[by] ??= []);
+    if (!mine.includes(num)) mine.push(num);
+    this.s.lastActive = Date.now();
+    this.io.emitTo([by], 'state', this.snapshot(by));
   }
 
   end(by: string) {
@@ -978,7 +1010,7 @@ export class Room {
     const { words, powerIndex } = parseTossupText(q.question);
     this.s.tossup = {
       num: ++this.s.tossupNum, q, words, powerIndex, revealed: 0, revealTimes: [], locked: new Set(), markers: [],
-      paused: false, ended: false, bonusTeam: null,
+      paused: false, ended: false, bonusTeam: null, source: this.s.daily ? 'daily' : this.s.settings.source,
     };
     this.s.phase = 'reading';
     this.broadcast();
@@ -1219,6 +1251,7 @@ export class Room {
     this.s.review.unshift({
       num: t.num, category: t.q.category, subcategory: t.q.subcategory, setName: t.q.setName,
       words: t.words, powerIndex: t.powerIndex, answerHtml: safeAnswerHtml(t.q.answer), buzzes: t.markers,
+      ref: { id: t.q.id, source: t.source ?? (this.s.daily ? 'daily' : this.s.settings.source) },
     });
     if (this.s.review.length > 100) this.s.review.pop();
     t.bonusTeam = winnerTeam && this.s.settings.bonuses && this.s.settings.source !== 'lightning' ? winnerTeam : null;
@@ -1685,6 +1718,7 @@ export class Room {
       rulings: s.rulings.slice(-60),
       protests: s.protests.filter((p) => !p.resolved),
       review: s.review,
+      reported: viewer ? s.reported?.[viewer] ?? [] : [],
       tossupsRead: s.heard.length,
       uploadedCount: s.upload ? { tossups: s.upload.tossups.length, bonuses: s.upload.bonuses.length } : null,
       message: s.message,

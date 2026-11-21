@@ -250,6 +250,8 @@ export interface ReviewItem {
   powerIndex: number | null;
   answerHtml: string;
   buzzes: BuzzMarker[];
+  /** The question's own id and source, so a player's report can name it. */
+  ref?: { id: string; source: string };
 }
 
 export interface PublicState {
@@ -269,6 +271,8 @@ export interface PublicState {
   rulings: Ruling[];
   protests: Protest[];
   review: ReviewItem[];
+  /** Review items (tossup numbers) this viewer already reported. */
+  reported?: number[];
   tossupsRead: number;
   uploadedCount: { tossups: number; bonuses: number } | null;
   message: string | null;

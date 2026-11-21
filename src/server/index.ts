@@ -13,6 +13,8 @@ import { FileAccountStore, PgAccountStore } from './accounts/store';
 import { Daily, dailyNumber, dayKey, playerKeyFor } from './daily/daily';
 import { FileDailyStore, PgDailyStore } from './daily/store';
 import { QBReaderProvider } from './questions/providers';
+import { ReportError, Reports } from './reports/reports';
+import { FileReportStore, PgReportStore } from './reports/store';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -38,6 +40,9 @@ const daily = new Daily(
   process.env.DATABASE_URL ? new PgDailyStore(process.env.DATABASE_URL) : new FileDailyStore(join(DATA_DIR, `daily-${PORT}.json`)),
   new QBReaderProvider(),
 );
+// Players' reports of questions with a problem, for site admins to review.
+const reportStore = process.env.DATABASE_URL ? new PgReportStore(process.env.DATABASE_URL) : new FileReportStore(join(DATA_DIR, `reports-${PORT}.json`));
+const reports = new Reports(reportStore);
 
 // Profiles show each account's daily challenge record.
 accounts.profileExtras = async (u) => {
@@ -194,7 +199,7 @@ setInterval(() => saveRooms(), 3000).unref();
 // Bots watch every room a few times a second and buzz / answer when their moment comes.
 setInterval(() => { for (const room of store.all()) botsFor(room).tick(); }, 100).unref();
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); process.exit(0); });
+  process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); reportStore.flush(); process.exit(0); });
 }
 
 /** Last invite per sender and friend, so nobody can spam someone with invites. */
@@ -387,6 +392,52 @@ io.on('connection', (socket) => {
     ack({ ok: true });
   });
 
+  // Open question reports, grouped by question.
+  socket.on('site:reports', async (ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    try {
+      ack({ ok: true, ...(await reports.openGroups()) });
+    } catch (e) {
+      console.error('site:reports failed:', e);
+      ack({ ok: false, error: 'Could not load question reports.' });
+    }
+  });
+
+  // Close every open report of one question, as fixed (resolved) or not a problem (dismissed).
+  socket.on('site:resolveReport', async (p: { source?: unknown; questionId?: unknown; status?: unknown } | undefined, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    const admin = siteAdmin(ack);
+    if (!admin) return;
+    try {
+      const closed = await reports.resolve(p?.source, p?.questionId, p?.status, admin.username);
+      ack({ ok: true, closed });
+    } catch (e) {
+      if (!(e instanceof ReportError)) console.error('site:resolveReport failed:', e);
+      ack({ ok: false, error: e instanceof ReportError ? e.message : 'Could not update the reports.' });
+    }
+  });
+
+  // A player flags a finished question in their room. The client only names the review item; the room looks up the question.
+  socket.on('question:report', async (num: unknown, reason: unknown, note: unknown, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    const { code, playerId } = socket.data as SocketData;
+    const room = code ? store.get(code) : undefined;
+    const seat = room?.s.players.find((p) => p.id === playerId);
+    if (!room || !playerId || !seat) return ack({ ok: false, error: 'Join a room first.' });
+    try {
+      const target = room.reportTarget(playerId, num);
+      const a = accounts.of(socket);
+      const reporter = a ? { name: a.username, username: a.username, key: `a:${a.id}` } : { name: seat.name, username: null, key: `g:${room.s.code}:${playerId}` };
+      const added = await reports.submit(target, reporter, room.s.code, reason, note, [`s:${socket.id}`]);
+      room.markReported(playerId, Number(num));
+      ack({ ok: true, duplicate: !added });
+    } catch (e) {
+      const known = e instanceof ActionError || e instanceof ReportError;
+      if (!known) console.error('question:report failed:', e);
+      ack({ ok: false, error: known ? (e as Error).message : 'Could not send the report.' });
+    }
+  });
+
   // Invite a friend into the room you're in. They get a banner wherever they are on the site.
   socket.on('friend:invite', async (username: unknown, ack: Ack) => {
     if (typeof ack !== 'function') return;
@@ -479,6 +530,6 @@ setInterval(() => {
   }
 }, 60_000).unref();
 
-Promise.all([accounts.init(), daily.ready]).finally(() => {
+Promise.all([accounts.init(), daily.ready, reports.ready]).finally(() => {
   http.listen(PORT, () => console.log(`Quiz bowl server on http://localhost:${PORT} (accounts: ${accounts.ready ? accounts.kind : 'off'})`));
 });

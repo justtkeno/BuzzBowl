@@ -30,7 +30,7 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` + `
 3. **Start game.** Words appear as they are read. Press **Space** (or tap the big button) to buzz. Reading stops for everyone, you get 7 seconds to type, and others watch you type.
 4. Scoring (NAQT-style, all configurable): 15 for a correct buzz before the `(*)`, 10 after it, −5 for a wrong answer before the question ends, 0 after. One buzz per player (or per team) per tossup.
 5. In team mode, the team that converts the tossup gets a 3-part bonus. Teammates talk in **team chat**. The captain submits each part.
-6. Press **N** (or **Next tossup**) to continue. **Review** shows every finished question with full text, answer line, and where each player buzzed.
+6. Press **N** (or **Next tossup**) to continue. **Review** shows every finished question with full text, answer line, and where each player buzzed. Spot a problem (a missing accepted answer, a typo, the wrong category)? Tap **Report** under the answer.
 7. **End game** shows the summary: points, powers/tens/negs, points per tossup heard, average buzz depth, PPB, and a per-category breakdown.
 
 ### Party mode

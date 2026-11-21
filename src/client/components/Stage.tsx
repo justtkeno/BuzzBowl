@@ -5,6 +5,7 @@ import { socket } from '../socket';
 import { play } from '../sounds';
 import { readAloudActive, setSpeechOn, speechSupported, useSpeechOn } from '../speech';
 import { act, colorFor, isTouch, resultLabel, roles, useNow, vibrate } from './util';
+import { ReportQuestion } from './Report';
 
 export function Stage({ s }: { s: PublicState }) {
   const r = roles(s);
@@ -238,7 +239,10 @@ export function TossupCard({ s }: { s: PublicState }) {
       )}
 
       {(ended || r.isReader) && t.answerHtml && (
-        <div className="answer"><span className="label">ANSWER</span> <span dangerouslySetInnerHTML={{ __html: t.answerHtml }} /></div>
+        <div className="answer">
+          <span className="label">ANSWER</span> <span dangerouslySetInnerHTML={{ __html: t.answerHtml }} />
+          {ended && s.review.some((x) => x.num === t.num) && <> <ReportQuestion s={s} num={t.num} /></>}
+        </div>
       )}
       {!ended && !r.isReader && s.peek?.tossup && (
         <div className="peek" title="Only you can see this"><span aria-hidden="true">👀</span> <span dangerouslySetInnerHTML={{ __html: s.peek.tossup }} /></div>
