@@ -3,6 +3,7 @@ import { USERNAME_RE, type Friend, type FriendRequest, type FriendsList } from '
 import { removeFriend, sendFriendRequest, useFriends } from '../friends';
 import { call, socket } from '../socket';
 import { AccountDialog, Avatar as UserAvatar, CreatorBadge } from './Account';
+import { Icon } from './Icon';
 
 /** How often the list refreshes while the panel is open, and (for the tab's counts) while it's closed. */
 const OPEN_POLL_MS = 15_000;
@@ -105,7 +106,7 @@ export function FriendsTab({ onJoin, currentCode, hidden, disabled, canInvite }:
           <aside className="friends-drawer" ref={panel} tabIndex={-1} aria-label="Friends">
             <header className="friends-drawer-head">
               <h2>Friends</h2>
-              <button className="btn ghost small" onClick={() => setOpen(false)} aria-label="Close friends">✕</button>
+              <button className="btn ghost small" onClick={() => setOpen(false)} aria-label="Close friends"><Icon name="close" /></button>
             </header>
             {f.me ? (
               <FriendsPanel list={list} change={f.change} onJoin={join} currentCode={currentCode} disabled={disabled} newTab={!!currentCode} canInvite={canInvite} />
@@ -269,7 +270,7 @@ export function FriendButton({ username }: { username: string }) {
     <>
       {friend?.room && <a className="btn primary small" href={`/r/${friend.room.code}`} title={statusText(friend)}>Join their game</a>}
       {friend ? (
-        <button className="btn small" disabled={working} title="Remove friend" onClick={() => confirm(`Remove ${friend.displayName} from your friends?`) && void act(() => removeFriend(username))}>Friends ✓</button>
+        <button className="btn small" disabled={working} title="Remove friend" onClick={() => confirm(`Remove ${friend.displayName} from your friends?`) && void act(() => removeFriend(username))}>Friends <Icon name="check" /></button>
       ) : incoming ? (
         <button className="btn primary small" disabled={working} onClick={() => void act(() => sendFriendRequest(username))}>Accept friend request</button>
       ) : outgoing ? (
@@ -317,7 +318,7 @@ export function InviteBanner({ currentCode, onJoin, quiet }: { currentCode?: str
       <Avatar name={invite.from.displayName} status="room" />
       <span className="grow"><b>{invite.from.displayName}</b> invited you to play</span>
       <button className="btn primary small" onClick={join}>Join</button>
-      <button className="btn ghost small" onClick={() => setInvite(null)} aria-label="Dismiss invite">✕</button>
+      <button className="btn ghost small" onClick={() => setInvite(null)} aria-label="Dismiss invite"><Icon name="close" /></button>
     </div>
   );
 }

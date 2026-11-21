@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { PublicState } from '../../shared/types';
 import { useAccount } from '../account';
 import { act, toast, useNow } from './util';
+import { Icon } from './Icon';
 
 /**
  * Site-admin controls for the current room. Shown only to an admin who is logged in.
@@ -28,8 +29,8 @@ export function AdminPanel({ s, onClose, onPlayers }: { s: PublicState; onClose:
     <div className="modal-back" onClick={onClose}>
       <div className="modal admin-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Admin controls">
         <div className="row between">
-          <h2>🛡 Admin</h2>
-          <button className="btn ghost icon" onClick={onClose} aria-label="Close">✕</button>
+          <h2><Icon name="shield" /> Admin</h2>
+          <button className="btn ghost icon" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
         </div>
         <p className="muted small">Only you see this panel. Seat changes and renames show a note in chat. Peeking and freezing are secret.</p>
 
@@ -104,10 +105,10 @@ export function AdminPanel({ s, onClose, onPlayers }: { s: PublicState; onClose:
         {me && (
           <div className={`admin-lock ${me.adminLocked ? 'locked' : 'unlocked'}`}>
             {me.adminLocked ? (
-              <p>🔒 <b>Admin is locked to your account.</b> Only the account IDs set on this server have these powers.</p>
+              <p><Icon name="lock" /> <b>Admin is locked to your account.</b> Only the account IDs set on this server have these powers.</p>
             ) : (
               <>
-                <p>⚠️ <b>Admin isn’t locked yet.</b> This server gives admin to whoever holds the username <b>@{me.username}</b>. If its accounts are ever wiped, the next person to sign up with that name would get these powers.</p>
+                <p><Icon name="shield" /> <b>Admin isn’t locked yet.</b> This server gives admin to whoever holds the username <b>@{me.username}</b>. If its accounts are ever wiped, the next person to sign up with that name would get these powers.</p>
                 <p className="small">To lock it to this exact account, set this on the server (for example in Render’s Environment settings), then restart it:</p>
                 {showId ? (
                   <div className="row gap">

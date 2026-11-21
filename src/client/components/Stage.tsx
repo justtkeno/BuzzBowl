@@ -7,6 +7,7 @@ import { play } from '../sounds';
 import { readAloudActive, setSpeechOn, speechSupported, useSpeechOn } from '../speech';
 import { act, colorFor, isTouch, resultLabel, roles, useNow, vibrate } from './util';
 import { ReportQuestion } from './Report';
+import { Icon } from './Icon';
 
 export function Stage({ s }: { s: PublicState }) {
   const r = roles(s);
@@ -82,9 +83,9 @@ export function Stage({ s }: { s: PublicState }) {
 
   return (
     <div className="stage">
-      {s.phase === 'loading' && <div className="card center muted">Loading question…</div>}
-      {t && !inBonus && s.phase !== 'loading' && <TossupCard s={s} />}
-      {inBonus && <BonusCard s={s} />}
+      {s.phase === 'loading' && <QuestionSkeleton />}
+      {t && !inBonus && s.phase !== 'loading' && <TossupCard key={`t${s.tossup!.num}`} s={s} />}
+      {inBonus && <BonusCard key={`b${s.bonus!.num}`} s={s} />}
 
       <div className="actionbar">
         <input ref={keeper} className="keyboard-keeper" aria-hidden="true" tabIndex={-1} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
@@ -140,6 +141,30 @@ function VotePanel({ s }: { s: PublicState }) {
   );
 }
 
+/** Shown while the next question loads: a faint outline of the question card instead of a line of text. */
+export function QuestionSkeleton() {
+  return (
+    <div className="card tossup skel" role="status" aria-label="Loading question">
+      <div className="meta"><span className="skel-bar" style={{ width: '4.5rem' }} /><span className="skel-bar" style={{ width: '6rem' }} /></div>
+      <div className="skel-lines">
+        <span className="skel-bar" /><span className="skel-bar" /><span className="skel-bar" style={{ width: '62%' }} />
+      </div>
+    </div>
+  );
+}
+
+/** Hairline along the top of the question card: how much has been read. After the tossup, a tick marks the (*). */
+function ReadLine({ read, total, power }: { read: number; total: number; power?: number | null }) {
+  if (!total) return null;
+  const pct = (n: number) => `${Math.min(100, (n / total) * 100)}%`;
+  return (
+    <div className="read-line" aria-hidden="true">
+      <div className="read-fill" style={{ width: pct(read) }} />
+      {power != null && power > 0 && <span className="read-power" style={{ left: pct(power) }} />}
+    </div>
+  );
+}
+
 /** This device only: turn the read-aloud voice on or off. */
 function SpeakerToggle() {
   const on = useSpeechOn();
@@ -170,7 +195,7 @@ function Countdown({ deadline, total, ticks, frozen }: { deadline: number | null
   const level = frac > 0.5 ? 'ok' : frac > 0.25 ? 'mid' : 'low';
   return (
     <div className={`countdown cd-${level}`} aria-label={`${secs} seconds left`}>
-      <div className="bar" style={{ width: `${frac * 100}%` }} />
+      <div className="cd-track"><div className="bar" style={{ width: `${frac * 100}%` }} /></div>
       <span>{(left / 1000).toFixed(1)}s</span>
     </div>
   );
@@ -216,9 +241,10 @@ export function TossupCard({ s }: { s: PublicState }) {
   const hidden = !t.textVisible && !ended && !teleprompter;
 
   return (
-    <div className="card tossup">
+    <div className={`card tossup ${s.phase === 'reading' ? 'is-live' : ''}`}>
+      {!hidden && <ReadLine read={ended ? t.totalWords : t.revealed.length} total={t.totalWords} power={ended ? t.powerIndex : null} />}
       <div className="meta">
-        <span className="tag">{s.settings.source === 'lightning' ? `⚡ Lightning ${t.num}` : `Tossup ${t.num}`}{!s.daily && !s.survival && s.settings.gameLength ? ` of ${s.settings.gameLength}` : ''}</span>
+        <span className="tag">{s.settings.source === 'lightning' ? <><Icon name="bolt" /> Lightning {t.num}</> : `Tossup ${t.num}`}{!s.daily && !s.survival && s.settings.gameLength ? ` of ${s.settings.gameLength}` : ''}</span>
         <CategoryChip category={t.category} sub={t.subcategory} />
         {t.difficulty ? <span className="muted">{DIFFICULTIES[t.difficulty] ?? `Level ${t.difficulty}`}</span> : null}
         {t.setName && <span className="muted hide-sm">{t.setName}{t.year ? ` (${t.year})` : ''}</span>}
@@ -227,7 +253,7 @@ export function TossupCard({ s }: { s: PublicState }) {
 
       {hidden ? (
         <div className="listen">
-          <div className="listen-icon">🎙</div>
+          <div className="listen-icon"><Icon name="mic" /></div>
           <p>Listen to the reader{s.readerId ? ` (${s.players.find((p) => p.id === s.readerId)?.name})` : ''}. Buzz when you know it.</p>
           <div className="progress"><div style={{ width: `${(t.revealed.length / Math.max(1, t.totalWords)) * 100}%` }} /></div>
           <BuzzMap buzzes={t.buzzes} totalWords={t.totalWords} revealed={t.revealed.length} order={s.players.map((p) => p.id)} />
@@ -259,7 +285,7 @@ export function TossupCard({ s }: { s: PublicState }) {
         </div>
       )}
       {!ended && !r.isReader && s.peek?.tossup && (
-        <div className="peek" title="Only you can see this"><span aria-hidden="true">👀</span> <span dangerouslySetInnerHTML={{ __html: s.peek.tossup }} /></div>
+        <div className="peek" title="Only you can see this"><Icon name="eye" /> <span dangerouslySetInnerHTML={{ __html: s.peek.tossup }} /></div>
       )}
       {ended && t.buzzes.length > 0 && <BuzzMap buzzes={t.buzzes} totalWords={t.totalWords} powerIndex={t.powerIndex} order={s.players.map((p) => p.id)} />}
 
@@ -410,16 +436,43 @@ function ReaderControls({ s }: { s: PublicState }) {
   // Lightning round with no reader shows each prompt all at once, so word-by-word controls don't apply.
   const instant = s.settings.source === 'lightning' && !roles(s).readerOnline;
   useEffect(() => setWpm(s.settings.wpm), [s.settings.wpm]);
+  const [speedOpen, setSpeedOpen] = useState(false);
+  const saveWpm = () => act('settings:update', { wpm });
+  // A host who isn't reading aloud rarely needs these: a slim row of small buttons instead of the reader's panel.
+  if (!roles(s).isReader) {
+    return (
+      <div className="host-tools" role="toolbar" aria-label="Host controls">
+        <button className="btn ghost small icon" onClick={() => act('game:pause', !t.paused)} title={t.paused ? 'Resume reading (Space)' : 'Pause reading (Space)'} aria-label={t.paused ? 'Resume reading' : 'Pause reading'}>
+          <Icon name={t.paused ? 'play' : 'pause'} />
+        </button>
+        {!instant && (
+          <>
+            <button className="btn ghost small icon" onClick={() => act('game:revealTo', t.revealed.length + 1)} disabled={t.revealed.length >= t.totalWords} title="Next word (→)" aria-label="Next word">
+              <Icon name="next" />
+            </button>
+            <button className={`btn ghost small ${speedOpen ? 'on' : ''}`} onClick={() => setSpeedOpen(!speedOpen)} aria-expanded={speedOpen} title="Reading speed">{wpm} wpm</button>
+            {speedOpen && (
+              <input className="host-speed" type="range" min={100} max={600} step={10} value={wpm} aria-label="Reading speed"
+                onChange={(e) => setWpm(Number(e.target.value))} onPointerUp={saveWpm} onKeyUp={saveWpm} />
+            )}
+          </>
+        )}
+        <button className="btn ghost small icon" onClick={() => act('game:next')} title="Skip this tossup (N)" aria-label="Skip this tossup">
+          <Icon name="skip" />
+        </button>
+      </div>
+    );
+  }
   return (
     <div className="reader-controls">
-      <button className="btn" onClick={() => act('game:pause', !t.paused)}>{t.paused ? '▶ Resume' : '❚❚ Pause'} <kbd>Space</kbd></button>
+      <button className="btn" onClick={() => act('game:pause', !t.paused)}>{t.paused ? <><Icon name="play" /> Resume</> : <><Icon name="pause" /> Pause</>} <kbd>Space</kbd></button>
       {!instant && (
         <>
           <button className="btn" onClick={() => act('game:revealTo', t.revealed.length + 1)} disabled={t.revealed.length >= t.totalWords}>Next word <kbd>→</kbd></button>
           <label className="wpm">
             <span>{wpm} wpm</span>
             <input type="range" min={100} max={600} step={10} value={wpm} onChange={(e) => setWpm(Number(e.target.value))}
-              onPointerUp={() => act('settings:update', { wpm })} onKeyUp={() => act('settings:update', { wpm })} />
+              onPointerUp={saveWpm} onKeyUp={saveWpm} />
           </label>
         </>
       )}
@@ -457,7 +510,7 @@ export function BonusCard({ s }: { s: PublicState }) {
               {(p.answerHtml || p.readerAnswer) && (
                 <div className="answer small"><span className="label">ANSWER</span> <span dangerouslySetInnerHTML={{ __html: p.answerHtml ?? p.readerAnswer }} /></div>
               )}
-              {p.given !== undefined && <div className="given">{bn.teamName}: “{p.given || '—'}” {p.correct ? '✓' : '✗'}{p.correctedTo && <span className="corrected"> read as <b>{p.correctedTo}</b></span>}</div>}
+              {p.given !== undefined && <div className="given">{bn.teamName}: “{p.given || '—'}” {p.correct ? <Icon name="check" className="ok" /> : <Icon name="close" className="bad" />}{p.correctedTo && <span className="corrected"> read as <b>{p.correctedTo}</b></span>}</div>}
             </li>
           );
         })}
@@ -478,7 +531,7 @@ export function BonusCard({ s }: { s: PublicState }) {
         ? <RulingBox given={bn.awaitingRuling.given} suggestion={bn.awaitingRuling.suggestion} />
         : <div className="status muted">“{bn.awaitingRuling.given}” — waiting for the reader’s ruling</div>)}
       {!r.isReader && !bn.revealing && !bn.done && s.peek?.bonus?.[bn.current] && (
-        <div className="peek" title="Only you can see this"><span aria-hidden="true">👀</span> <span dangerouslySetInnerHTML={{ __html: s.peek.bonus[bn.current] }} /></div>
+        <div className="peek" title="Only you can see this"><Icon name="eye" /> <span dangerouslySetInnerHTML={{ __html: s.peek.bonus[bn.current] }} /></div>
       )}
       {bn.done && <div className="end-line">Bonus total: <b>{bn.parts.filter((p) => p.correct).length * s.settings.bonusPartValue}</b></div>}
     </div>

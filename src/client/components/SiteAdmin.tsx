@@ -3,6 +3,7 @@ import type { Mode, Phase } from '../../shared/types';
 import { adminUnlockBadges, useAccount } from '../account';
 import { call } from '../socket';
 import { REPORT_REASONS, type ReportGroup } from '../../shared/reports';
+import { Icon } from './Icon';
 
 interface RoomRow {
   code: string; phase: Phase; mode: Mode; paused: boolean; lastActive: number;
@@ -72,8 +73,8 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
     <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal admin-panel site-admin" role="dialog" aria-label="Site admin">
         <div className="row between">
-          <h2>🛡 Site admin</h2>
-          <button className="btn ghost icon" onClick={onClose} aria-label="Close">✕</button>
+          <h2><Icon name="shield" /> Site admin</h2>
+          <button className="btn ghost icon" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
         </div>
         <p className="muted small">
           {o ? <>{o.connections} open screen{o.connections === 1 ? '' : 's'} · {o.accounts} signed in · {live.length} active room{live.length === 1 ? '' : 's'}</> : 'Loading…'}

@@ -23,6 +23,7 @@ import { Stage } from './Stage';
 import { Summary } from './Summary';
 import { act, roles, toast } from './util';
 import { useReadAloud } from '../speech';
+import { Icon } from './Icon';
 
 interface Props {
   state: PublicState; chat: ChatMessage[]; connected: boolean;
@@ -129,14 +130,14 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         <div className="grow" />
         {r.isController && midGame && !r.fixed && (
           <button className={`btn ${s.paused ? 'primary' : 'ghost'} pause-btn`} onClick={() => act('game:hold', !s.paused)} title={s.paused ? 'Resume the game' : 'Pause the whole game'}>
-            {s.paused ? '▶ Resume' : '❚❚'}<span className="hide-sm">{s.paused ? '' : ' Pause'}</span>
+            {s.paused ? <><Icon name="play" /> Resume</> : <Icon name="pause" />}<span className="hide-sm">{s.paused ? '' : ' Pause'}</span>
           </button>
         )}
-        {canModerate && <button className="btn ghost hide-sm" onClick={() => setShowPlayers(true)} title="Kick, ban or mute players">👥 Players</button>}
-        {isAdmin && <button className="btn ghost hide-sm" onClick={() => setShowAdmin(true)} title="Admin tools">🛡 Admin</button>}
+        {canModerate && <button className="btn ghost hide-sm" onClick={() => setShowPlayers(true)} title="Kick, ban or mute players"><Icon name="users" /> Players</button>}
+        {isAdmin && <button className="btn ghost hide-sm" onClick={() => setShowAdmin(true)} title="Admin tools"><Icon name="shield" /> Admin</button>}
         <button className="btn ghost hide-sm" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
         {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Settings</button>}
-        <button className="btn ghost hide-sm" onClick={toggleSound} title={sound ? 'Turn sound effects off' : 'Turn sound effects on'} aria-label={sound ? 'Sound on' : 'Sound off'} aria-pressed={sound}>{sound ? '🔊' : '🔇'}</button>
+        <button className="btn ghost hide-sm" onClick={toggleSound} title={sound ? 'Turn sound effects off' : 'Turn sound effects on'} aria-label={sound ? 'Sound on' : 'Sound off'} aria-pressed={sound}>{sound ? <Icon name="volume" /> : <Icon name="mute" />}</button>
         <button className="btn ghost hide-sm" title="Switch theme (auto / dark / light)" onClick={() => setTheme(cycleTheme())}>{theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}</button>
         <button className="btn ghost hide-sm" title={`Question text size: ${TEXT_SIZE_LABEL[textSize]}`} aria-label={`Question text size: ${TEXT_SIZE_LABEL[textSize]}`} onClick={() => setTextSize(cycleTextSize())}>Aa</button>
         <button className="btn ghost hide-sm" onClick={leave}>Leave</button>
@@ -146,17 +147,17 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
             <>
               <div className="menu-back" onClick={() => setMenu(false)} />
               <div className="menu" role="menu" onClick={() => setMenu(false)}>
-                {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}>📷 Invite (QR code)</button>}
-                <button role="menuitem" onClick={() => setShowReview(true)}>📜 Review questions{s.review.length ? ` (${s.review.length})` : ''}</button>
-                {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}>⚙️ Settings</button>}
-                {!r.fixed && <button role="menuitem" onClick={openBigScreen}>📺 Big-screen view</button>}
-                <button role="menuitem" onClick={toggleSound}>{sound ? '🔇 Sound off' : '🔊 Sound on'}</button>
-                <button role="menuitem" onClick={() => setTheme(cycleTheme())}>🌓 Theme: {theme}</button>
-                <button role="menuitem" onClick={(e) => { e.stopPropagation(); setTextSize(cycleTextSize()); }}>🔠 Text size: {TEXT_SIZE_LABEL[textSize]}</button>
-                {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}>👥 Players</button>}
-                {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}>🛡 Admin</button>}
-                {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}>🏁 {s.survival ? 'End run' : 'End game'}</button>}
-                <button role="menuitem" onClick={leave}>🚪 Leave room</button>
+                {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}><Icon name="qr" /> Invite (QR code)</button>}
+                <button role="menuitem" onClick={() => setShowReview(true)}><Icon name="list" /> Review questions{s.review.length ? ` (${s.review.length})` : ''}</button>
+                {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}><Icon name="sliders" /> Settings</button>}
+                {!r.fixed && <button role="menuitem" onClick={openBigScreen}><Icon name="screen" /> Big-screen view</button>}
+                <button role="menuitem" onClick={toggleSound}>{sound ? <><Icon name="mute" /> Sound off</> : <><Icon name="volume" /> Sound on</>}</button>
+                <button role="menuitem" onClick={() => setTheme(cycleTheme())}><Icon name="contrast" /> Theme: {theme}</button>
+                <button role="menuitem" onClick={(e) => { e.stopPropagation(); setTextSize(cycleTextSize()); }}><Icon name="text" /> Text size: {TEXT_SIZE_LABEL[textSize]}</button>
+                {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}><Icon name="users" /> Players</button>}
+                {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}><Icon name="shield" /> Admin</button>}
+                {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}><Icon name="flag" /> {s.survival ? 'End run' : 'End game'}</button>}
+                <button role="menuitem" onClick={leave}><Icon name="leave" /> Leave room</button>
               </div>
             </>
           )}
@@ -177,7 +178,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
           {r.isReader && midGame && (
             <div className="row gap end reader-end">
               <button className="btn ghost small hide-sm" onClick={openBigScreen}>Big-screen view</button>
-              <button className="btn" onClick={() => { if (confirm('End the match now and show the final scores?')) act('game:end'); }}>🏁 End match</button>
+              <button className="btn" onClick={() => { if (confirm('End the match now and show the final scores?')) act('game:end'); }}><Icon name="flag" /> End match</button>
             </div>
           )}
           {r.isReader && (s.phase === 'lobby' || midGame) && <ReaderQueue s={s} onChangeQuestions={r.fixed ? undefined : () => setShowQuestions(true)} />}
@@ -191,7 +192,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
 
         {drawer && <div className="drawer-back" onClick={() => setDrawer(false)} />}
         <aside className={`side-col ${drawer ? 'drawer-open' : ''}`} aria-label="Scores, chat and rulings">
-          <div className="drawer-handle show-sm"><button className="btn ghost small" onClick={() => setDrawer(false)} aria-label="Close">Close ✕</button></div>
+          <div className="drawer-handle show-sm"><button className="btn ghost small" onClick={() => setDrawer(false)} aria-label="Close">Close <Icon name="close" /></button></div>
           <div className="tabs">
             <button className={tab === 'board' ? 'on' : ''} onClick={() => setTab('board')}>Scores</button>
             <button className={tab === 'chat' ? 'on' : ''} onClick={() => setTab('chat')}>Chat{unread ? <span className="dot">{unread}</span> : null}</button>
@@ -210,7 +211,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
       {s.paused && (
         <div className="paused-overlay" role="status">
           <div>
-            ❚❚ Game paused
+            <Icon name="pause" /> Game paused
             <small>{r.isController ? 'Timers are frozen until you resume.' : 'Waiting for the host to resume.'}</small>
             {r.isController && <button className="btn primary big" onClick={() => act('game:hold', false)}>▶ Resume</button>}
           </div>
@@ -316,7 +317,7 @@ function MobileStrip({ s, unread, protests, onOpen }: { s: PublicState; unread: 
             <AnimatedScore value={mine.pts} className="ms-pts" />
             <span className="ms-sub">{ordinal(rank + 1)} of {sides.length}{me && me.streak >= 2 ? ` · ${me.streak} in a row` : ''}</span>
           </>
-        ) : <span className="ms-sub">{r.isReader ? '🎙 Reading' : 'Spectating'}</span>}
+        ) : <span className="ms-sub">{r.isReader ? <><Icon name="mic" /> Reading</> : 'Spectating'}</span>}
         {leader && leader.id !== mineId && <span className="ms-lead">Leader: {leader.name} {leader.pts}</span>}
       </button>
       <button className="btn ms-btn" onClick={() => onOpen('board')}>Scores</button>

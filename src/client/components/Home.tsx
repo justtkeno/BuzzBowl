@@ -8,6 +8,7 @@ import { DailyCard } from './Daily';
 import { SurvivalCard } from './Survival';
 import { FriendsTab } from './Friends';
 import { InstallButton } from './InstallButton';
+import { Icon } from './Icon';
 
 interface Props {
   initialCode: string | null;
@@ -50,7 +51,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
           <span>Display name</span>
           <div className="row gap">
             <input className="grow" autoFocus value={name} maxLength={24} placeholder="e.g. Alex" onChange={(e) => setName(e.target.value)} onFocus={(e) => e.target.select()} />
-            <button type="button" className="btn" title="Pick a random name" aria-label="Pick a random name" onClick={() => setName(randomName())}>🎲</button>
+            <button type="button" className="btn" title="Pick a random name" aria-label="Pick a random name" onClick={() => setName(randomName())}><Icon name="dice" /></button>
           </div>
         </label>
 

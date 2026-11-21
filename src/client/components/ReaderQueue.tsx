@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { PublicState, UpcomingTossup } from '../../shared/types';
 import { DIFFICULTIES } from '../../shared/types';
 import { act } from './util';
+import { Icon } from './Icon';
 
 /** Reader only: the next tossups in line, with the answer, so the reader can skip any before reading it. */
 export function ReaderQueue({ s, onChangeQuestions }: { s: PublicState; onChangeQuestions?: () => void }) {
@@ -12,7 +13,7 @@ export function ReaderQueue({ s, onChangeQuestions }: { s: PublicState; onChange
     <section className="card reader-queue" aria-label="Upcoming tossups">
       <div className="row between rq-top">
         <h3>Up next</h3>
-        {onChangeQuestions && <button className="btn small" onClick={onChangeQuestions}>📚 Change questions</button>}
+        {onChangeQuestions && <button className="btn small" onClick={onChangeQuestions}><Icon name="sliders" /> Change questions</button>}
       </div>
       <p className="muted small rq-filters">Drawing from <b>{questionsSummary(s)}</b></p>
       <p className="muted small">Only you can see this. Skip any question you don’t want to read.</p>
@@ -30,7 +31,7 @@ export function ReaderQueue({ s, onChangeQuestions }: { s: PublicState; onChange
 
 function questionsSummary(s: PublicState) {
   const { source, filters: f } = s.settings;
-  const src = { qbreader: 'QBReader', sample: 'Built-in questions', upload: 'Uploaded packet', lightning: '⚡ Lightning round' }[source] ?? source;
+  const src = { qbreader: 'QBReader', sample: 'Built-in questions', upload: 'Uploaded packet', lightning: 'Lightning round' }[source] ?? source;
   const cats = f.subcategories.length ? f.subcategories.join(', ') : f.categories.length ? f.categories.join(', ') : 'all categories';
   const diff = (source === 'qbreader' || source === 'lightning') && f.difficulties.length ? ` · difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}` : '';
   return `${src} · ${cats}${diff}`;

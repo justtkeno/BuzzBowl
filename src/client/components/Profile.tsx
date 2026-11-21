@@ -12,6 +12,7 @@ import { useTheme } from '../App';
 import { AccountBar, Avatar, CreatorBadge, tint } from './Account';
 import { FriendButton, FriendsTab, InviteBanner } from './Friends';
 import { Marks } from './Daily';
+import { Icon } from './Icon';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -64,7 +65,7 @@ export function Profile({ username }: { username: string }) {
                 <h1>{p.displayName} <span className="verified" title="Verified Trivio account"><Check /></span>{p.admin && <CreatorBadge />}</h1>
                 <div className="muted small">@{p.username} · joined {new Date(p.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
                 {!isLocked(p) && p.visibility && p.visibility !== 'public' && !editing && (
-                  <div className="visibility-note small">🔒 {p.visibility === 'private' ? (mine ? 'Private: only you can see your stats' : 'Private profile · you can see it as an admin') : (mine ? 'Friends only: only your friends can see your stats' : 'Friends-only profile · you can see it as an admin')}</div>
+                  <div className="visibility-note small"><Icon name="lock" /> {p.visibility === 'private' ? (mine ? 'Private: only you can see your stats' : 'Private profile · you can see it as an admin') : (mine ? 'Friends only: only your friends can see your stats' : 'Friends-only profile · you can see it as an admin')}</div>
                 )}
                 {!isLocked(p) && (editing ? <EditProfile p={p} onPreview={setPreview} onDone={(np) => { if (np) setP(np); setEditing(false); setPreview(null); }} /> : p.bio && <p className="bio">{p.bio}</p>)}
               </div>
@@ -77,7 +78,7 @@ export function Profile({ username }: { username: string }) {
 
             {isLocked(p) ? (
               <section className="card locked-card">
-                <h2>🔒 {p.locked === 'private' ? 'This profile is private' : 'Friends only'}</h2>
+                <h2><Icon name="lock" /> {p.locked === 'private' ? 'This profile is private' : 'Friends only'}</h2>
                 <p className="muted">{p.locked === 'private' ? `${p.displayName} keeps their stats, badges and games to themselves.` : `Only ${p.displayName}’s friends can see their stats, badges and games. ${me ? 'Add them as a friend to see more.' : 'Log in and add them as a friend to see more.'}`}</p>
               </section>
             ) : (
@@ -203,7 +204,7 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
             );
           })}
         </div>
-        {hint?.kind === 'color' && <span className="reward-hint small">🔒 {hint.text}</span>}
+        {hint?.kind === 'color' && <span className="reward-hint small"><Icon name="lock" /> {hint.text}</span>}
       </div>
       <div className="field">
         <span>Avatar frame <span className="muted">· {frameById(frame).name}</span></span>
@@ -221,7 +222,7 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
             );
           })}
         </div>
-        {hint?.kind === 'frame' ? <span className="reward-hint small">🔒 {hint.text}</span> : <span className="muted small">Earn badges to unlock more colors and frames.</span>}
+        {hint?.kind === 'frame' ? <span className="reward-hint small"><Icon name="lock" /> {hint.text}</span> : <span className="muted small">Earn badges to unlock more colors and frames.</span>}
       </div>
       {err && <p className="error">{err}</p>}
       <div className="row gap"><button className="btn primary small" disabled={busy || !displayName.trim()}>Save</button><button type="button" className="btn ghost small" onClick={() => onDone(null)}>Cancel</button></div>
@@ -246,7 +247,7 @@ function AdminCard({ p, onChange, onDeleted }: { p: PublicProfile; onChange: (p:
   });
   return (
     <section className="card admin-card">
-      <h2>👑 Admin</h2>
+      <h2><Icon name="crown" /> Admin</h2>
       <p className="muted small">Only you can see this. Use it for offensive names or bios, or accounts that shouldn’t exist.</p>
       <div className="row gap">
         <button className="btn small" disabled={busy || p.displayName === p.username} onClick={() => reset(true, false)}>Reset display name</button>
@@ -438,7 +439,7 @@ function Pinned({ p, color, mine, onEdit }: { p: PublicProfile; color: string; m
   const stats = p.pinned.map((id) => PIN_STATS.find((s) => s.id === id)).filter((s) => !!s);
   if (!stats.length) {
     return mine ? (
-      <button className="pin-empty" onClick={onEdit}>📌 Pin up to {PIN_MAX} stats to the top of your profile</button>
+      <button className="pin-empty" onClick={onEdit}><Icon name="pin" /> Pin up to {PIN_MAX} stats to the top of your profile</button>
     ) : null;
   }
   return (
