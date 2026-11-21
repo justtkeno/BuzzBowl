@@ -6,12 +6,12 @@ const SET = 'Trivio Lightning';
  * One lightning question: a short prompt, read all at once, with no power mark.
  * Difficulty uses the same 1–10 scale as everything else (1 Middle School … 7 Medium College).
  */
-const lq = (id: string, category: string, subcategory: string, question: string, answer: string, difficulty: number): Tossup =>
-  ({ id: `lt-${id}`, category, subcategory, question, answer, difficulty, setName: SET, year: 2026 });
+const lq = (id: string, category: string, subcategory: string, question: string, answer: string, difficulty: number, topics?: string[]): Tossup =>
+  ({ id: `lt-${id}`, category, subcategory, question, answer, difficulty, setName: SET, year: 2026, ...(topics ? { topics } : {}) });
 
 const L = 'Literature', H = 'History', S = 'Science', A = 'Fine Arts';
 
-export const LIGHTNING: Tossup[] = [
+const ALL: Tossup[] = [
   // ---------------- Literature ----------------
   lq('lit-1', L, 'American Literature', 'Who wrote "Adventures of Huckleberry Finn"?', 'Mark <b><u>Twain</u></b> [or Samuel <b><u>Clemens</u></b>]', 1),
   lq('lit-2', L, 'American Literature', 'Who wrote the novel "The Great Gatsby"?', 'F. Scott <b><u>Fitzgerald</u></b>', 2),
@@ -252,4 +252,76 @@ export const LIGHTNING: Tossup[] = [
   lq('pop-41', 'Pop Culture', 'Sports', 'Which country has won the most men\'s FIFA World Cups?', '<b><u>Brazil</u></b>', 3),
   lq('pop-42', 'Pop Culture', 'Sports', 'In basketball, how many points is a shot from beyond the arc worth?', '<b><u>three</u></b> [or <b><u>3</u></b>]', 1),
   lq('pop-43', 'Pop Culture', 'Sports', 'What is golfer Tiger Woods\'s actual first name?', '<b><u>Eldrick</u></b>', 6),
+  // ---------------- Topics (shared/topics.ts) ----------------
+  lq('food-1', 'Pop Culture', 'Other Pop Culture', 'Which Italian dish is a flatbread topped with tomato sauce and cheese?', '<b><u>pizza</u></b>', 1, ['food']),
+  lq('food-2', 'Pop Culture', 'Other Pop Culture', 'Which fruit is the main ingredient in guacamole?', '<b><u>avocado</u></b>', 1, ['food']),
+  lq('food-3', 'Pop Culture', 'Other Pop Culture', 'Which grain is used to make sushi?', '<b><u>rice</u></b>', 1, ['food']),
+  lq('food-4', 'Pop Culture', 'Other Pop Culture', 'What legume is the main ingredient in hummus?', '<b><u>chickpeas</u></b> [or <b><u>garbanzo</u></b> beans]', 2, ['food']),
+  lq('food-5', 'Pop Culture', 'Other Pop Culture', 'Which country is famous for the rice dish paella?', '<b><u>Spain</u></b>', 2, ['food']),
+  lq('food-6', 'Pop Culture', 'Other Pop Culture', 'What drink is made by fermenting grape juice?', '<b><u>wine</u></b>', 2, ['food']),
+  lq('food-7', 'Pop Culture', 'Other Pop Culture', 'Kimchi, a spicy fermented cabbage dish, comes from which country?', '<b><u>Korea</u></b> [or South <b><u>Korea</u></b>]', 3, ['food']),
+  lq('food-8', 'Pop Culture', 'Other Pop Culture', 'Which nut is ground to make marzipan?', '<b><u>almond</u></b>s', 4, ['food']),
+  lq('food-9', 'Pop Culture', 'Other Pop Culture', 'Which spice, taken from crocus flowers, is the most expensive by weight?', '<b><u>saffron</u></b>', 4, ['food']),
+  lq('food-10', 'Pop Culture', 'Other Pop Culture', 'What Japanese word names the savory "fifth taste"?', '<b><u>umami</u></b>', 5, ['food']),
+  lq('animals-1', 'Science', 'Biology', 'How many legs does a spider have?', '<b><u>eight</u></b> [or <b><u>8</u></b>]', 1, ['animals']),
+  lq('animals-2', 'Science', 'Biology', 'Which black-and-white bear eats mostly bamboo?', 'giant <b><u>panda</u></b>', 1, ['animals']),
+  lq('animals-3', 'Science', 'Biology', 'What is the tallest animal in the world?', '<b><u>giraffe</u></b>', 1, ['animals']),
+  lq('animals-4', 'Science', 'Biology', 'What is the largest animal that has ever lived?', '<b><u>blue whale</u></b>', 2, ['animals']),
+  lq('animals-5', 'Science', 'Biology', 'What is a baby kangaroo called?', '<b><u>joey</u></b>', 2, ['animals']),
+  lq('animals-6', 'Science', 'Biology', 'What is a group of lions called?', 'a <b><u>pride</u></b>', 2, ['animals']),
+  lq('animals-7', 'Science', 'Biology', 'Which animal is called the "ship of the desert"?', '<b><u>camel</u></b>', 2, ['animals']),
+  lq('animals-8', 'Science', 'Biology', 'Which egg-laying mammal has a duck-like bill?', '<b><u>platypus</u></b>', 3, ['animals']),
+  lq('animals-9', 'Science', 'Biology', 'What is the only mammal capable of true flight?', '<b><u>bat</u></b>', 3, ['animals']),
+  lq('animals-10', 'Science', 'Biology', 'Which bird is the fastest animal on Earth in a dive?', '<b><u>peregrine</u></b> falcon', 4, ['animals']),
+  lq('heroes-1', 'Pop Culture', 'Other Pop Culture', 'What is Spider-Man\'s real name?', '<b><u>Peter Parker</u></b> [prompt on <u>Parker</u>]', 1, ['superheroes']),
+  lq('heroes-2', 'Pop Culture', 'Other Pop Culture', 'Which green giant is Bruce Banner\'s alter ego?', 'The <b><u>Hulk</u></b>', 1, ['superheroes']),
+  lq('heroes-3', 'Pop Culture', 'Other Pop Culture', 'Which superhero is secretly Diana Prince?', '<b><u>Wonder Woman</u></b>', 2, ['superheroes']),
+  lq('heroes-4', 'Pop Culture', 'Other Pop Culture', 'What glowing green mineral weakens Superman?', '<b><u>kryptonite</u></b>', 2, ['superheroes']),
+  lq('heroes-5', 'Pop Culture', 'Other Pop Culture', 'Which shield-carrying Avenger was frozen in ice after World War II?', '<b><u>Captain America</u></b> [or Steve <b><u>Rogers</u></b>]', 2, ['superheroes']),
+  lq('heroes-6', 'Pop Culture', 'Other Pop Culture', 'What is the name of Batman\'s loyal butler?', '<b><u>Alfred</u></b> Pennyworth', 3, ['superheroes']),
+  lq('heroes-7', 'Pop Culture', 'Other Pop Culture', 'Which comic creator made cameos in many Marvel films?', 'Stan <b><u>Lee</u></b>', 3, ['superheroes']),
+  lq('heroes-8', 'Pop Culture', 'Other Pop Culture', 'Which metal coats Wolverine\'s skeleton and claws?', '<b><u>adamantium</u></b>', 4, ['superheroes']),
+  lq('memes-1', 'Pop Culture', 'Other Pop Culture', 'What does "LOL" stand for?', '<b><u>laughing out loud</u></b> [or <b><u>laugh out loud</u></b>]', 1, ['memes']),
+  lq('memes-2', 'Pop Culture', 'Other Pop Culture', 'What are the little faces and icons added to text messages called?', '<b><u>emoji</u></b>s', 1, ['memes']),
+  lq('memes-3', 'Pop Culture', 'Other Pop Culture', 'Which prank tricks people into opening Rick Astley\'s "Never Gonna Give You Up"?', '<b><u>rickroll</u></b>ing [or <b><u>rickroll</u></b>]', 2, ['memes']),
+  lq('memes-4', 'Pop Culture', 'Other Pop Culture', 'Which daily game gives you six tries to guess a five-letter word?', '<b><u>Wordle</u></b>', 2, ['memes']),
+  lq('memes-5', 'Pop Culture', 'Other Pop Culture', 'Which short-video app is owned by ByteDance?', '<b><u>TikTok</u></b>', 2, ['memes']),
+  lq('memes-6', 'Pop Culture', 'Other Pop Culture', 'Which social network was renamed X in 2023?', '<b><u>Twitter</u></b>', 2, ['memes']),
+  lq('memes-7', 'Pop Culture', 'Other Pop Culture', 'Which Shiba Inu meme inspired a joke cryptocurrency?', '<b><u>Doge</u></b> [or <b><u>Dogecoin</u></b>]', 3, ['memes']),
+  lq('memes-8', 'Pop Culture', 'Other Pop Culture', 'Which website calls itself "the front page of the internet"?', '<b><u>Reddit</u></b>', 3, ['memes']),
+  lq('memes-9', 'Pop Culture', 'Other Pop Culture', 'What viral 2014 stunt involved dumping cold water on your head for ALS?', '<b><u>Ice Bucket Challenge</u></b>', 3, ['memes']),
+  lq('memes-10', 'Pop Culture', 'Other Pop Culture', 'In internet slang, what does "GOAT" stand for?', '<b><u>greatest of all time</u></b>', 3, ['memes']),
+  lq('mc-1', 'Pop Culture', 'Video Games', 'Which green Minecraft mob hisses and then explodes?', '<b><u>Creeper</u></b>', 1, ['minecraft']),
+  lq('mc-2', 'Pop Culture', 'Video Games', 'What block do you need to build a Nether portal frame?', '<b><u>obsidian</u></b>', 2, ['minecraft']),
+  lq('mc-3', 'Pop Culture', 'Video Games', 'What is the final boss waiting in Minecraft\'s End dimension?', 'the <b><u>Ender Dragon</u></b>', 2, ['minecraft']),
+  lq('mc-4', 'Pop Culture', 'Video Games', 'Which tall Minecraft mob teleports and gets angry if you look at it?', '<b><u>Enderman</u></b>', 2, ['minecraft']),
+  lq('mc-5', 'Pop Culture', 'Video Games', 'What red dust is used to build circuits in Minecraft?', '<b><u>redstone</u></b>', 2, ['minecraft']),
+  lq('mc-6', 'Pop Culture', 'Video Games', 'What green gems do Minecraft villagers trade for?', '<b><u>emerald</u></b>s', 3, ['minecraft']),
+  lq('mc-7', 'Pop Culture', 'Video Games', 'Which studio made Minecraft before Microsoft bought it in 2014?', '<b><u>Mojang</u></b>', 3, ['minecraft']),
+  lq('mc-8', 'Pop Culture', 'Video Games', 'What online name does Minecraft creator Markus Persson go by?', '<b><u>Notch</u></b>', 4, ['minecraft']),
+  lq('mc-9', 'Pop Culture', 'Video Games', 'Which Minecraft material, stronger than diamond, comes from ancient debris?', '<b><u>netherite</u></b>', 4, ['minecraft']),
+  lq('musical-1', 'Fine Arts', 'Other Fine Arts', 'Which hip-hop musical tells the story of the first U.S. Treasury Secretary?', '<b><u>Hamilton</u></b>', 1, ['musicals']),
+  lq('musical-2', 'Fine Arts', 'Other Fine Arts', 'Which musical features the songs "Defying Gravity" and "Popular"?', '<b><u>Wicked</u></b>', 2, ['musicals']),
+  lq('musical-3', 'Fine Arts', 'Other Fine Arts', 'In which musical does a masked man haunt the Palais Garnier and fall for Christine?', 'The <b><u>Phantom of the Opera</u></b>', 2, ['musicals']),
+  lq('musical-4', 'Fine Arts', 'Other Fine Arts', 'Which musical features rival gangs called the Jets and the Sharks?', '<b><u>West Side Story</u></b>', 3, ['musicals']),
+  lq('musical-5', 'Fine Arts', 'Other Fine Arts', 'Who wrote the musicals "Hamilton" and "In the Heights"?', 'Lin-Manuel <b><u>Miranda</u></b>', 3, ['musicals']),
+  lq('musical-6', 'Fine Arts', 'Other Fine Arts', 'Which Andrew Lloyd Webber musical is based on T. S. Eliot\'s poems about felines?', '<b><u>Cats</u></b>', 4, ['musicals']),
+  lq('tech-1', 'Science', 'Other Science', 'Which company makes the iPhone?', '<b><u>Apple</u></b>', 1, ['tech']),
+  lq('tech-2', 'Science', 'Other Science', 'Which programming language shares its name with a large snake?', '<b><u>Python</u></b>', 2, ['tech']),
+  lq('tech-3', 'Science', 'Other Science', 'What does "www" stand for in a web address?', '<b><u>World Wide Web</u></b>', 2, ['tech']),
+  lq('tech-4', 'Science', 'Other Science', 'How many different values can a single bit hold?', '<b><u>two</u></b> [or <b><u>2</u></b>]', 3, ['tech']),
+  lq('tech-5', 'Science', 'Other Science', 'Which British scientist invented the World Wide Web?', 'Tim <b><u>Berners-Lee</u></b>', 4, ['tech']),
 ];
+
+/** Existing prompts that also belong to a topic (shared/topics.ts). */
+const TOPIC_TAGS: Record<string, string[]> = {
+  'lt-pop-6': ['minecraft'],
+  'lt-pop-7': ['superheroes'], 'lt-pop-8': ['superheroes'], 'lt-pop-14': ['superheroes'], 'lt-pop-35': ['superheroes'],
+  'lt-sci-24': ['space'], 'lt-sci-25': ['space'], 'lt-sci-26': ['space'], 'lt-sci-30': ['space'],
+  'lt-oth-1': ['math'], 'lt-oth-2': ['math'], 'lt-oth-3': ['math'], 'lt-oth-6': ['math'], 'lt-oth-8': ['math'], 'lt-oth-9': ['math'], 'lt-oth-10': ['math'], 'lt-oth-11': ['math'], 'lt-oth-12': ['math'],
+  'lt-oth-7': ['tech'],
+  'lt-soc-2': ['economics'], 'lt-soc-4': ['economics'], 'lt-soc-5': ['economics'], 'lt-soc-8': ['economics'],
+  'lt-soc-1': ['psychology'], 'lt-soc-3': ['psychology'], 'lt-soc-6': ['psychology'], 'lt-soc-7': ['psychology'], 'lt-soc-9': ['psychology'],
+};
+
+export const LIGHTNING: Tossup[] = ALL.map((q) => (TOPIC_TAGS[q.id] ? { ...q, topics: [...(q.topics ?? []), ...TOPIC_TAGS[q.id]] } : q));

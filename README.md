@@ -116,7 +116,7 @@ Every ruling appears in the **Rulings** tab. Any player can protest one, and the
 ## Questions
 
 - **QBReader** (default): random questions from https://www.qbreader.org/api-docs with category, subcategory, difficulty (1 = middle school … 10 = open) and year filters. Category names live in `src/shared/types.ts` (`CATEGORIES`). Edit them there if QBReader renames one.
-- **Fun topics**: Settings → **Fun topics** plays only video games, music, movies, television or sports (Pop Culture's subcategories, the same names QBReader uses). The built-in questions and the lightning round have original questions in each, so they work offline too.
+- **Topics**: Settings → **Topics** picks standalone categories, mixed with each other and with any categories you pick: 🎮 Video Games, 🎬 Movies, 🎵 Music, 📺 TV, 🏅 Sports, 🪐 Space, ➗ Math, 💻 Computers & Tech, 🎭 Broadway & Musicals, 💰 Money & Economics, 🧠 Psychology, 🐉 Myths & Legends (all from QBReader, plus built-in questions), and 🍕 Food & Drink, 🐾 Animals, 🦸 Superheroes & Comics, 😂 Internet & Memes, ⛏️ Minecraft (built-in questions only). The question card shows which topic each question came from, and party-mode votes can pick between your topics. Uploaded packets can tag questions with `"topics": ["food"]`.
 - **Sample packet**: 12 original tossups and 6 bonuses built in, so the app works offline.
 - **Upload**: a JSON file like `examples/sample-packet.json`:
 

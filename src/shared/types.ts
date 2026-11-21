@@ -13,6 +13,8 @@ export const buzzWindowSeconds = (s: { source: SourceKind; deadSeconds: number }
 export interface Filters {
   categories: string[];
   subcategories: string[];
+  /** Standalone topics (ids from shared/topics.ts). Mixed with the categories above; missing means none. */
+  topics?: string[];
   difficulties: number[];
   minYear?: number;
   maxYear?: number;
@@ -60,7 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   negValue: -5,
   bonusPartValue: 10,
   source: 'qbreader',
-  filters: { categories: [], subcategories: [], difficulties: [] },
+  filters: { categories: [], subcategories: [], topics: [], difficulties: [] },
   showTextToPlayers: false,
   readerRules: true,
   readAloud: false,
@@ -163,6 +165,8 @@ export interface PublicTossup {
   num: number;
   category: string;
   subcategory: string;
+  /** The picked topic this tossup came from, when the room plays topics. */
+  topic?: { name: string; icon: string };
   difficulty?: number;
   setName?: string;
   year?: number;

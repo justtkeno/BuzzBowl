@@ -7,7 +7,8 @@ import { checkAnswerDetailed, matchesAlt } from '../game/answerCheck';
 import { parseAnswerLine, type AnswerLine } from '../game/answerLine';
 import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, type Adjustment, type HeardEntry } from '../game/scoring';
 import { normalize, stripHtml, safeAnswerHtml } from '../game/text';
-import { LocalProvider, parseUpload, QBReaderProvider, shuffle } from '../questions/providers';
+import { LocalProvider, parseUpload, QBReaderProvider, TopicMix, shuffle } from '../questions/providers';
+import { TOPIC_BY_ID, TOPIC_BY_NAME, cleanTopics, inTopic } from '../../shared/topics';
 import { CATALOG_BONUSES, CATALOG_TOSSUPS } from '../questions/catalog';
 import { LIGHTNING } from '../questions/catalog/lightning';
 import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
@@ -314,11 +315,20 @@ export class Room {
     return !this.readerOnline() || viewer === this.s.readerId || this.s.settings.showTextToPlayers;
   }
 
+  /** The first of the room's picked topics this question belongs to, for the chip on the card. */
+  private topicOf(q: Tossup): { topic?: { name: string; icon: string } } {
+    const t = cleanTopics(this.s.settings.filters.topics).map((id) => TOPIC_BY_ID.get(id)!).find((x) => inTopic(q, x));
+    return t ? { topic: { name: t.name, icon: t.icon } } : {};
+  }
+
+  /** Where questions come from, with the room's picked topics mixed in (see TopicMix). */
   private provider(): QuestionProvider {
-    if (this.s.settings.source === 'sample') return sampleProvider;
-    if (this.s.settings.source === 'lightning') return lightningProvider;
-    if (this.s.settings.source === 'upload') return this.uploadProvider ?? sampleProvider;
-    return this.qbreader;
+    const src = this.s.settings.source;
+    if (src === 'sample') return new TopicMix(sampleProvider, sampleProvider, false);
+    if (src === 'lightning') return new TopicMix(lightningProvider, lightningProvider, false);
+    if (src === 'upload') { const up = this.uploadProvider ?? sampleProvider; return new TopicMix(up, up, false); }
+    // Topics QBReader doesn't have use the built-in questions.
+    return new TopicMix(this.qbreader, sampleProvider, true);
   }
 
   private setTimer(name: string, ms: number, fn: () => void) {
@@ -674,7 +684,9 @@ export class Room {
   private questionsLabel() {
     const s = this.s.settings, f = s.filters;
     const source = { qbreader: 'QBReader', sample: 'the built-in questions', upload: 'the uploaded packet', lightning: 'the lightning round' }[s.source] ?? s.source;
-    const parts = [f.subcategories.length ? f.subcategories.join(', ') : f.categories.length ? f.categories.join(', ') : 'all categories'];
+    const topics = cleanTopics(f.topics).map((id) => TOPIC_BY_ID.get(id)!.name);
+    const cats = f.subcategories.length ? f.subcategories.join(', ') : f.categories.length ? f.categories.join(', ') : topics.length ? '' : 'all categories';
+    const parts = [[cats, ...topics].filter(Boolean).join(', ')];
     if (s.source === 'lightning' && f.difficulties.length) parts.push(`difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}`);
     if (s.source === 'qbreader') {
       if (f.difficulties.length) parts.push(`difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}`);
@@ -722,6 +734,7 @@ export class Room {
       s.filters = {
         categories: Array.isArray(f.categories) ? f.categories.map(String).slice(0, 30) : s.filters.categories,
         subcategories: Array.isArray(f.subcategories) ? f.subcategories.map(String).slice(0, 60) : s.filters.subcategories,
+        topics: Array.isArray(f.topics) ? cleanTopics(f.topics) : s.filters.topics ?? [],
         difficulties: Array.isArray(f.difficulties) ? f.difficulties.map(Number).filter((d) => d >= 0 && d <= 10) : s.filters.difficulties,
         minYear: f.minYear ? clamp(f.minYear, 1990, 2100, 0) || undefined : undefined,
         maxYear: f.maxYear ? clamp(f.maxYear, 1990, 2100, 0) || undefined : undefined,
@@ -1400,6 +1413,8 @@ export class Room {
   /** The room's filters narrowed to one category (keeping any subcategories picked inside it). */
   private onlyCategory(category: string): Filters {
     const f = this.s.settings.filters;
+    const topic = TOPIC_BY_NAME.get(category);
+    if (topic) return { ...f, categories: [], subcategories: [], topics: [topic.id] };
     const subs = CATEGORIES[category] ?? [];
     return { ...f, categories: [category], subcategories: f.subcategories.filter((sc) => subs.includes(sc)) };
   }
@@ -1407,7 +1422,10 @@ export class Room {
   /** Between tossups: offer a few categories for the next one. The next tossup starts when the vote closes. */
   private openVote() {
     if (!this.votingOn() || this.lengthReached()) return;
-    const pool = this.s.settings.filters.categories.length ? [...this.s.settings.filters.categories] : Object.keys(CATEGORIES);
+    const f = this.s.settings.filters;
+    const topics = cleanTopics(f.topics).map((id) => TOPIC_BY_ID.get(id)!.name);
+    // Picked categories and topics are on the ballot; with nothing picked, every category is.
+    const pool = [...(f.categories.length ? f.categories : topics.length ? [] : Object.keys(CATEGORIES)), ...topics];
     if (pool.length < 2) return;
     const last = this.s.tossup?.q.category;
     // Prefer categories other than the one just played, so the topics move around.
@@ -1850,6 +1868,7 @@ export class Room {
       phase: s.phase,
       tossup: t && {
         num: t.num, category: t.q.category, subcategory: t.q.subcategory, difficulty: t.q.difficulty, setName: t.q.setName, year: t.q.year,
+        ...this.topicOf(t.q),
         revealed: t.words.slice(0, t.revealed).map((w) => (visible || t.ended ? w : '')),
         totalWords: t.words.length,
         words: reveal ? t.words : undefined,

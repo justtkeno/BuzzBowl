@@ -1,3 +1,4 @@
+import { TOPIC_BY_NAME } from '../../shared/topics';
 import { CategoryChip } from './CategoryChip';
 import { useEffect, useRef, useState } from 'react';
 import type { BuzzMarker, PublicState, Verdict } from '../../shared/types';
@@ -130,7 +131,7 @@ function VotePanel({ s }: { s: PublicState }) {
       <div className="vote-options">
         {v.options.map((o, i) => (
           <button key={o} className={`vote-opt ${v.mine === o ? 'on' : ''}`} disabled={!canVote || s.paused} onClick={() => act('vote', o)} aria-pressed={v.mine === o}>
-            <span className="vote-name">{o}</span>
+            <span className="vote-name">{TOPIC_BY_NAME.get(o) ? `${TOPIC_BY_NAME.get(o)!.icon} ` : ''}{o}</span>
             <span className="vote-count">{v.counts[o] ? v.counts[o] : ''}</span>
             {!isTouch() && <kbd>{i + 1}</kbd>}
           </button>
@@ -245,7 +246,7 @@ export function TossupCard({ s }: { s: PublicState }) {
       {!hidden && <ReadLine read={ended ? t.totalWords : t.revealed.length} total={t.totalWords} power={ended ? t.powerIndex : null} />}
       <div className="meta">
         <span className="tag">{s.settings.source === 'lightning' ? <><Icon name="bolt" /> Lightning {t.num}</> : `Tossup ${t.num}`}{!s.daily && !s.survival && s.settings.gameLength ? ` of ${s.settings.gameLength}` : ''}</span>
-        <CategoryChip category={t.category} sub={t.subcategory} />
+        {t.topic ? <CategoryChip category={t.topic.name} icon={t.topic.icon} /> : <CategoryChip category={t.category} sub={t.subcategory} />}
         {t.difficulty ? <span className="muted">{DIFFICULTIES[t.difficulty] ?? `Level ${t.difficulty}`}</span> : null}
         {t.setName && <span className="muted hide-sm">{t.setName}{t.year ? ` (${t.year})` : ''}</span>}
         {readAloudActive(s) && speechSupported() && <SpeakerToggle />}
