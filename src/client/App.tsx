@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../shared/types';
 import { Home } from './components/Home';
 import { InviteBanner } from './components/Friends';
+import { Announcement } from './components/Announcement';
 import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
@@ -89,12 +90,12 @@ function Player() {
     };
     const onDisconnect = () => setConnected(false);
     // The host, reader or admin removed us from the room.
-    const onKicked = ({ banned }: { banned: boolean }) => {
+    const onKicked = ({ banned, closed }: { banned: boolean; closed?: boolean }) => {
       joined.current = null;
       setFresh(false);
       setState(null);
       history.replaceState(null, '', '/');
-      setError(banned ? 'You were banned from that room.' : 'You were removed from the room.');
+      setError(banned ? 'You were banned from that room.' : closed ? 'An admin closed that room.' : 'You were removed from the room.');
     };
     socket.on('kicked', onKicked);
     socket.on('state', onState);
@@ -147,6 +148,7 @@ function Player() {
       <>
         <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} onDaily={startDaily} dailyOpen={location.pathname === '/daily'} />
         <InviteBanner onJoin={(code) => { enter(code, prefs.name() || randomName()).catch((e) => setError(e.message)); }} />
+        <Announcement />
       </>
     );
   }

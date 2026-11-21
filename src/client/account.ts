@@ -97,6 +97,11 @@ export async function adminResetProfile(username: string, what: { name: boolean;
   return api<{ ok: true; displayName?: string; bio?: string }>(`/admin/users/${encodeURIComponent(username)}/reset`, { method: 'POST', body });
 }
 
+/** Admin: unlock every badge for an account (yours too), or put it back to what they earned. */
+export async function adminUnlockBadges(username: string, unlock: boolean) {
+  return api<{ ok: true; unlocked: boolean }>(`/admin/users/${encodeURIComponent(username)}/badges`, { method: 'POST', body: { unlock } });
+}
+
 /** Admin: delete someone's account, sessions and saved games. */
 export async function adminDeleteAccount(username: string) {
   return api<{ ok: true }>(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });

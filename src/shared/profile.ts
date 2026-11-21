@@ -56,7 +56,12 @@ export interface BadgeState {
 }
 
 /** What badges are judged from. */
-export interface BadgeInput { games: GameRecord[]; p: Pick<PublicProfile, 'totals' | 'subjects' | 'daily'> }
+export interface BadgeInput {
+  games: GameRecord[];
+  p: Pick<PublicProfile, 'totals' | 'subjects' | 'daily'>;
+  /** Unlocked by a site admin. */
+  granted?: string[];
+}
 
 interface BadgeDef {
   id: string;
@@ -99,7 +104,9 @@ export const BADGES: BadgeDef[] = [
 export const BADGE_BY_ID = new Map(BADGES.map((b) => [b.id, b]));
 
 export function badgesFor(x: BadgeInput): BadgeState[] {
+  const granted = new Set(x.granted ?? []);
   return BADGES.map((b) => {
+    if (granted.has(b.id)) return { id: b.id, earned: true, ...(b.check ? {} : { have: b.need ?? 1, need: b.need ?? 1 }) };
     if (b.check) return { id: b.id, earned: b.check(x) };
     const have = b.count!(x);
     const need = b.need ?? 1;
