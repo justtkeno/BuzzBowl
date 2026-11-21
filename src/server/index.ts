@@ -90,7 +90,22 @@ function roomIO(code: string): RoomIO {
     gameOver(records) {
       accounts.record(records);
     },
+    remove(playerId) {
+      detach(code, playerId);
+    },
   };
+}
+
+/** Disconnect a removed player's tabs from the room so they stop getting its updates. */
+function detach(code: string, playerId: string) {
+  const seat = `p:${code}:${playerId}`;
+  for (const id of [...(io.sockets.adapter.rooms.get(seat) ?? [])]) {
+    const sock = io.sockets.sockets.get(id);
+    if (!sock) continue;
+    sock.leave(seat);
+    sock.leave(code);
+    sock.data = {} satisfies SocketData;
+  }
 }
 
 function makeRoom(): Room {
@@ -268,6 +283,13 @@ io.on('connection', (socket) => {
   socket.on('reader:set', handle(socket, (r, p, target) => r.setReader(p, target ?? null)));
   socket.on('admin:host', handle(socket, (r, p, target) => r.adminSetHost(p, String(target))));
   socket.on('admin:reader', handle(socket, (r, p, target) => r.adminSetReader(p, target ? String(target) : null)));
+  socket.on('admin:peek', handle(socket, (r, p, on) => r.setPeek(p, !!on)));
+  socket.on('admin:freeze', handle(socket, (r, p, target, mode) => r.freeze(p, String(target), mode === 'always' || mode === 'tossup' ? mode : 'off')));
+  socket.on('admin:rename', handle(socket, (r, p, target, name) => r.adminRename(p, String(target), name)));
+  socket.on('admin:announce', handle(socket, (r, p, text) => r.announce(p, text)));
+  socket.on('player:kick', handle(socket, (r, p, target, ban) => r.kick(p, String(target), !!ban)));
+  socket.on('player:mute', handle(socket, (r, p, target, muted) => r.mute(p, String(target), !!muted)));
+  socket.on('player:rebuzz', handle(socket, (r, p, target) => r.allowRebuzz(p, String(target))));
   socket.on('game:start', handle(socket, (r, p) => r.start(p)));
   socket.on('game:next', handle(socket, (r, p) => r.next(p)));
   socket.on('game:end', handle(socket, (r, p) => r.end(p)));

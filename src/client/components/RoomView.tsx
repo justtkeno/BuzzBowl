@@ -5,6 +5,8 @@ import { cycleTheme } from '../App';
 import { prefs } from '../socket';
 import { play, setSoundOn, soundOn } from '../sounds';
 import { AdminPanel } from './AdminPanel';
+import { Announcement } from './Announcement';
+import { PlayersPanel } from './PlayersPanel';
 import { Chat } from './Chat';
 import { DailyResults } from './Daily';
 import { ReaderQueue } from './ReaderQueue';
@@ -35,6 +37,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
   const [showQuestions, setShowQuestions] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showPlayers, setShowPlayers] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [menu, setMenu] = useState(false);
   const [drawer, setDrawer] = useState(false);
@@ -49,6 +52,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
   const midGame = s.phase !== 'lobby' && s.phase !== 'gameOver';
   // Site admins can take the host seat in any room.
   const isAdmin = !!s.players.find((p) => p.id === s.you)?.admin;
+  const canModerate = (r.isController || isAdmin) && !s.daily;
 
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
@@ -109,7 +113,8 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
             {s.paused ? '▶ Resume' : '❚❚'}<span className="hide-sm">{s.paused ? '' : ' Pause'}</span>
           </button>
         )}
-        {isAdmin && <button className="btn ghost hide-sm" onClick={() => setShowAdmin(true)} title="Admin: change the host or reader at any time">🛡 Admin</button>}
+        {canModerate && <button className="btn ghost hide-sm" onClick={() => setShowPlayers(true)} title="Kick, ban or mute players">👥 Players</button>}
+        {isAdmin && <button className="btn ghost hide-sm" onClick={() => setShowAdmin(true)} title="Admin tools">🛡 Admin</button>}
         <button className="btn ghost hide-sm" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
         {r.isController && !s.daily && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Settings</button>}
         <button className="btn ghost hide-sm" onClick={toggleSound} title={sound ? 'Turn sound effects off' : 'Turn sound effects on'} aria-label={sound ? 'Sound on' : 'Sound off'} aria-pressed={sound}>{sound ? '🔊' : '🔇'}</button>
@@ -127,6 +132,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
                 <button role="menuitem" onClick={openBigScreen}>📺 Big-screen view</button>
                 <button role="menuitem" onClick={toggleSound}>{sound ? '🔇 Sound off' : '🔊 Sound on'}</button>
                 <button role="menuitem" onClick={() => setTheme(cycleTheme())}>🌓 Theme: {theme}</button>
+                {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}>👥 Players</button>}
                 {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}>🛡 Admin</button>}
                 {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm('End the game and show the summary?')) act('game:end'); }}>🏁 End game</button>}
                 <button role="menuitem" onClick={onLeave}>🚪 Leave room</button>
@@ -191,7 +197,9 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
       {showSettings && <SettingsPanel s={s} onClose={() => setShowSettings(false)} />}
       {showQuestions && <SettingsPanel s={s} only="questions" onClose={() => setShowQuestions(false)} />}
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
-      {showAdmin && isAdmin && <AdminPanel s={s} onClose={() => setShowAdmin(false)} />}
+      {showAdmin && isAdmin && <AdminPanel s={s} onClose={() => setShowAdmin(false)} onPlayers={() => { setShowAdmin(false); setShowPlayers(true); }} />}
+      {showPlayers && canModerate && <PlayersPanel s={s} onClose={() => setShowPlayers(false)} />}
+      <Announcement />
       {showInvite && <InviteScreen code={s.code} onClose={() => setShowInvite(false)} />}
       {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
       <BuzzFlash flash={buzzFlash} />

@@ -536,3 +536,136 @@ describe('admin room controls', () => {
     room.dispose();
   });
 });
+
+describe('moderation and admin extras', () => {
+  const ADMIN = { id: 'acc1', username: 'Hao', admin: true };
+
+  async function withAdmin() {
+    const room = new Room('TEST', io, { qbreader: fakeProvider() });
+    const ann = room.join('Ann').playerId; // host
+    const bob = room.join('Bob');
+    const admin = room.join('Hao', undefined, ADMIN).playerId;
+    room.updateSettings(ann, { wpm: 600 });
+    return { room, ann, bob: bob.playerId, bobToken: bob.token, admin };
+  }
+
+  it('lets the host kick, and a ban keeps the seat and account out', async () => {
+    const { room, ann, bob, bobToken } = await withAdmin();
+    room.kick(ann, bob);
+    expect(room.s.players.some((p) => p.id === bob)).toBe(false);
+    const back = room.join('Bob', bobToken); // a plain kick can come back
+    room.kick(ann, back.playerId, true);
+    expect(() => room.join('Bob', back.token)).toThrow(/banned/);
+    const carl = room.join('Carl', undefined, { id: 'acc9', username: 'carl' }).playerId;
+    room.kick(ann, carl, true);
+    expect(() => room.join('Carl again', undefined, { id: 'acc9', username: 'carl' })).toThrow(/banned/);
+  });
+
+  it('refuses moderation from regular players and on the admin', async () => {
+    const { room, ann, bob, admin } = await withAdmin();
+    expect(() => room.kick(bob, ann)).toThrow(/host or reader/);
+    expect(() => room.kick(ann, admin)).toThrow(/creator/);
+    expect(() => room.mute(ann, admin, true)).toThrow(/creator/);
+    room.kick(admin, ann); // the admin can, in any room
+    expect(room.s.hostId).not.toBe(ann);
+  });
+
+  it('mutes and unmutes chat', async () => {
+    const { room, ann, bob } = await withAdmin();
+    room.mute(ann, bob, true);
+    expect(() => room.chat(bob, 'hi', 'all')).toThrow(/muted/);
+    expect(room.snapshot(ann).players.find((p) => p.id === bob)?.muted).toBe(true);
+    room.mute(ann, bob, false);
+    expect(() => room.chat(bob, 'hi', 'all')).not.toThrow();
+  });
+
+  it('gives a locked-out player their buzz back', async () => {
+    const { room, ann, bob } = await withAdmin();
+    room.start(ann);
+    await flush();
+    await readTo(room, 3);
+    room.buzz(bob, 3);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    room.submitAnswer(bob, 'golgi');
+    expect(() => room.buzz(bob, 4)).toThrow(/already buzzed/);
+    room.allowRebuzz(ann, bob);
+    await readTo(room, 5);
+    room.buzz(bob, 5);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(room.s.buzz?.playerId).toBe(bob);
+  });
+
+  it('a frozen buzzer silently does nothing, for one tossup or until unfrozen', async () => {
+    const { room, ann, bob, admin } = await withAdmin();
+    expect(() => room.freeze(ann, bob, 'always')).toThrow(/admins/);
+    room.start(ann);
+    await flush();
+    room.freeze(admin, bob, 'tossup');
+    await readTo(room, 3);
+    expect(() => room.buzz(bob, 3)).not.toThrow();
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(room.s.phase).toBe('reading');
+    // Nobody but the admin can tell.
+    expect(JSON.stringify(room.snapshot(bob))).not.toMatch(/frozen/);
+    expect(room.snapshot(admin).admin?.frozen).toEqual([{ id: bob, always: false }]);
+    room.next(ann);
+    room.next(ann);
+    await flush();
+    await readTo(room, 2);
+    room.buzz(bob, 2); // next tossup: thawed
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(room.s.buzz?.playerId).toBe(bob);
+  });
+
+  it('shows the answer only to a peeking admin', async () => {
+    const { room, ann, bob, admin } = await withAdmin();
+    room.start(ann);
+    await flush();
+    expect(() => room.setPeek(bob, true)).toThrow(/admins/);
+    expect(room.snapshot(admin).peek).toBeUndefined();
+    room.setPeek(admin, true);
+    expect(room.snapshot(admin).peek?.tossup).toMatch(/mitochondria/);
+    for (const v of [ann, bob]) {
+      expect(room.snapshot(v).peek).toBeUndefined();
+      expect(room.snapshot(v).admin).toBeUndefined();
+      expect(room.snapshot(v).tossup?.answerHtml).toBeUndefined();
+    }
+  });
+
+  it('lets only the admin rename others, announce, and skip in any room', async () => {
+    const emitted: { ids: string[]; event: string; payload: unknown }[] = [];
+    const room = new Room('TEST', { emitEach: () => {}, emitTo: (ids, event, payload) => emitted.push({ ids, event, payload }) }, { qbreader: fakeProvider() });
+    const ann = room.join('Ann').playerId;
+    const bob = room.join('Bob').playerId;
+    const admin = room.join('Hao', undefined, ADMIN).playerId;
+    expect(() => room.adminRename(ann, bob, 'x')).toThrow(/admins/);
+    room.adminRename(admin, bob, 'Bobby Tables');
+    expect(room.s.players.find((p) => p.id === bob)?.name).toBe('Bobby Tables');
+    expect(() => room.announce(ann, 'hi')).toThrow(/admins/);
+    room.announce(admin, 'SUDDEN DEATH');
+    expect(emitted.find((e) => e.event === 'announce')).toMatchObject({ payload: { text: 'SUDDEN DEATH' } });
+    room.setReader(ann, ann);
+    room.start(ann);
+    await flush();
+    expect(() => room.next(bob)).toThrow();
+    room.next(admin);
+    expect(room.s.phase).toBe('tossupEnd');
+  });
+});
+
+describe('kicking', () => {
+  it('tells the kicked player and detaches them before anyone gets the new state', async () => {
+    const order: string[] = [];
+    const room = new Room('TEST', {
+      emitEach: (event) => order.push(`each:${event}`),
+      emitTo: (ids, event) => order.push(`to:${event}`),
+      remove: (id) => order.push(`remove:${id}`),
+    }, { qbreader: fakeProvider() });
+    const ann = room.join('Ann').playerId;
+    const bob = room.join('Bob').playerId;
+    order.length = 0;
+    room.kick(ann, bob);
+    expect(order.slice(0, 2)).toEqual(['to:kicked', `remove:${bob}`]);
+    expect(order.indexOf('each:state')).toBeGreaterThan(1);
+  });
+});
