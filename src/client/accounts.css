@@ -87,7 +87,7 @@ a.btn.primary { color: var(--accent-ink); }
 
 /* ---------- profile page ---------- */
 .profile-page { min-height: 100vh; }
-.profile-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.profile-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: max(.55rem, env(safe-area-inset-top)) 16px .55rem; border-bottom: 1px solid var(--border); background: var(--surface); }
 .profile-top .brand { color: var(--text); text-decoration: none; }
 .profile-top .account-bar { flex: 0 1 auto; min-width: 0; }
 .profile-top .account-bar .grow { flex: 0 1 auto; }
