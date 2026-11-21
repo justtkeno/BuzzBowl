@@ -150,7 +150,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
                 {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}><Icon name="qr" /> Invite (QR code)</button>}
                 <button role="menuitem" onClick={() => setShowReview(true)}><Icon name="list" /> Review questions{s.review.length ? ` (${s.review.length})` : ''}</button>
                 {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}><Icon name="sliders" /> Settings</button>}
-                <button role="menuitem" onClick={openBigScreen}><Icon name="screen" /> Big-screen view</button>
+                {!r.fixed && <button role="menuitem" onClick={openBigScreen}><Icon name="screen" /> Big-screen view</button>}
                 <button role="menuitem" onClick={toggleSound}>{sound ? <><Icon name="mute" /> Sound off</> : <><Icon name="volume" /> Sound on</>}</button>
                 <button role="menuitem" onClick={() => setTheme(cycleTheme())}><Icon name="contrast" /> Theme: {theme}</button>
                 <button role="menuitem" onClick={(e) => { e.stopPropagation(); setTextSize(cycleTextSize()); }}><Icon name="text" /> Text size: {TEXT_SIZE_LABEL[textSize]}</button>
@@ -184,7 +184,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
           {r.isReader && (s.phase === 'lobby' || midGame) && <ReaderQueue s={s} onChangeQuestions={r.fixed ? undefined : () => setShowQuestions(true)} />}
           {r.isController && !r.isReader && midGame && (
             <div className="row gap end subtle-controls hide-sm">
-              <button className="btn ghost small" onClick={openBigScreen}>Big-screen view</button>
+              {!r.fixed && <button className="btn ghost small" onClick={openBigScreen}>Big-screen view</button>}
               <button className="btn ghost small" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}>{s.survival ? 'End run' : 'End game'}</button>
             </div>
           )}
