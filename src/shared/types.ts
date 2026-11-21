@@ -448,7 +448,7 @@ export const CATEGORIES: Record<string, string[]> = {
   'Current Events': [],
   Geography: [],
   'Other Academic': [],
-  'Pop Culture': [],
+  'Pop Culture': ['Movies', 'Music', 'Sports', 'Television', 'Video Games', 'Other Pop Culture'],
 };
 
 export const DIFFICULTIES: Record<number, string> = {
