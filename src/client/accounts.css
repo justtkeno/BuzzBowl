@@ -254,3 +254,10 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .site-report-list a { color: inherit; }
 .report-count { color: var(--warn); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
+
+/* Narrow screens: the account bar drops the @username and creator badge before it would overflow. */
+.account-me { overflow: hidden; }
+@media (max-width: 420px) {
+  .profile-top .account-me .muted, .profile-top .account-me .creator-badge { display: none; }
+  .account-me .creator-badge + .muted { display: none; }
+}
