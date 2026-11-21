@@ -37,7 +37,8 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - Phone layout matters most: most players are on phones. Check changes at 375px wide.
 
 ## Deployment
-- Live at https://buzzbowl-q8wz.onrender.com (Render free plan, service `buzzbowl`, Oregon). `buzzbowl.onrender.com` is someone else's site. `render.yaml` now names the service `trivio`; a new Render service made from it is meant to live at `trivio.onrender.com` and replace the old one.
+- Live at https://playtrivio.onrender.com (Render free plan, service `playtrivio`, Oregon, created by hand, not from a Blueprint). `trivio.onrender.com` and `buzzbowl.onrender.com` belong to other people on Render. Auto-deploy on `main` is on.
+- `render.yaml` matches the live service's settings but no Blueprint is connected to it. Connecting one would create a second service.
 - GitHub `justtkeno/BuzzBowl`. Render auto-deploys `main`, so changes go in on a feature branch and a pull request merged into `main`.
 - Render env vars (set in the Render dashboard, never in code): `DATABASE_URL` (Neon Postgres, also holds daily-challenge tables) and `ADMIN_ACCOUNT_IDS`. `/healthz` reports `"accounts":"postgres"` when the database is connected.
 - The free plan sleeps after ~15 minutes idle; the first visit takes 30–60 s to wake it.
