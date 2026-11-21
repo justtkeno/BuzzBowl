@@ -122,7 +122,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 /* ---------- tossup ---------- */
 .stage { display: flex; flex-direction: column; gap: .75rem; }
 .meta { display: flex; flex-wrap: wrap; gap: .25rem .75rem; font-size: .85rem; margin-bottom: .6rem; }
-.qtext { font-family: var(--serif); font-size: 1.28rem; line-height: 1.7; margin: 0; min-height: 6.8em; overflow-wrap: anywhere; }
+.qtext { font-family: var(--serif); font-size: calc(1.28rem * var(--qscale, 1)); line-height: 1.7; margin: 0; min-height: 6.8em; overflow-wrap: anywhere; }
 .qtext .power { font-weight: 700; }
 .qtext.prompter { font-size: 1.35rem; }
 .qtext .unread { color: var(--muted); opacity: .75; cursor: pointer; }
@@ -333,7 +333,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
   .topbar { gap: .25rem; padding: .4rem 12px; }
   .topbar .btn { padding: .3rem .5rem; font-size: .85rem; }
   .topbar .chip, .topbar .phase { font-size: .8rem; }
-  .qtext { font-size: 1.12rem; }
+  .qtext { font-size: calc(1.12rem * var(--qscale, 1)); }
   .buzzer { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 10; min-height: 96px; font-size: 2.3rem; }
   .buzzer.disabled { opacity: .92; }
   .card { padding: .9rem 1rem; }
@@ -678,3 +678,39 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .marks-wrap { max-width: 100%; }
 .survival-actions { flex-shrink: 0; }
 .survival-results h3 { margin: 0; }
+
+/* ---------- why was I wrong ---------- */
+.why { margin-top: .6rem; padding: .55rem .7rem; border-radius: 10px; background: var(--surface-2); font-size: .9rem; display: flex; flex-direction: column; gap: .3rem; }
+.why-miss { line-height: 1.4; }
+.why-row { display: flex; gap: .5rem; align-items: baseline; line-height: 1.35; }
+.why-label { flex: none; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); min-width: 5.6rem; }
+.why-row.ok > span:last-child { color: var(--ok); font-weight: 600; }
+.why-row.bad > span:last-child { color: var(--bad); }
+.why-more { align-self: flex-start; padding-left: 0; }
+
+/* Question text size (⋯ menu → Text size), saved per device. */
+:root[data-text='s'] { --qscale: .88; }
+:root[data-text='l'] { --qscale: 1.22; }
+.leave-confirm { width: min(400px, 100%); display: flex; flex-direction: column; gap: .6rem; }
+.leave-confirm h2, .leave-confirm p { margin: 0; }
+
+/* ---------- category colors ---------- */
+.cat-chip { --cl: 34%; --cbg: 95%; display: inline-flex; align-items: center; gap: .35rem; padding: .05rem .5rem .05rem .4rem; border-radius: 999px; background: hsl(var(--h) 70% var(--cbg)); color: hsl(var(--h) 55% var(--cl)); font-size: .82rem; font-weight: 600; line-height: 1.6; max-width: 100%; min-width: 0; }
+.cat-sub { font-weight: 400; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: hsl(var(--h) 60% 50%); }
+.cat-dot.solo { display: inline-block; margin-right: .4rem; vertical-align: 1px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .cat-chip { --cl: 76%; --cbg: 17%; } }
+:root[data-theme='dark'] .cat-chip { --cl: 76%; --cbg: 17%; }
+
+/* Each word fades in softly as it's read (new spans only, so finished text never re-animates). */
+.qtext .w { animation: word-in .25s ease-out both; }
+@keyframes word-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .qtext .w { animation: none; } }
+
+/* ---------- waking-up screen (sleeping free server) ---------- */
+.wake { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: var(--bg); animation: fade-in .3s ease-out; }
+.wake-card { width: min(400px, 100%); display: flex; flex-direction: column; gap: .7rem; text-align: center; align-items: center; }
+.wake-card h2, .wake-card p { margin: 0; }
+.wake-bar { width: 100%; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.wake-bar > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width .25s linear; }
+.summary-actions { margin-top: .8rem; flex-wrap: wrap; }

@@ -41,6 +41,9 @@ export const prefs = {
   token: (code: string) => store.get(`qb:token:${code}`) ?? undefined,
   setToken: (code: string, t: string) => store.set(`qb:token:${code}`, t),
   theme: () => (store.get('qb:theme') as 'auto' | 'light' | 'dark' | null) ?? 'auto',
+  /** Question text size on this device. */
+  textSize: () => (store.get('qb:textSize') as 's' | 'm' | 'l' | null) ?? 'm',
+  setTextSize: (t: 's' | 'm' | 'l') => store.set('qb:textSize', t),
   setTheme: (t: string) => store.set('qb:theme', t),
   /** The last room settings this player used as host, reused when they create a new room. */
   settings: (): Record<string, unknown> | undefined => {

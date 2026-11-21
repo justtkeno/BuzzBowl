@@ -1,11 +1,12 @@
 import {
   CATEGORIES, DEFAULT_SETTINGS, SPECTATOR, SURVIVAL_LIVES, VOTE_SECONDS, buzzWindowSeconds,
-  type BotSkill, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
+  type AnswerKey, type BotSkill, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
   type Filters, type Ruling, type ScorePoint, type Settings, type Verdict,
 } from '../../shared/types';
-import { checkAnswerDetailed } from '../game/answerCheck';
+import { checkAnswerDetailed, matchesAlt } from '../game/answerCheck';
+import { parseAnswerLine, type AnswerLine } from '../game/answerLine';
 import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, type Adjustment, type HeardEntry } from '../game/scoring';
-import { stripHtml, safeAnswerHtml } from '../game/text';
+import { normalize, stripHtml, safeAnswerHtml } from '../game/text';
 import { LocalProvider, parseUpload, QBReaderProvider, shuffle } from '../questions/providers';
 import { CATALOG_BONUSES, CATALOG_TOSSUPS } from '../questions/catalog';
 import { LIGHTNING } from '../questions/catalog/lightning';
@@ -179,6 +180,22 @@ const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
 const sampleProvider = new LocalProvider([...SAMPLE_TOSSUPS, ...CATALOG_TOSSUPS], [...SAMPLE_BONUSES, ...CATALOG_BONUSES]);
 /** Lightning round: short one-line prompts, no bonuses. */
 const lightningProvider = new LocalProvider(LIGHTNING, []);
+
+/** Parsed answer lines, kept per question so snapshots don't re-parse them. */
+const parsedLines = new WeakMap<Tossup, AnswerLine>();
+function answerKey(q: Tossup, misses: string[]): AnswerKey {
+  let line = parsedLines.get(q);
+  if (!line) { line = parseAnswerLine(q.answer); parsedLines.set(q, line); }
+  const shown = (alts: AnswerLine['accept']) => [...new Set(alts.map((a) => a.display ?? a.full))];
+  return {
+    accept: shown(line.accept), prompt: shown(line.prompt), reject: shown(line.reject),
+    misses: misses.map((given) => {
+      const g = normalize(given);
+      const why = line!.reject.some((a) => matchesAlt(g, a, true)) ? 'rejected' : line!.prompt.some((a) => matchesAlt(g, a)) ? 'prompt' : 'wrong';
+      return { given, why };
+    }),
+  };
+}
 
 export interface RoomDeps {
   qbreader?: QuestionProvider;
@@ -1789,6 +1806,7 @@ export class Room {
         words: reveal ? t.words : undefined,
         powerIndex: reveal ? t.powerIndex : undefined,
         answerHtml: reveal ? safeAnswerHtml(t.q.answer) : undefined,
+        answerKey: t.ended ? answerKey(t.q, t.markers.filter((m) => m.playerId === viewer && (m.result === 'neg' || m.result === 'zero') && m.given).map((m) => m.given!)) : undefined,
         buzzes: t.markers,
         textVisible: visible,
         paused: t.paused,

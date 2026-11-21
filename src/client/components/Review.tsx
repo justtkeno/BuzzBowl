@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { PublicState } from '../../shared/types';
 import { resultLabel } from './util';
 import { ReportQuestion } from './Report';
+import { CategoryChip } from './CategoryChip';
 
 export function Review({ s, onClose }: { s: PublicState; onClose: () => void }) {
   const [open, setOpen] = useState<number | null>(s.review[0]?.num ?? null);
@@ -15,7 +16,7 @@ export function Review({ s, onClose }: { s: PublicState; onClose: () => void }) 
           <div key={q.num} className={`review-item ${open === q.num ? 'open' : ''}`}>
             <button className="review-head" onClick={() => setOpen(open === q.num ? null : q.num)}>
               <span className="tag">TU {q.num}</span>
-              <span className="grow">{q.category}{q.subcategory !== q.category ? ` · ${q.subcategory}` : ''}</span>
+              <span className="grow"><CategoryChip category={q.category} sub={q.subcategory} /></span>
               <span dangerouslySetInnerHTML={{ __html: q.answerHtml.split('[')[0] }} />
             </button>
             {open === q.num && (
