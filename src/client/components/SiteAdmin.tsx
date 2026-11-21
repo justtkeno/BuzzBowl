@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Mode, Phase } from '../../shared/types';
 import { adminUnlockBadges, useAccount } from '../account';
 import { call } from '../socket';
+import { REPORT_REASONS, type ReportGroup } from '../../shared/reports';
 
 interface RoomRow {
   code: string; phase: Phase; mode: Mode; paused: boolean; lastActive: number;
@@ -25,8 +26,11 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
   const [note, setNote] = useState<string | null>(null);
   const [shout, setShout] = useState('');
   const [busy, setBusy] = useState(false);
+  const [shown, setShown] = useState<Set<string>>(new Set());
+  const [reports, setReports] = useState<{ total: number; groups: ReportGroup[] } | null>(null);
 
-  const load = () => call<Overview & { ok: true }>('site:overview').then(setO, (e) => setErr(e.message));
+  const loadReports = () => call<{ total: number; groups: ReportGroup[] }>('site:reports').then(setReports, (e) => setErr(e.message));
+  const load = () => Promise.all([call<Overview & { ok: true }>('site:overview').then(setO, (e) => setErr(e.message)), loadReports()]);
   useEffect(() => {
     void load();
     const t = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, REFRESH_MS);
@@ -51,6 +55,11 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
     if (!confirm(`Close room ${code}? Everyone in it goes back to the home screen.`)) return;
     void run(async () => { await call('site:closeRoom', code); await load(); return `Closed ${code}.`; });
   };
+  const closeReports = (g: ReportGroup, status: 'resolved' | 'dismissed') => void run(async () => {
+    const r = await call<{ closed: number }>('site:resolveReport', { source: g.source, questionId: g.questionId, status });
+    await loadReports();
+    return `${status === 'resolved' ? 'Resolved' : 'Dismissed'} ${r.closed} report${r.closed === 1 ? '' : 's'}.`;
+  });
   const badges = (unlock: boolean) => me && run(async () => {
     await adminUnlockBadges(me.username, unlock);
     return unlock ? 'Every badge is unlocked on your profile.' : 'Your badges are back to the ones you earned.';
@@ -84,6 +93,33 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
           {me && <a className="btn small ghost" href={`/u/${me.username}`}>View my profile</a>}
         </div>
         <p className="muted small">To unlock badges for someone else, open their profile.</p>
+
+        <h3>Question reports{reports ? ` (${reports.total})` : ''}</h3>
+        {reports && !reports.groups.length && <p className="muted small">No open reports.</p>}
+        <ul className="site-reports">
+          {reports?.groups.map((g) => (
+            <li key={`${g.source}:${g.questionId}`}>
+              <div className="muted small">
+                {g.reports.length > 1 && <b className="report-count">{g.reports.length}×</b>} {g.category}{g.subcategory !== g.category ? ` · ${g.subcategory}` : ''} · {g.source}{g.setName ? ` · ${g.setName}` : ''}
+              </div>
+              <p className={`small site-report-q ${shown.has(g.questionId) ? '' : 'clamp'}`} title="Show the whole question"
+                onClick={() => setShown((x) => new Set(x).add(g.questionId))}>{g.question}</p>
+              <div className="small"><span className="muted">Answer:</span> <span dangerouslySetInnerHTML={{ __html: g.answerHtml }} /></div>
+              <ul className="site-report-list small">
+                {g.reports.map((r) => (
+                  <li key={r.id}>
+                    <b>{REPORT_REASONS[r.reason] ?? r.reason}</b>{r.note && <> · “{r.note}”</>}
+                    <span className="muted"> · {r.reporterUsername ? <a href={`/u/${r.reporterUsername}`} target="_blank" rel="noreferrer">@{r.reporterUsername}</a> : `${r.reporter} (guest)`} · {r.roomCode} · {ago(r.createdAt).replace('active now', 'just now')}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="row gap">
+                <button className="btn small ok" disabled={busy} onClick={() => closeReports(g, 'resolved')}>Resolve</button>
+                <button className="btn small ghost" disabled={busy} onClick={() => closeReports(g, 'dismissed')}>Dismiss</button>
+              </div>
+            </li>
+          ))}
+        </ul>
 
         {note && <p className="small">{note}</p>}
         {err && <p className="error small">{err}</p>}

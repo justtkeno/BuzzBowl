@@ -247,4 +247,10 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .site-room-people { display: flex; flex-wrap: wrap; gap: .1rem .55rem; margin-top: .15rem; }
 .site-room-people a { color: inherit; }
 .site-room-actions { flex: none; }
+.site-reports { list-style: none; margin: 0; padding: 0; }
+.site-reports > li { display: flex; flex-direction: column; gap: .25rem; padding: .55rem 0; border-top: 1px solid var(--border); min-width: 0; overflow-wrap: anywhere; }
+.site-report-q.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.site-report-list { margin: 0; padding-left: 1rem; }
+.site-report-list a { color: inherit; }
+.report-count { color: var(--warn); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
