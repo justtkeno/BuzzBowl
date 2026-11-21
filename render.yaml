@@ -10,3 +10,6 @@ services:
       # Postgres connection string for accounts (e.g. from neon.tech). Set it in the Render dashboard.
       - key: DATABASE_URL
         sync: false
+      # Your account id, so only that exact account is an admin. The in-game 🛡 Admin panel shows it.
+      - key: ADMIN_ACCOUNT_IDS
+        sync: false

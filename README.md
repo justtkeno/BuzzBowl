@@ -64,7 +64,12 @@ Results are saved when the host ends a game, or when everyone walks away from a 
 
 Accounts live in Postgres when `DATABASE_URL` is set, otherwise in `data/accounts-<port>.json` (fine for local use).
 
-**Admins** (the account `Hao` by default; change with `ADMIN_USERNAMES`, comma-separated) get a creator badge, a **👑 Take host** button in any room, and on other players' profiles can reset an offensive display name, clear a bio, or delete the account.
+**Admins** get a creator badge, a **🛡 Admin** panel in every room (make anyone host or reader at any time, even mid-match), and on other players' profiles can reset an offensive display name, clear a bio, or delete the account.
+
+- **Lock admin to your account (do this on a public server):** set `ADMIN_ACCOUNT_IDS` to your account id (comma-separated for several). The 🛡 Admin panel shows your id and a copy button. Once set, only those exact accounts are admins, so if the account list is ever wiped, someone re-registering your username gets nothing.
+- **Unlocked fallback:** without `ADMIN_ACCOUNT_IDS`, admin goes by username: `Hao` by default, or `ADMIN_USERNAMES` (comma-separated, `""` for none). Whoever registers that username first on a server is admin, so this is only safe locally.
+
+**Seats survive bad connections:** if the host or reader drops, their seat is held for 3 minutes and comes back automatically when they reconnect. Meanwhile the app reads on its own.
 
 ### Protests and corrections
 

@@ -437,3 +437,102 @@ describe('reader as game master', () => {
     expect(room.s.readerId).toBe(next);
   });
 });
+
+describe('seats survive a dropped connection', () => {
+  async function readerGame(mode: 'ffa' | 'teams' = 'ffa') {
+    const room = new Room('SEAT', io, { qbreader: fakeProvider() });
+    const host = room.join('Hao');
+    const ann = room.join('Ann');
+    const bob = room.join('Bob');
+    if (mode === 'teams') room.updateSettings(host.playerId, { mode: 'teams' });
+    room.setReader(host.playerId, host.playerId);
+    room.start(host.playerId);
+    await flush();
+    return { room, host, ann, bob };
+  }
+
+  it('gives the reader seat back on reconnect mid-match', async () => {
+    const { room, host } = await readerGame();
+    await readTo(room, 2);
+    room.disconnect(host.playerId);
+    expect(room.s.readerId).toBeNull();
+    expect(room.s.hostId).not.toBe(host.playerId);
+    room.join('Hao', host.token);
+    expect(room.s.readerId).toBe(host.playerId);
+    expect(room.s.hostId).toBe(host.playerId);
+    expect(() => room.buzz(host.playerId, 2)).toThrow(/reader cannot buzz/);
+    room.dispose();
+  });
+
+  it('keeps the reader off a team after coming back in teams mode', async () => {
+    const { room, host } = await readerGame('teams');
+    room.disconnect(host.playerId);
+    room.join('Hao', host.token);
+    expect(room.s.readerId).toBe(host.playerId);
+    expect(room.s.teams.some((t) => t.playerIds.includes(host.playerId))).toBe(false);
+    room.dispose();
+  });
+
+  it('lets the seat go after the hold runs out', async () => {
+    const { room, host } = await readerGame();
+    room.disconnect(host.playerId);
+    await vi.advanceTimersByTimeAsync(TIMING.seatHoldMs + 1000);
+    room.join('Hao', host.token);
+    expect(room.s.readerId).toBeNull();
+    room.dispose();
+  });
+
+  it('does not take the seat back from a new reader', async () => {
+    const { room, host, ann } = await readerGame();
+    room.disconnect(host.playerId);
+    room.next(ann.playerId); // skip to between questions
+    room.setReader(ann.playerId, ann.playerId);
+    room.join('Hao', host.token);
+    expect(room.s.readerId).toBe(ann.playerId);
+    room.dispose();
+  });
+});
+
+describe('admin room controls', () => {
+  it('lets an admin set the host and reader mid-match', async () => {
+    const room = new Room('ADMN', io, { qbreader: fakeProvider() });
+    const ann = room.join('Ann');
+    const admin = room.join('Hao', undefined, { id: 'acc1', username: 'Hao', admin: true });
+    const bob = room.join('Bob');
+    room.start(ann.playerId);
+    await flush();
+    await readTo(room, 2);
+    expect(() => room.setReader(admin.playerId, admin.playerId)).toThrow(/between questions/);
+    room.adminSetReader(admin.playerId, bob.playerId);
+    expect(room.s.readerId).toBe(bob.playerId);
+    room.adminSetReader(admin.playerId, admin.playerId);
+    expect(room.s.readerId).toBe(admin.playerId);
+    room.adminSetHost(admin.playerId, bob.playerId);
+    expect(room.s.hostId).toBe(bob.playerId);
+    room.adminSetReader(admin.playerId, null);
+    expect(room.s.readerId).toBeNull();
+    room.dispose();
+  });
+
+  it('refuses non-admins', async () => {
+    const room = new Room('ADMN', io, { qbreader: fakeProvider() });
+    const ann = room.join('Ann');
+    const bob = room.join('Bob');
+    expect(() => room.adminSetHost(bob.playerId, bob.playerId)).toThrow(/admins/);
+    expect(() => room.adminSetReader(bob.playerId, bob.playerId)).toThrow(/admins/);
+    expect(room.s.hostId).toBe(ann.playerId);
+  });
+
+  it('will not seat someone who is answering', async () => {
+    const room = new Room('ADMN', io, { qbreader: fakeProvider() });
+    const admin = room.join('Hao', undefined, { id: 'acc1', username: 'Hao', admin: true });
+    const ann = room.join('Ann');
+    room.start(admin.playerId);
+    await flush();
+    await readTo(room, 3);
+    room.buzz(ann.playerId, 3);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(() => room.adminSetReader(admin.playerId, ann.playerId)).toThrow(/answering/);
+    room.dispose();
+  });
+});

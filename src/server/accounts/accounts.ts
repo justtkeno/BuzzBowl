@@ -17,11 +17,20 @@ const RECENT_GAMES = 15;
 export interface SocketAccount { id: string; username: string; admin: boolean }
 
 /**
- * Site admins, by username (case-insensitive, comma-separated). Usernames can't change after sign-up,
- * so the name is enough. Override with ADMIN_USERNAMES (set it to "" to have no admins).
+ * Site admins.
+ * - Locked (recommended on a public server): ADMIN_ACCOUNT_IDS lists exact account ids, comma-separated.
+ *   Only those accounts are admins. A wiped account list can't hand the powers to whoever re-registers the name.
+ * - Unlocked fallback: ADMIN_USERNAMES (default "Hao"), case-insensitive. Fine for a local server, but whoever
+ *   registers that username first on a server gets admin. Set ADMIN_USERNAMES to "" to have no admins.
  */
+const ADMIN_IDS = new Set((process.env.ADMIN_ACCOUNT_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean));
 const ADMINS = new Set((process.env.ADMIN_USERNAMES ?? 'Hao').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
-export const isAdmin = (username: string) => ADMINS.has(username.toLowerCase());
+/** True when admins are pinned to account ids. */
+export const adminLocked = ADMIN_IDS.size > 0;
+export const isAdmin = (u: { id: string; username: string }) => (adminLocked ? ADMIN_IDS.has(u.id) : ADMINS.has(u.username.toLowerCase()));
+if (!adminLocked && ADMINS.size && process.env.NODE_ENV === 'production') {
+  console.warn(`Admin is by username (${[...ADMINS].join(', ')}). Set ADMIN_ACCOUNT_IDS to lock it to your account; the admin panel shows your id.`);
+}
 
 export async function hashPassword(pw: string): Promise<string> {
   const salt = randomBytes(16);
@@ -53,7 +62,7 @@ function readCookie(header: string | undefined, name: string): string | null {
 const cleanName = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
 
 export function toMe(u: User): Me {
-  return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u.username), settings: u.settings };
+  return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u), ...(isAdmin(u) ? { adminLocked } : {}), settings: u.settings };
 }
 
 /** Tiny in-memory limiter for login/signup attempts, per IP. */
@@ -117,7 +126,7 @@ export class Accounts {
   /** Socket.IO middleware: remembers who each socket is logged in as (from the cookie sent with the handshake). */
   socketMiddleware = (socket: Socket, next: (err?: Error) => void) => {
     this.userFrom(socket.request.headers.cookie).then((u) => {
-      if (u) this.sockets.set(socket, { id: u.id, username: u.username, admin: isAdmin(u.username) });
+      if (u) this.sockets.set(socket, { id: u.id, username: u.username, admin: isAdmin(u) });
       next();
     }, () => next());
   };
@@ -138,7 +147,7 @@ export class Accounts {
     if (!u) return null;
     const games = await this.store.games(u.id, PROFILE_GAMES);
     return {
-      username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u.username),
+      username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u),
       ...summarize(games),
       recent: games.slice(0, RECENT_GAMES),
     };
@@ -229,10 +238,10 @@ export class Accounts {
 
     const target = async (req: Request, res: Response) => {
       const me = await this.userFrom(req.headers.cookie);
-      if (!me || !isAdmin(me.username)) { res.status(403).json({ error: 'Admins only.' }); return null; }
+      if (!me || !isAdmin(me)) { res.status(403).json({ error: 'Admins only.' }); return null; }
       const u = await this.store.userByName(String(req.params.username));
       if (!u) { res.status(404).json({ error: 'No player with that username.' }); return null; }
-      if (isAdmin(u.username)) { res.status(400).json({ error: 'Admin accounts can’t be moderated here.' }); return null; }
+      if (isAdmin(u)) { res.status(400).json({ error: 'Admin accounts can’t be moderated here.' }); return null; }
       return u;
     };
 

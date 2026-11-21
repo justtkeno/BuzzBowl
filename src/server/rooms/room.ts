@@ -29,6 +29,8 @@ export class ActionError extends Error {}
 const fail = (msg: string): never => { throw new ActionError(msg); };
 
 export const TIMING = {
+  /** A host or reader who drops gets their seat back if they reconnect within this long. */
+  seatHoldMs: 3 * 60_000,
   /** After the first buzz arrives, wait this long for earlier (laggier) buzzes before awarding it. */
   graceMs: 120,
   /** A client may claim it buzzed before a word only if that word went out at most this long ago. */
@@ -116,6 +118,8 @@ export interface RoomState {
   /** Whole-game pause by the host or reader: every timer is frozen. */
   paused: boolean;
   pausedAt: number | null;
+  /** Seats kept for a host or reader whose connection dropped, until they come back or time runs out. */
+  seatHold?: { host?: { id: string; until: number }; reader?: { id: string; until: number } };
   /** This game's results were already saved to players' profiles. */
   recorded?: boolean;
 }
@@ -311,6 +315,7 @@ export class Room {
       existing.admin = (account && existing.accountId === account.id && account.admin) || undefined;
       const hostAway = !this.s.hostId || !this.player(this.s.hostId)?.online;
       if (hostAway && (existing.id === this.s.hostId || Date.now() > this.hostReservedUntil)) this.s.hostId = existing.id;
+      this.restoreSeats(existing);
       this.broadcast();
       return { playerId: existing.id, token: existing.token };
     }
@@ -324,6 +329,78 @@ export class Room {
     this.system(`${p.name} joined.`);
     this.broadcast();
     return { playerId: p.id, token: p.token };
+  }
+
+  /** Give a reconnecting host or reader back the seat that was held for them. */
+  private restoreSeats(p: Player) {
+    const hold = this.s.seatHold;
+    if (!hold) return;
+    const now = Date.now();
+    if (hold.host?.id === p.id) {
+      if (now < hold.host.until) this.s.hostId = p.id;
+      delete hold.host;
+    }
+    if (hold.reader?.id === p.id) {
+      // Only if nobody else took the seat meanwhile, and not while this player is answering a tossup.
+      if (now < hold.reader.until && !this.readerOnline() && this.s.buzz?.playerId !== p.id) {
+        this.seatReader(p);
+        this.system(`${p.name} is back in the reader's seat.`);
+      }
+      delete hold.reader;
+    }
+    if (!hold.host && !hold.reader) delete this.s.seatHold;
+  }
+
+  /** Put a player in the reader seat (off any team), sending the previous reader back to playing. */
+  private seatReader(p: Player) {
+    const old = this.s.readerId ? this.player(this.s.readerId) : undefined;
+    if (old && old !== p && this.s.settings.mode === 'teams') this.autoAssign(old);
+    this.removeFromTeam(p);
+    this.s.readerId = p.id;
+    if (this.s.seatHold?.reader) delete this.s.seatHold.reader;
+    void this.fillQueue();
+  }
+
+  private mustAdmin(by: string) {
+    const p = this.mustPlayer(by);
+    if (!p.admin) fail('Only site admins can do that.');
+    return p;
+  }
+
+  /** Admin: make any person in the room the host, at any time. */
+  adminSetHost(by: string, target: string) {
+    const admin = this.mustAdmin(by);
+    const p = this.mustPlayer(target);
+    if (p.bot) fail('Bots can\'t be the host.');
+    if (this.s.hostId === p.id) return;
+    this.s.hostId = p.id;
+    if (this.s.seatHold?.host) delete this.s.seatHold.host;
+    this.system(`${admin.name} (BuzzBowl creator) made ${p.name} the host.`);
+    this.broadcast();
+  }
+
+  /** Admin: seat anyone as reader, or free the seat (null), even mid-match. */
+  adminSetReader(by: string, target: string | null) {
+    const admin = this.mustAdmin(by);
+    if (this.s.daily) fail('The daily challenge has no reader.');
+    if (target === null) {
+      const old = this.s.readerId ? this.player(this.s.readerId) : undefined;
+      if (!old) return;
+      this.s.readerId = null;
+      if (this.s.settings.mode === 'teams') this.autoAssign(old);
+      this.system(`${admin.name} (BuzzBowl creator) took ${old.name} out of the reader's seat.`);
+      return this.broadcast();
+    }
+    const p = this.mustPlayer(target);
+    if (p.bot) fail('Bots can\'t read.');
+    if (this.s.readerId === p.id) return;
+    if (this.s.buzz?.playerId === p.id) fail(`${p.name} is answering right now. Try again in a moment.`);
+    if (this.s.phase === 'bonus' && this.s.bonus && !this.s.bonus.done && this.teamOf(p.id) === this.s.bonus.teamId) {
+      fail(`${p.name}'s team is playing a bonus. Try again after it.`);
+    }
+    this.seatReader(p);
+    this.system(`${admin.name} (BuzzBowl creator) made ${p.name} the reader.`);
+    this.broadcast();
   }
 
   /** A site admin takes the host seat in any room. */
@@ -351,10 +428,16 @@ export class Room {
     const p = this.player(playerId);
     if (!p) return;
     p.online = false;
-    if (this.s.hostId === playerId) this.s.hostId = this.s.players.find((x) => x.online && !x.bot)?.id ?? playerId;
+    const until = Date.now() + TIMING.seatHoldMs;
+    if (this.s.hostId === playerId) {
+      this.s.hostId = this.s.players.find((x) => x.online && !x.bot)?.id ?? playerId;
+      if (this.s.hostId !== playerId) (this.s.seatHold ??= {}).host = { id: playerId, until };
+    }
     if (this.s.readerId === playerId) {
+      // The app reads on its own meanwhile; the reader gets the seat back if they reconnect in time.
       this.s.readerId = null;
-      this.system(`${p.name} left the reader's seat.`);
+      (this.s.seatHold ??= {}).reader = { id: playerId, until };
+      this.system(`${p.name} lost connection. Their reader seat is held for ${TIMING.seatHoldMs / 60_000} minutes.`);
       if (this.s.buzz?.awaiting) this.applyTossupVerdict(this.s.buzz.awaiting.suggestion, this.s.buzz.awaiting.given);
       else if (this.s.bonus?.awaiting) this.applyBonusVerdict(this.s.bonus.awaiting.suggestion, this.s.bonus.awaiting.given);
     }
@@ -1284,6 +1367,9 @@ export class Room {
       you: viewer,
       hostId: s.hostId,
       readerId: s.readerId,
+      heldReader: s.seatHold?.reader && Date.now() < s.seatHold.reader.until
+        ? { id: s.seatHold.reader.id, name: this.player(s.seatHold.reader.id)?.name ?? '?', until: s.seatHold.reader.until }
+        : null,
       settings: s.settings,
       phase: s.phase,
       tossup: t && {
