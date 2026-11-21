@@ -18,6 +18,7 @@ function statusText(f: Friend) {
     return `${f.room.mode === 'teams' ? 'Teams game' : 'In a game'} · ${people}`;
   }
   if (f.status === 'daily') return 'Daily challenge';
+  if (f.status === 'survival') return 'Playing survival';
   return f.status === 'online' ? 'Online' : 'Offline';
 }
 
@@ -81,7 +82,7 @@ export function FriendsTab({ onJoin, currentCode, hidden, disabled, canInvite }:
   useEffect(() => { if (hidden) setOpen(false); }, [hidden]);
 
   const list = f.list;
-  const playing = list?.friends.filter((x) => x.status === 'room' || x.status === 'daily').length ?? 0;
+  const playing = list?.friends.filter((x) => x.status === 'room' || x.status === 'daily' || x.status === 'survival').length ?? 0;
   const online = list?.friends.filter((x) => x.status === 'online').length ?? 0;
   const requests = list?.incoming.length ?? 0;
   const label = !f.me ? 'Friends' : `Friends: ${playing + online} online${requests ? `, ${plural(requests, 'friend request')}` : ''}`;
@@ -165,7 +166,7 @@ function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab, can
   };
 
   const friends = list?.friends ?? [];
-  const playing = friends.filter((x) => x.status === 'room' || x.status === 'daily');
+  const playing = friends.filter((x) => x.status === 'room' || x.status === 'daily' || x.status === 'survival');
   const online = friends.filter((x) => x.status === 'online');
   const offline = friends.filter((x) => x.status === 'offline');
 

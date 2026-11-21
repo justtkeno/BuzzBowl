@@ -280,6 +280,8 @@ export interface PublicState {
   highlights: Highlight[];
   /** Present in a daily-challenge room. */
   daily?: { day: string; number: number; total: number; done: boolean };
+  /** Present in a survival room: lives left and the run so far (one mark per tossup, like the daily). */
+  survival?: { lives: number; maxLives: number; tossups: number; correct: number; marks: string; done: boolean };
   /** Open between tossups when players vote on the next topic. */
   vote: PublicVote | null;
   /** Reader only: the next tossups in line, so they can skip any before they are read. */
@@ -334,6 +336,41 @@ export interface DailyStatus {
   me: DailyEntry | null;
   /** Seconds until the next challenge. */
   nextIn: number;
+}
+
+/** Survival: tossups keep coming until you miss this many. */
+export const SURVIVAL_LIVES = 3;
+
+/** One player's best survival run on the leaderboard. */
+export interface SurvivalEntry {
+  rank: number;
+  name: string;
+  username?: string;
+  /** Tossups answered correctly: the score. */
+  correct: number;
+  /** Tossups played in the run, misses included. */
+  tossups: number;
+  points: number;
+  powers: number;
+  /** When the run finished (epoch ms). */
+  at: number;
+}
+
+export interface SurvivalBoard {
+  entries: SurvivalEntry[];
+  /** Players with a run on this board. */
+  players: number;
+  /** This player's best run on this board, with its rank. */
+  me: SurvivalEntry | null;
+}
+
+export interface SurvivalStatus {
+  allTime: SurvivalBoard;
+  week: SurvivalBoard;
+  /** Monday (US Eastern) the weekly board started. */
+  weekStart: string;
+  /** This player has a run in progress (Play resumes it). */
+  running: boolean;
 }
 
 export interface UpcomingTossup {

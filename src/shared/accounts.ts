@@ -41,6 +41,8 @@ export interface GameRecord {
   abandoned?: boolean;
   /** The daily challenge's number when this game was that day's challenge. */
   daily?: number;
+  /** True when this game was a survival run. */
+  survival?: boolean;
   tossups: number;
   points: number;
   powers: number;
@@ -97,6 +99,8 @@ export interface PublicProfile {
   recent: GameRecord[];
   /** Daily challenge record, once they've played one while logged in. */
   daily?: DailyProfile;
+  /** Best survival run, once they've finished one while logged in. */
+  survival?: SurvivalProfile;
   /** Stat ids they pinned to the top. */
   pinned: string[];
   badges: BadgeState[];
@@ -138,6 +142,16 @@ export interface DailyProfile {
   /** Dailies where every tossup was answered correctly. */
   perfect: number;
   recent: DailyDay[];
+}
+
+/** A player's survival record on their profile. */
+export interface SurvivalProfile {
+  runs: number;
+  /** Best run: tossups answered correctly, then points. */
+  best: { correct: number; tossups: number; points: number; powers: number; at: number };
+  /** Where that best run sits on the all-time board, and how many players are on it. */
+  rank: number;
+  players: number;
 }
 
 /** Need this many tossups heard in a subject before it can be "best subject". */
@@ -187,8 +201,8 @@ export function summarize(games: GameRecord[]): Pick<PublicProfile, 'totals' | '
 /** Friends plus pending requests (both ways) per account. */
 export const FRIENDS_MAX = 200;
 
-/** Where a friend is right now. Daily-challenge rooms are never shown, so nobody can join or watch one. */
-export type FriendStatus = 'offline' | 'online' | 'room' | 'daily';
+/** Where a friend is right now. Daily-challenge and survival rooms are never shown, so nobody can join or watch one. */
+export type FriendStatus = 'offline' | 'online' | 'room' | 'daily' | 'survival';
 
 export interface FriendRoom {
   code: string;

@@ -21,7 +21,7 @@ const RECENT_GAMES = 15;
 export interface SocketAccount { id: string; username: string; admin: boolean }
 
 /** Where a logged-in account is right now (accounts with no entry are offline). */
-export interface Presence { status: 'online' | 'room' | 'daily'; room?: FriendRoom }
+export interface Presence { status: 'online' | 'room' | 'daily' | 'survival'; room?: FriendRoom }
 
 /** How `me` stands with each other account they have a friend link with. */
 interface Relation { friend: boolean; incoming?: number; outgoing?: number }
@@ -40,7 +40,7 @@ function relations(links: FriendLink[], me: string): Map<string, Relation> {
   return out;
 }
 
-const STATUS_ORDER: Record<Friend['status'], number> = { room: 0, daily: 1, online: 2, offline: 3 };
+const STATUS_ORDER: Record<Friend['status'], number> = { room: 0, daily: 1, survival: 1, online: 2, offline: 3 };
 
 /**
  * Site admins.
@@ -119,7 +119,7 @@ export class Accounts {
 
   constructor(private store: AccountStore) {}
 
-  /** Extra profile sections from elsewhere (the daily challenge), added when a profile is shown. */
+  /** Extra profile sections from elsewhere (the daily challenge, survival), added when a profile is shown. */
   profileExtras?: (user: { id: string }) => Promise<Partial<PublicProfile>>;
   /** Finds the daily challenge a solo game saved before games carried `daily` belongs to (its number), if any. */
   findDaily?: (accountId: string, at: number, points: number) => Promise<number | null>;

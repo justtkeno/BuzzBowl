@@ -81,7 +81,7 @@ export function Scoreboard({ s }: { s: PublicState }) {
       </td>
       <td className="num" title="powers / tens / negs">{p.stats.powers}/{p.stats.tens}/{p.stats.negs}</td>
       <td className="num pts"><AnimatedScore value={p.stats.points} /></td>
-      {r.isController && !s.daily && (
+      {r.isController && !r.fixed && (
         <td className="adj">
           <button className="mini" title="−5" aria-label={`Take 5 points from ${p.name}`} onClick={() => act('score:adjust', p.id, -5)}>−</button>
           <button className="mini" title="+5" aria-label={`Give ${p.name} 5 points`} onClick={() => act('score:adjust', p.id, 5)}>+</button>
@@ -109,7 +109,7 @@ export function Scoreboard({ s }: { s: PublicState }) {
         ))
       ) : (
         <table className="ffa">
-          <thead><tr><th>Player</th><th className="num">P/10/N</th><th className="num">Pts</th>{r.isController && !s.daily && <th />}</tr></thead>
+          <thead><tr><th>Player</th><th className="num">P/10/N</th><th className="num">Pts</th>{r.isController && !r.fixed && <th />}</tr></thead>
           <tbody>{ffa.map((p) => row(p))}</tbody>
         </table>
       )}

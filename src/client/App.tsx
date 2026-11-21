@@ -127,6 +127,13 @@ function Player() {
     afterJoin(res, name);
   }, [enter]);
 
+  // Survival: a fresh solo run, or back into the one in progress.
+  const startSurvival = useCallback(async (name: string) => {
+    const res = await call<{ resume?: string; code: string; playerId: string; token: string; chat: ChatMessage[] }>('survival:start', { name, key: dailyKey() });
+    if (res.resume) return enter(res.resume, name);
+    afterJoin(res, name);
+  }, [enter]);
+
   const rename = useCallback(async (name: string) => {
     await call('player:rename', name);
     prefs.setName(name);
@@ -146,7 +153,7 @@ function Player() {
   if (!state) {
     return (
       <>
-        <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} onDaily={startDaily} dailyOpen={location.pathname === '/daily'} />
+        <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} onDaily={startDaily} onSurvival={startSurvival} dailyOpen={location.pathname === '/daily'} survivalOpen={location.pathname === '/survival'} />
         <InviteBanner onJoin={(code) => { enter(code, prefs.name() || randomName()).catch((e) => setError(e.message)); }} />
         <Announcement />
       </>
@@ -159,8 +166,9 @@ function Player() {
   };
   return (
     <>
-      <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} onJoinRoom={joinFriend} />
-      <InviteBanner currentCode={state.code} quiet={!!state.daily && !state.daily.done} onJoin={joinFriend} />
+      <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} onJoinRoom={joinFriend}
+        onSurvival={() => startSurvival(joined.current?.name || prefs.name() || randomName())} />
+      <InviteBanner currentCode={state.code} quiet={(!!state.daily && !state.daily.done) || (!!state.survival && !state.survival.done)} onJoin={joinFriend} />
     </>
   );
 }

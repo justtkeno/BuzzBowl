@@ -13,6 +13,8 @@ import { FileAccountStore, PgAccountStore } from './accounts/store';
 import { Daily, dailyNumber, dayKey, playerKeyFor } from './daily/daily';
 import { FileDailyStore, PgDailyStore } from './daily/store';
 import { QBReaderProvider } from './questions/providers';
+import { Survival } from './survival/survival';
+import { FileSurvivalStore, PgSurvivalStore } from './survival/store';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -39,10 +41,16 @@ const daily = new Daily(
   new QBReaderProvider(),
 );
 
-// Profiles show each account's daily challenge record.
+// Survival runs and their leaderboards, stored the same way.
+const survival = new Survival(
+  process.env.DATABASE_URL ? new PgSurvivalStore(process.env.DATABASE_URL) : new FileSurvivalStore(join(DATA_DIR, `survival-${PORT}.json`)),
+);
+
+// Profiles show each account's daily challenge record and best survival run.
 accounts.profileExtras = async (u) => {
-  const d = await daily.profile(playerKeyFor(u.id, null)!);
-  return d ? { daily: d } : {};
+  const key = playerKeyFor(u.id, null)!;
+  const [d, sv] = await Promise.all([daily.profile(key), survival.profile(key).catch((e) => { console.error('Survival profile failed:', e); return null; })]);
+  return { ...(d ? { daily: d } : {}), ...(sv ? { survival: sv } : {}) };
 };
 // Games saved before records carried their daily-challenge number: match them to that day's result.
 accounts.findDaily = async (accountId, at, points) => {
@@ -64,7 +72,26 @@ function attachDaily(room: Room) {
     daily.set(d.day).then((t) => room.useDailyQuestions(t)).catch(() => { /* the room shows an error when it asks for a question */ });
   }
 }
-/** Friends list: who is online, and which room they're in. Daily-challenge rooms stay hidden. */
+/** Hook a survival room up to the leaderboard (also after a restart). */
+function attachSurvival(room: Room) {
+  const sv = room.s.survival;
+  if (!sv) return;
+  room.onSurvivalDone = (o) => {
+    const username = room.s.players.find((p) => p.id === o.playerId)?.username;
+    survival.record(o, username).catch((e) => console.error('Could not save a survival run:', e)).finally(() => room.broadcast());
+  };
+  if (!sv.done) survival.active.set(sv.playerKey, room.s.code);
+}
+/** The player's survival run in progress, if any. */
+function runningSurvival(playerKey: string): Room | undefined {
+  const code = survival.active.get(playerKey);
+  const room = code ? store.get(code) : undefined;
+  return room?.s.survival && !room.s.survival.done && room.s.survival.playerKey === playerKey ? room : undefined;
+}
+/** Solo rooms nobody else may see or join: the daily challenge, survival. Players there aren't interrupted. */
+const playingSolo = (room: Room) => (!!room.s.daily && !room.s.daily.done) || (!!room.s.survival && !room.s.survival.done);
+
+/** Friends list: who is online, and which room they're in. Daily-challenge and survival rooms stay hidden. */
 accounts.presence = (ids) => {
   const want = new Set(ids);
   const out = new Map<string, Presence>();
@@ -78,12 +105,13 @@ accounts.presence = (ids) => {
   for (const room of store.all()) {
     for (const p of room.s.players) {
       if (!p.accountId || !p.online || p.bot || !want.has(p.accountId)) continue;
-      const rank = room.s.daily ? 0 : 1;
+      const rank = room.s.daily || room.s.survival ? 0 : 1;
       const prev = seen.get(p.accountId);
       const score = rank * 1e15 + room.s.lastActive;
       if (prev !== undefined && prev >= score) continue;
       seen.set(p.accountId, score);
       if (room.s.daily) { out.set(p.accountId, { status: 'daily' }); continue; }
+      if (room.s.survival) { out.set(p.accountId, { status: 'survival' }); continue; }
       const phase = room.s.phase === 'lobby' ? 'lobby' : room.s.phase === 'gameOver' ? 'over' : 'playing';
       const players = room.s.players.filter((x) => x.online && !x.bot).length;
       out.set(p.accountId, { status: 'room', room: { code: room.s.code, phase, mode: room.s.settings.mode, players } });
@@ -181,6 +209,7 @@ function restoreRooms() {
       if (Date.now() - (saved.lastActive ?? 0) > RESTORE_MAX_AGE_MS) continue;
       const room = Room.restore(saved, roomIO(saved.code));
       attachDaily(room);
+      attachSurvival(room);
       store.set(room);
       n++;
     }
@@ -315,6 +344,41 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ---------- survival ----------
+
+  socket.on('survival:status', async ({ key }: { key?: string } = {}, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    try {
+      const playerKey = playerKeyFor(accounts.of(socket)?.id, key);
+      ack({ ok: true, status: await survival.status(playerKey, !!playerKey && !!runningSurvival(playerKey)) });
+    } catch (e) {
+      console.error('survival:status failed:', e);
+      ack({ ok: false, error: 'Survival is unavailable right now.' });
+    }
+  });
+
+  socket.on('survival:start', async ({ name, key }: { name?: string; key?: string } = {}, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    const playerKey = playerKeyFor(accounts.of(socket)?.id, key);
+    if (!playerKey) return ack({ ok: false, error: 'Could not identify this browser. Reload and try again.' });
+    if (!String(name ?? '').trim()) return ack({ ok: false, error: 'Pick a display name.' });
+    try {
+      // One run at a time: a reload, or Play from the home page, goes back to the run in progress.
+      const running = runningSurvival(playerKey);
+      if (running) return ack({ ok: true, resume: running.s.code });
+      await survival.ready;
+      const room = makeRoom();
+      room.makeSurvival(playerKey);
+      attachSurvival(room);
+      enter(room, String(name), undefined, ack);
+      const host = (socket.data as SocketData).playerId;
+      if (host && (socket.data as SocketData).code === room.s.code) room.start(host);
+    } catch (e) {
+      console.error('survival:start failed:', e);
+      ack({ ok: false, error: e instanceof ActionError ? e.message : 'Could not start a survival run.' });
+    }
+  });
+
   socket.on('room:join', ({ code, name, token }: { code: string; name: string; token?: string }, ack: Ack) => {
     const room = store.get(String(code ?? '').trim());
     if (!room) return ack({ ok: false, error: `No room with code ${String(code).toUpperCase()}.` });
@@ -339,6 +403,7 @@ io.on('connection', (socket) => {
       return {
         code: r.s.code, phase: r.s.phase, mode: r.s.settings.mode, paused: r.s.paused, lastActive: r.s.lastActive,
         daily: r.s.daily ? { number: r.s.daily.number, done: r.s.daily.done } : null,
+        survival: r.s.survival ? { lives: r.s.survival.lives, done: r.s.survival.done } : null,
         tossup: r.s.tossupNum, bots: r.s.players.length - people.length,
         host: r.s.players.find((p) => p.id === r.s.hostId)?.name ?? null,
         players: people.map((p) => ({ name: p.name, username: p.username ?? null, online: p.online })),
@@ -347,7 +412,7 @@ io.on('connection', (socket) => {
     ack({ ok: true, connections: io.sockets.sockets.size, accounts: accountIds.size, rooms });
   });
 
-  // A big message on every screen on the site. Players mid-daily-challenge are skipped so it can't cost them a buzz.
+  // A big message on every screen on the site. Players mid-daily-challenge or mid-survival-run are skipped so it can't cost them a buzz.
   socket.on('site:announce', (text: unknown, ack: Ack) => {
     if (typeof ack !== 'function' || !siteAdmin(ack)) return;
     const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
@@ -357,7 +422,7 @@ io.on('connection', (socket) => {
     for (const s of io.sockets.sockets.values()) {
       const d = s.data as SocketData;
       const room = d.code && d.playerId ? store.get(d.code) : undefined;
-      if (room?.s.daily && !room.s.daily.done) continue;
+      if (room && playingSolo(room)) continue;
       s.emit('announce', msg);
       sent++;
     }
@@ -397,6 +462,7 @@ io.on('connection', (socket) => {
     const seat = room?.s.players.find((p) => p.id === playerId);
     if (!room || !seat) return ack({ ok: false, error: 'Join a room first.' });
     if (room.s.daily) return ack({ ok: false, error: 'The daily challenge is solo.' });
+    if (room.s.survival) return ack({ ok: false, error: 'Survival is solo.' });
     try {
       const them = await accounts.friendOf(me.id, String(username ?? ''));
       if (!them) return ack({ ok: false, error: 'You can only invite friends.' });
@@ -479,6 +545,6 @@ setInterval(() => {
   }
 }, 60_000).unref();
 
-Promise.all([accounts.init(), daily.ready]).finally(() => {
+Promise.all([accounts.init(), daily.ready, survival.ready]).finally(() => {
   http.listen(PORT, () => console.log(`Quiz bowl server on http://localhost:${PORT} (accounts: ${accounts.ready ? accounts.kind : 'off'})`));
 });

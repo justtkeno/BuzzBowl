@@ -67,7 +67,7 @@ export function AdminPanel({ s, onClose, onPlayers }: { s: PublicState; onClose:
 
         <div className="row between">
           <h3>People in this room</h3>
-          {onPlayers && !s.daily && <button className="btn small ghost" onClick={onPlayers}>Kick, ban, mute →</button>}
+          {onPlayers && !s.daily && !s.survival && <button className="btn small ghost" onClick={onPlayers}>Kick, ban, mute →</button>}
         </div>
         <table className="admin-people">
           <tbody>

@@ -1,5 +1,5 @@
 import {
-  CATEGORIES, DEFAULT_SETTINGS, SPECTATOR, VOTE_SECONDS, buzzWindowSeconds,
+  CATEGORIES, DEFAULT_SETTINGS, SPECTATOR, SURVIVAL_LIVES, VOTE_SECONDS, buzzWindowSeconds,
   type BotSkill, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
   type Filters, type Ruling, type ScorePoint, type Settings, type Verdict,
 } from '../../shared/types';
@@ -12,6 +12,7 @@ import { LIGHTNING } from '../questions/catalog/lightning';
 import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
 import type { Bonus, QuestionProvider, Tossup } from '../questions/types';
 import type { GameRecord } from '../../shared/accounts';
+import { SurvivalProvider } from '../survival/questions';
 
 /** How the room talks to the outside world (Socket.IO in production, a fake in tests). */
 export interface RoomIO {
@@ -124,6 +125,8 @@ interface LiveBonus {
 export interface RoomState {
   /** Set for a daily-challenge room: one player, fixed questions, fixed settings. */
   daily: DailyInfo | null;
+  /** Set for a survival room: one player, tossups until three misses, fixed settings. */
+  survival: SurvivalInfo | null;
   code: string;
   hostId: string | null;
   readerId: string | null;
@@ -188,6 +191,22 @@ export interface DailyOutcome {
   depth: number | null;
 }
 
+export interface SurvivalInfo {
+  playerKey: string;
+  lives: number;
+  /** One mark per tossup played, like the daily: P power, T ten, N neg, Z wrong without a neg, - no buzz. */
+  marks: string;
+  startedAt: number;
+  done: boolean;
+}
+/** One finished survival run, worked out by the server from the player's actual buzzes. */
+export interface SurvivalOutcome {
+  code: string; playerKey: string; playerId: string; name: string; accountId?: string;
+  /** Tossups played, misses included. */
+  tossups: number;
+  correct: number; points: number; powers: number; tens: number; negs: number; marks: string;
+}
+
 /** Plays a fixed list of tossups in order (the daily set). */
 class InOrderProvider implements QuestionProvider {
   constructor(private tossups: Tossup[]) {}
@@ -216,7 +235,7 @@ export class Room {
       code, hostId: null, readerId: null, settings: structuredClone(DEFAULT_SETTINGS), phase: 'lobby',
       players: [], teams: [], tossup: null, buzz: null, bonus: null, rulings: [], adjustments: [], heard: [],
       protests: [], review: [], chat: [], seenTossups: new Set(), seenBonuses: new Set(), upload: null,
-      tossupNum: 0, bonusNum: 0, message: null, lastActive: Date.now(), paused: false, pausedAt: null, daily: null,
+      tossupNum: 0, bonusNum: 0, message: null, lastActive: Date.now(), paused: false, pausedAt: null, daily: null, survival: null,
     };
   }
 
@@ -299,6 +318,7 @@ export class Room {
   pauseGame(by: string, paused: boolean) {
     if (!this.isController(by)) fail('Only the host or reader can pause the game.');
     if (this.s.daily && paused) fail('The daily challenge can’t be paused.');
+    if (this.s.survival && paused) fail('Survival can’t be paused.');
     if (paused === this.s.paused) return;
     if (paused) {
       if (this.s.phase === 'lobby' || this.s.phase === 'gameOver') fail('Nothing to pause.');
@@ -367,6 +387,7 @@ export class Room {
     }
     if (!clean) fail('Pick a display name.');
     if (this.s.daily && this.s.players.length) fail('The daily challenge is played solo. Start your own from the home page.');
+    if (this.s.survival && this.s.players.length) fail('Survival is played solo. Start your own run from the home page.');
     if (this.s.players.length >= 60) fail('This room is full.');
     const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null, ...(account ? { accountId: account.id, username: account.username, ...(account.admin ? { admin: true } : {}) } : {}) };
     this.s.players.push(p);
@@ -429,6 +450,7 @@ export class Room {
   adminSetReader(by: string, target: string | null) {
     const admin = this.mustAdmin(by);
     if (this.s.daily) fail('The daily challenge has no reader.');
+    if (this.s.survival) fail('Survival has no reader.');
     if (target === null) {
       const old = this.s.readerId ? this.player(this.s.readerId) : undefined;
       if (!old) return;
@@ -465,6 +487,7 @@ export class Room {
     const me = this.mustPlayer(by);
     if (!this.isController(by) && !me.admin) fail('Only the host or reader can do that.');
     if (this.s.daily) fail('Not available in the daily challenge.');
+    if (this.s.survival) fail('Not available in survival.');
     const p = this.mustPlayer(target);
     if (p.id === by) fail('You can’t do that to yourself.');
     if (p.admin && !me.admin) fail('You can’t do that to the Trivio creator.');
@@ -644,6 +667,7 @@ export class Room {
   updateSettings(by: string, patch: Partial<Settings>) {
     if (!this.isController(by)) fail('Only the host or reader can change settings.');
     if (this.s.daily) fail('The daily challenge uses the same settings for everyone.');
+    if (this.s.survival) fail('Survival uses the same settings for everyone.');
     const s = this.s.settings;
     const questionsKey = this.questionsKey();
     const before = { ...s };
@@ -780,6 +804,7 @@ export class Room {
   /** Take (target = self) or assign (host) the reader seat; null target frees it. */
   setReader(by: string, target: string | null) {
     if (this.s.daily) fail('The daily challenge has no reader.');
+    if (this.s.survival) fail('Survival has no reader.');
     if (this.midGame()) fail('Change the reader between questions.');
     if (target === null) {
       if (by !== this.s.readerId && by !== this.s.hostId) fail('Only the reader or host can free the seat.');
@@ -806,6 +831,7 @@ export class Room {
   start(by: string) {
     if (!this.isController(by)) fail('Only the host or reader can start.');
     if (this.s.daily?.done) fail('You’ve played today’s challenge. Come back tomorrow for a new one!');
+    if (this.s.survival?.done) fail('This run is over. Tap Play again for a new one.');
     if (this.s.phase === 'gameOver') this.resetScores();
     else if (this.s.phase !== 'lobby') fail('The game is already running.');
     this.s.message = null;
@@ -839,6 +865,8 @@ export class Room {
       const outcome = this.dailyOutcome();
       if (outcome) this.onDailyDone?.(outcome);
     }
+    // Ending a run early (giving up) counts as finishing it.
+    if (this.s.survival && !this.s.survival.done) this.finishSurvival();
     this.broadcast();
   }
 
@@ -881,8 +909,65 @@ export class Room {
     };
   }
 
+  // ---------- survival ----------
+
+  /** Called once when a survival run ends (out of lives, given up, or abandoned). */
+  onSurvivalDone?: (outcome: SurvivalOutcome) => void;
+
+  /** Turn this fresh room into a survival run: endless tossups, standard settings, no extras. */
+  makeSurvival(playerKey: string) {
+    this.s.survival = { playerKey, lives: SURVIVAL_LIVES, marks: '', startedAt: Date.now(), done: false };
+    this.useSurvivalQuestions();
+    this.s.settings = { ...structuredClone(DEFAULT_SETTINGS), mode: 'ffa', bonuses: false, deadSeconds: 3, source: 'upload', topicVote: false, readAloud: false };
+  }
+
+  /** (Re)attach the survival questions, e.g. after a restart. Questions already played stay in seenTossups. */
+  private useSurvivalQuestions() { this.uploadProvider = new SurvivalProvider(this.qbreader, () => this.s.tossupNum + 1); }
+
+  /** The one person playing the run. */
+  private survivor() { return this.s.players.find((x) => !x.bot); }
+
+  /** A tossup of the run just ended: note how it went, and take a life unless they got it. */
+  private survivalTossupOver(num: number, got: boolean) {
+    const sv = this.s.survival!;
+    const p = this.survivor();
+    const r = p && this.s.rulings.filter((x) => x.type === 'tossup' && x.num === num && x.playerId === p.id && !x.overridden).at(-1);
+    sv.marks += !r ? '-' : r.correct ? (r.kind === 'power' ? 'P' : 'T') : r.kind === 'neg' ? 'N' : 'Z';
+    if (got) return;
+    sv.lives = Math.max(0, sv.lives - 1);
+    if (sv.lives === 0) {
+      this.system('Out of lives. That’s the run!');
+      this.finishSurvival();
+    }
+  }
+
+  /** End the run once: report it for the leaderboard and save the game to the player's profile right away. */
+  private finishSurvival() {
+    const sv = this.s.survival;
+    if (!sv || sv.done) return;
+    sv.done = true;
+    const outcome = this.survivalOutcome();
+    if (outcome) this.onSurvivalDone?.(outcome);
+    this.recordResults(false);
+  }
+
+  private survivalOutcome(): SurvivalOutcome | null {
+    const sv = this.s.survival;
+    const p = this.survivor();
+    if (!sv || !p) return null;
+    const mine = this.s.rulings.filter((r) => r.type === 'tossup' && r.playerId === p.id && !r.overridden);
+    const count = (m: string) => [...sv.marks].filter((x) => x === m).length;
+    return {
+      code: this.s.code, playerKey: sv.playerKey, playerId: p.id, name: p.name, accountId: p.accountId,
+      tossups: sv.marks.length, correct: count('P') + count('T'), powers: count('P'), tens: count('T'), negs: count('N'),
+      points: mine.reduce((a, r) => a + r.points, 0), marks: sv.marks,
+    };
+  }
+
   /** Save a game everyone walked away from (called before an idle room is deleted). */
   recordIfUnfinished() {
+    // A survival run left open ends where it stands: the tossups already played count, nothing more.
+    if (this.s.survival && !this.s.survival.done && this.s.phase !== 'lobby') this.finishSurvival();
     if (this.s.phase !== 'lobby' && this.s.phase !== 'gameOver' && this.s.heard.length >= 3) this.recordResults(true);
   }
 
@@ -912,6 +997,7 @@ export class Room {
           standings: ranked.slice(0, 8).map((t) => ({ name: t.name, points: t.points, you: t.id === side?.id })),
           ...(abandoned ? { abandoned: true } : {}),
           ...(this.s.daily ? { daily: this.s.daily.number } : {}),
+          ...(this.s.survival ? { survival: true } : {}),
           tossups: this.s.heard.length,
           points: st.points, powers: st.powers, tens: st.tens, negs: st.negs, buzzes: st.buzzes, heard: st.heard,
           correctDepthSum: st.avgCorrectDepth != null ? st.avgCorrectDepth * correct : 0,
@@ -931,6 +1017,8 @@ export class Room {
     if (this.s.vote) return this.closeVote();
     const { phase, tossup, bonus } = this.s;
     if (phase === 'tossupEnd' && this.s.daily && this.s.tossupNum >= this.s.daily.total) return this.end(by);
+    if (phase === 'tossupEnd' && this.s.survival?.done) return this.end(by);
+    if ((phase === 'reading' || phase === 'buzz') && this.s.survival) fail('Every tossup counts in survival: buzz, or let it run out.');
     if (phase === 'tossupEnd') {
       if (tossup?.bonusTeam) void this.startBonus(tossup.bonusTeam);
       else void this.loadTossup();
@@ -968,6 +1056,12 @@ export class Room {
       return this.broadcast();
     }
     if (gen !== this.loadGen) return;
+    if (!q && this.s.survival) {
+      this.finishSurvival();
+      this.s.message = 'You’ve gone through every question we have. What a run!';
+      this.s.phase = this.s.tossupNum ? 'tossupEnd' : 'lobby';
+      return this.broadcast();
+    }
     if (!q) {
       this.s.message = 'No more unread questions match these filters. Widen the filters or upload a packet.';
       this.s.phase = this.s.tossupNum ? 'tossupEnd' : 'lobby';
@@ -1061,6 +1155,7 @@ export class Room {
   setPaused(by: string, paused: boolean) {
     if (!this.isController(by)) fail('Only the reader or host can pause.');
     if (this.s.daily && paused) fail('The daily challenge can’t be paused.');
+    if (this.s.survival && paused) fail('Survival can’t be paused.');
     this.notPaused();
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading') fail('Nothing is being read.');
@@ -1222,6 +1317,7 @@ export class Room {
     });
     if (this.s.review.length > 100) this.s.review.pop();
     t.bonusTeam = winnerTeam && this.s.settings.bonuses && this.s.settings.source !== 'lightning' ? winnerTeam : null;
+    if (this.s.survival && !this.s.survival.done) this.survivalTossupOver(t.num, !!winnerTeam);
     this.s.phase = 'tossupEnd';
     if (!t.bonusTeam) this.openVote();
     this.broadcast();
@@ -1229,7 +1325,7 @@ export class Room {
 
   // ---------- topic vote ----------
 
-  private votingOn() { return this.s.settings.topicVote && !this.s.daily && !this.readerOnline(); }
+  private votingOn() { return this.s.settings.topicVote && !this.s.daily && !this.s.survival && !this.readerOnline(); }
 
   /** Online human players who can vote (the reader and bots don't). */
   private voters() { return this.s.players.filter((p) => p.online && !p.bot && this.teamOf(p.id)); }
@@ -1385,6 +1481,7 @@ export class Room {
 
   protest(by: string, rulingId: string, note: string) {
     const p = this.mustPlayer(by);
+    if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     const r = this.s.rulings.find((x) => x.id === rulingId) ?? fail('No such ruling.');
     if (this.s.protests.some((x) => x.rulingId === rulingId && !x.resolved)) fail('That ruling is already protested.');
     this.s.protests.push({ id: rid(), rulingId, byId: by, byName: p.name, note: String(note ?? '').slice(0, 200), resolved: false });
@@ -1395,6 +1492,7 @@ export class Room {
   resolveProtest(by: string, protestId: string, accept: boolean) {
     if (!this.isController(by)) fail('Only the host or reader resolves protests.');
     if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
+    if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     const pr = this.s.protests.find((x) => x.id === protestId && !x.resolved) ?? fail('No open protest.');
     pr!.resolved = true;
     if (accept) this.flipRuling(pr!.rulingId);
@@ -1405,6 +1503,7 @@ export class Room {
   override(by: string, rulingId: string) {
     if (!this.isController(by)) fail('Only the host or reader can override.');
     if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
+    if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     this.flipRuling(rulingId);
     const r = this.s.rulings.find((x) => x.id === rulingId)!;
     this.system(`Ruling on "${r.given || '(no answer)'}" changed to ${r.correct ? 'correct' : 'incorrect'}.`);
@@ -1435,6 +1534,7 @@ export class Room {
   adjust(by: string, playerId: string, delta: number) {
     if (!this.isController(by)) fail('Only the host or reader can adjust scores.');
     if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
+    if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     const teamId = this.teamOf(playerId) ?? fail('That player is not playing.');
     const d = clamp(delta, -50, 50, 0);
     if (!d) return;
@@ -1445,6 +1545,9 @@ export class Room {
 
   upload(by: string, raw: unknown) {
     if (!this.isController(by)) fail('Only the host or reader can upload a packet.');
+    // Fixed-question rooms: a packet would replace the questions everyone else plays.
+    if (this.s.daily) fail('The daily challenge uses the same questions for everyone.');
+    if (this.s.survival) fail('Survival uses the same questions for everyone.');
     const parsed = parseUpload(raw);
     if (!parsed.tossups.length) fail('No tossups found. Each needs "question" and "answer" fields.');
     this.s.upload = parsed;
@@ -1575,6 +1678,7 @@ export class Room {
     for (const p of room.s.players) p.online = false;
     room.hostReservedUntil = Date.now() + 2 * 60_000;
     if (room.s.upload) room.uploadProvider = new LocalProvider(room.s.upload.tossups, room.s.upload.bonuses);
+    if (room.s.survival) room.useSurvivalQuestions();
     room.rearm();
     return room;
   }
@@ -1692,6 +1796,10 @@ export class Room {
       history: shared.history,
       highlights: shared.highlights,
       daily: s.daily ? { day: s.daily.day, number: s.daily.number, total: s.daily.total, done: s.daily.done } : undefined,
+      survival: s.survival ? {
+        lives: s.survival.lives, maxLives: SURVIVAL_LIVES, tossups: s.survival.marks.length,
+        correct: [...s.survival.marks].filter((m) => m === 'P' || m === 'T').length, marks: s.survival.marks, done: s.survival.done,
+      } : undefined,
       vote: s.vote ? this.publicVote(s.vote, viewer) : null,
       ...(isReader ? {
         upcoming: this.upcoming.map((q) => ({

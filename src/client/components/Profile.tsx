@@ -1,6 +1,6 @@
 import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
-import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, isLocked, type DailyProfile, type GameRecord, type ProfileView, type PublicProfile } from '../../shared/accounts';
+import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, isLocked, type DailyProfile, type GameRecord, type ProfileView, type PublicProfile, type SurvivalProfile } from '../../shared/accounts';
 import { BADGE_BY_ID, PIN_MAX, PIN_STATS, VISIBILITIES, VISIBILITY_LABEL, type Visibility } from '../../shared/profile';
 import { adminDeleteAccount, adminResetProfile, adminUnlockBadges, fetchProfile, updateMe, useAccount } from '../account';
 import { Announcement } from './Announcement';
@@ -84,10 +84,12 @@ export function Profile({ username }: { username: string }) {
               </section>
             ) : null}
             {p.totals.games === 0 && p.daily && <DailySection d={p.daily} />}
+            {p.totals.games === 0 && p.survival && <SurvivalSection sv={p.survival} />}
             {p.totals.games === 0 ? null : (
               <>
                 <Tiles p={p} />
                 {p.daily && <DailySection d={p.daily} />}
+                {p.survival && <SurvivalSection sv={p.survival} />}
                 <Subjects p={p} />
                 <Recent games={p.recent} />
               </>
@@ -319,6 +321,28 @@ function DailySection({ d }: { d: DailyProfile }) {
   );
 }
 
+function SurvivalSection({ sv }: { sv: SurvivalProfile }) {
+  const tiles = [
+    { label: 'Best run', value: String(sv.best.correct), sub: `right · ${plural(sv.best.tossups, 'tossup')} · ${sv.best.points} pts`, tone: 'accent' },
+    { label: 'All-time rank', value: `#${sv.rank}`, sub: `of ${plural(sv.players, 'player')}` },
+    { label: 'Runs', value: String(sv.runs), sub: `best on ${new Date(sv.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` },
+  ];
+  return (
+    <section className="card">
+      <h2>Survival</h2>
+      <div className="tiles">
+        {tiles.map((x) => (
+          <div key={x.label} className={`tile ${x.tone ?? ''}`}>
+            <div className="tile-label">{x.label}</div>
+            <div className="tile-value">{x.value}</div>
+            <div className="tile-sub">{x.sub}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Recent({ games }: { games: GameRecord[] }) {
   return (
     <section className="card">
@@ -326,11 +350,11 @@ function Recent({ games }: { games: GameRecord[] }) {
       <ul className="recent">
         {games.map((g, i) => {
           const solo = g.sides < 2;
-          const result = g.daily ? 'Daily' : solo ? 'Solo' : g.rank === 1 ? 'Won' : `${ordinal(g.rank)} of ${g.sides}`;
-          const kind = g.daily ? `Daily Challenge #${g.daily}` : g.mode === 'teams' ? 'teams' : 'free-for-all';
+          const result = g.daily ? 'Daily' : g.survival ? 'Survival' : solo ? 'Solo' : g.rank === 1 ? 'Won' : `${ordinal(g.rank)} of ${g.sides}`;
+          const kind = g.daily ? `Daily Challenge #${g.daily}` : g.survival ? 'survival run' : g.mode === 'teams' ? 'teams' : 'free-for-all';
           return (
             <li key={`${g.at}-${i}`}>
-              <span className={`result ${g.daily ? 'daily' : solo ? '' : g.rank === 1 ? 'win' : 'loss'}`}>{result}</span>
+              <span className={`result ${g.daily || g.survival ? 'daily' : solo ? '' : g.rank === 1 ? 'win' : 'loss'}`}>{result}</span>
               <div className="grow">
                 <div><b>{g.points} pts</b> <span className="muted small">· {g.daily && <>{kind} · </>}{g.powers}/{g.tens}/{g.negs} · {plural(g.tossups, 'tossup')}{g.daily ? '' : ` · ${kind}`}{g.abandoned ? ' · unfinished' : ''}</span></div>
                 {!solo && (
