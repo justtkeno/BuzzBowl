@@ -42,6 +42,8 @@ export interface Settings {
   readAloud: boolean;
   /** No reader: between tossups, players vote on the next tossup's category. */
   topicVote: boolean;
+  /** Tossups in a game; the game ends after the last one (and its bonus). 0 = no limit. */
+  gameLength: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -63,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   readerRules: true,
   readAloud: false,
   topicVote: false,
+  gameLength: 0,
 };
 
 export type Phase =

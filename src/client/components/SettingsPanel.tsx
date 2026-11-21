@@ -69,6 +69,7 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
           </div>
           {f.mode === 'ffa' && partyOn(f) && <p className="muted small">Party: everyone for themselves, the app reads each question out loud, and players vote on the next topic.</p>}
           {midGame && <p className="muted small">Mode can change between questions.</p>}
+          <GameLength value={f.gameLength} playing={s.phase === 'lobby' || s.phase === 'gameOver' ? 0 : s.tossup?.num ?? 0} onChange={(n) => set('gameLength', n)} />
           <div className="grid2">
             <label className="field">
               <span>Reading speed: {f.wpm} wpm</span>
@@ -169,6 +170,30 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
           {s.phase === 'lobby' && !only && <button className="btn primary" onClick={async () => { await save(); act('game:start'); }}>Save &amp; start</button>}
         </div>
       </div>
+    </div>
+  );
+}
+
+const LENGTHS = [0, 10, 20, 30];
+
+/** How many tossups a game has: a few common picks, or any number. `playing` is the tossup on now (0 outside a game). */
+function GameLength({ value, playing, onChange }: { value: number; playing: number; onChange: (n: number) => void }) {
+  const custom = !LENGTHS.includes(value);
+  return (
+    <div className="field game-length">
+      <span>Game length</span>
+      <div className="chips">
+        {LENGTHS.map((n) => (
+          <button type="button" key={n} className={`chip ${value === n ? 'on' : ''}`} onClick={() => onChange(n)}>{n ? `${n} tossups` : 'No limit'}</button>
+        ))}
+        <input type="number" className={`chip length-other ${custom ? 'on' : ''}`} min={1} max={500} placeholder="Other" aria-label="Other number of tossups"
+          value={custom ? value : ''} onChange={(e) => onChange(Math.max(0, Math.min(500, Math.floor(Number(e.target.value)) || 0)))} />
+      </div>
+      <small className="muted">
+        {!value ? 'Plays until the host ends the game.'
+          : playing && value <= playing ? `Tossup ${playing} is on now, so the game finishes after it.`
+          : `The game finishes after tossup ${value}${playing ? ` (${value - playing} more after this one)` : ''}.`}
+      </small>
     </div>
   );
 }

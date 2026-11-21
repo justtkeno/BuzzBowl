@@ -657,10 +657,13 @@ export class Room {
     if (patch.answerSeconds !== undefined) s.answerSeconds = clamp(patch.answerSeconds, 2, 30, s.answerSeconds);
     if (patch.bonusSeconds !== undefined) s.bonusSeconds = clamp(patch.bonusSeconds, 5, 60, s.bonusSeconds);
     if (patch.deadSeconds !== undefined) s.deadSeconds = clamp(patch.deadSeconds, 1, 30, s.deadSeconds);
+    if (patch.gameLength !== undefined) s.gameLength = clamp(patch.gameLength, 0, 500, s.gameLength);
     for (const k of ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules', 'readAloud', 'topicVote'] as const) {
       if (typeof patch[k] === 'boolean') s[k] = patch[k]!;
     }
     if (!s.topicVote && this.s.vote) this.cancelVote();
+    // Shortened to (or below) the tossups already played: no vote, the next step finishes the game.
+    if (this.s.vote && this.lengthReached()) this.cancelVote();
     if (patch.powerValue !== undefined) s.powerValue = clamp(patch.powerValue, 0, 50, s.powerValue);
     if (patch.tenValue !== undefined) s.tenValue = clamp(patch.tenValue, 0, 50, s.tenValue);
     if (patch.negValue !== undefined) s.negValue = clamp(patch.negValue, -50, 0, s.negValue);
@@ -693,6 +696,7 @@ export class Room {
       const changes = SETTING_LABELS.filter(([k]) => s[k] !== before[k]).map(([k, label, unit]) =>
         typeof s[k] === 'boolean' ? `${label} ${s[k] ? 'on' : 'off'}` : `${label} to ${s[k]}${unit}`);
       if (s.mode !== before.mode) changes.unshift(s.mode === 'teams' ? 'the format to teams' : 'the format to free-for-all');
+      if (s.gameLength !== before.gameLength) changes.push(s.gameLength ? `the game length to ${s.gameLength} tossups` : 'the game length to no limit');
       if (questionsChanged) changes.push(`the questions to ${this.questionsLabel()}`);
       if (changes.length) {
         const tail = questionsChanged && this.midGame() ? ' They start with the next tossup.' : '';
@@ -822,6 +826,17 @@ export class Room {
 
   end(by: string) {
     if (!this.isController(by)) fail('Only the host or reader can end the game.');
+    this.finishGame();
+  }
+
+  /** The set number of tossups has been played (never in the daily challenge, which has its own count). */
+  private lengthReached() {
+    const n = this.s.settings.gameLength;
+    return !this.s.daily && n > 0 && this.s.tossupNum >= n;
+  }
+
+  /** Stop the game and show the summary: the host ended it, or the last tossup is done. */
+  private finishGame() {
     this.dispose();
     this.pending = [];
     this.loadGen++;
@@ -948,6 +963,8 @@ export class Room {
   }
 
   private async loadTossup() {
+    // Every way to the next tossup (Next, a closed vote, a skipped or finished bonus) ends here after the last one.
+    if (this.lengthReached()) return this.finishGame();
     this.dispose();
     this.pending = [];
     const gen = ++this.loadGen;
@@ -1243,7 +1260,7 @@ export class Room {
 
   /** Between tossups: offer a few categories for the next one. The next tossup starts when the vote closes. */
   private openVote() {
-    if (!this.votingOn()) return;
+    if (!this.votingOn() || this.lengthReached()) return;
     const pool = this.s.settings.filters.categories.length ? [...this.s.settings.filters.categories] : Object.keys(CATEGORIES);
     if (pool.length < 2) return;
     const last = this.s.tossup?.q.category;

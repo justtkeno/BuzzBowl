@@ -17,6 +17,8 @@ export function Stage({ s }: { s: PublicState }) {
   // The site admin can move things along in any room.
   const isAdmin = !!s.players.find((p) => p.id === r.me)?.admin;
   const canSkip = r.isController || isAdmin;
+  // The set game length is reached: moving on shows the results instead of another tossup.
+  const lastOne = !s.daily && s.settings.gameLength > 0 && (t?.num ?? 0) >= s.settings.gameLength;
   const canNext = (r.canDirect || isAdmin) && (s.phase === 'tossupEnd' || !!bonusDone) && !s.vote;
   const [buzzing, setBuzzing] = useState(false);
   // Phones only open the keyboard when focus happens inside a tap, but the answer box appears a moment
@@ -91,7 +93,7 @@ export function Stage({ s }: { s: PublicState }) {
         )}
         {canNext && (
           <button className="btn primary big next-btn" onClick={() => act('game:next')} disabled={s.paused}>
-            {s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : s.settings.source === 'lightning' ? 'Next question' : 'Next tossup'} <kbd>N</kbd>
+            {s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : lastOne ? 'Finish game' : s.settings.source === 'lightning' ? 'Next question' : 'Next tossup'} <kbd>N</kbd>
           </button>
         )}
         {s.vote && <VotePanel s={s} />}
@@ -203,7 +205,7 @@ export function TossupCard({ s }: { s: PublicState }) {
   return (
     <div className="card tossup">
       <div className="meta">
-        <span className="tag">{s.settings.source === 'lightning' ? `⚡ Lightning ${t.num}` : `Tossup ${t.num}`}</span>
+        <span className="tag">{s.settings.source === 'lightning' ? `⚡ Lightning ${t.num}` : `Tossup ${t.num}`}{!s.daily && s.settings.gameLength ? ` of ${s.settings.gameLength}` : ''}</span>
         <span>{t.category}{t.subcategory && t.subcategory !== t.category ? ` · ${t.subcategory}` : ''}</span>
         {t.difficulty ? <span className="muted">{DIFFICULTIES[t.difficulty] ?? `Level ${t.difficulty}`}</span> : null}
         {t.setName && <span className="muted hide-sm">{t.setName}{t.year ? ` (${t.year})` : ''}</span>}
