@@ -643,3 +643,17 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
   .admin-actions .btn + .btn, .admin-actions select { margin: 0; }
 }
 .daily-note { margin: .5rem 0 0; }
+
+/* ---------- podium at game over ---------- */
+.podium { display: flex; align-items: flex-end; justify-content: center; gap: 8px; margin: .6rem 0 1.1rem; }
+.podium-step { display: flex; flex-direction: column; align-items: center; gap: .1rem; flex: 0 1 120px; min-width: 0; animation: podium-rise .45s ease-out backwards; }
+.podium-medal { font-size: 1.3rem; line-height: 1.2; }
+.podium-name { font-weight: 600; font-size: .9rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.podium-step.you .podium-name { color: var(--accent); }
+.podium-points { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .85rem; }
+.podium-block { width: 100%; display: grid; place-items: center; margin-top: .3rem; border-radius: 10px 10px 4px 4px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); font-weight: 700; font-size: 1.2rem; }
+.podium-step.r1 .podium-block { height: 78px; background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); color: var(--accent); }
+.podium-step.r2 .podium-block { height: 56px; }
+.podium-step.r3 .podium-block { height: 40px; }
+@keyframes podium-rise { from { opacity: 0; transform: translateY(10px); } }
+@media (prefers-reduced-motion: reduce) { .podium-step { animation: none; } }
