@@ -1,4 +1,6 @@
-# BuzzBowl
+# Trivio
+
+Formerly BuzzBowl (the GitHub repo keeps that name).
 
 Real-time multiplayer quiz bowl practice: tossups read word by word, buzzing, powers/negs, bonuses, a reader seat, protests, bots, accounts, and a daily challenge. Installable as a phone app. User-facing docs: `README.md`.
 
@@ -35,7 +37,7 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - Phone layout matters most: most players are on phones. Check changes at 375px wide.
 
 ## Deployment
-- Live at https://buzzbowl-q8wz.onrender.com (Render free plan, service `buzzbowl`, Oregon). `buzzbowl.onrender.com` is someone else's site.
+- Live at https://buzzbowl-q8wz.onrender.com (Render free plan, service `buzzbowl`, Oregon). `buzzbowl.onrender.com` is someone else's site. `render.yaml` now names the service `trivio`; a new Render service made from it is meant to live at `trivio.onrender.com` and replace the old one.
 - GitHub `justtkeno/BuzzBowl`. Render auto-deploys `main`, so changes go in on a feature branch and a pull request merged into `main`.
 - Render env vars (set in the Render dashboard, never in code): `DATABASE_URL` (Neon Postgres, also holds daily-challenge tables) and `ADMIN_ACCOUNT_IDS`. `/healthz` reports `"accounts":"postgres"` when the database is connected.
 - The free plan sleeps after ~15 minutes idle; the first visit takes 30–60 s to wake it.
