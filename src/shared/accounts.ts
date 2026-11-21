@@ -15,6 +15,8 @@ export interface Me {
   createdAt: number;
   /** Site admin (the creator): can take the host seat in any room and moderate accounts. */
   admin: boolean;
+  /** Admins only: true when the server pins admins to account ids (ADMIN_ACCOUNT_IDS), false when it goes by username. */
+  adminLocked?: boolean;
   /** Last room settings used as host, synced across devices. */
   settings: Record<string, unknown> | null;
 }

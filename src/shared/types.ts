@@ -242,6 +242,8 @@ export interface PublicState {
   you: string | null;
   hostId: string | null;
   readerId: string | null;
+  /** A reader whose connection dropped: their seat is kept until `until` (server ms). */
+  heldReader: { id: string; name: string; until: number } | null;
   settings: Settings;
   phase: Phase;
   tossup: PublicTossup | null;

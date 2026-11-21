@@ -572,3 +572,24 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .rq-top { flex-wrap: wrap; gap: .4rem; }
 .rq-filters { margin: .1rem 0 0; }
 .settings-note { margin: -.2rem 0 .6rem; }
+
+/* ---------- admin panel ---------- */
+.admin-panel h3 { margin-top: 1rem; }
+.admin-seats { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin-top: .6rem; }
+.admin-seats > div { display: flex; flex-direction: column; gap: .35rem; align-items: flex-start; background: var(--surface-2); border-radius: 10px; padding: .7rem .8rem; }
+.admin-people { width: 100%; border-collapse: collapse; }
+.admin-people td { padding: .45rem .3rem; border-bottom: 1px solid var(--border); }
+.admin-actions { text-align: right; white-space: nowrap; }
+.admin-actions .btn + .btn { margin-left: .35rem; }
+@media (max-width: 520px) {
+  .admin-seats { grid-template-columns: 1fr; }
+  .admin-people tr { display: flex; flex-direction: column; gap: .3rem; }
+  .admin-people td { border: 0; padding: .1rem 0; }
+  .admin-people tr { border-bottom: 1px solid var(--border); padding: .45rem 0; }
+  .admin-actions { text-align: left; }
+}
+.admin-lock { margin-top: .9rem; border-radius: 10px; padding: .7rem .85rem; font-size: .9rem; }
+.admin-lock p { margin: 0 0 .45rem; }
+.admin-lock.locked { background: var(--ok-soft); }
+.admin-lock.unlocked { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
+.admin-id { font-size: .8rem; overflow-wrap: anywhere; background: var(--surface); padding: .25rem .45rem; border-radius: 6px; }

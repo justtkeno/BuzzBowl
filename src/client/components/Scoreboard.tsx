@@ -93,6 +93,7 @@ export function Scoreboard({ s }: { s: PublicState }) {
   return (
     <div className="scoreboard" ref={flipRef as React.RefObject<HTMLDivElement>}>
       {reader && <div className="reader-line">🎙 Reader: <b>{reader.name}</b>{!reader.online && ' (offline)'}</div>}
+      {!reader && s.heldReader && <div className="reader-line muted">🎙 Reader <b>{s.heldReader.name}</b> is reconnecting. The app reads until they’re back.</div>}
       {s.settings.mode === 'teams' ? (
         teams.map((t) => (
           <div key={t.id} data-flip={t.id} className={`team-block ${r.myTeam === t.id ? 'mine' : ''}`}>
