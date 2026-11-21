@@ -1,12 +1,16 @@
-/** The Trivio mark: the power asterisk (*) on an accent tile. Follows the theme's accent colors. */
+/**
+ * The Trivio mark: the "i" of Trivio, dotted with the power star (*). Same shapes as public/icons/icon.svg
+ * (regenerate the PNGs with scripts/make-icons.cjs after changing either). Follows the theme's accent colors.
+ */
 export function Logo() {
   return (
-    <svg className="logo" viewBox="0 0 100 100" aria-hidden="true">
-      <rect width="100" height="100" rx="24" fill="var(--accent)" />
-      <g stroke="var(--accent-ink)" strokeWidth="11" strokeLinecap="round">
-        <line x1="50" y1="25" x2="50" y2="75" />
-        <line x1="28.35" y1="37.5" x2="71.65" y2="62.5" />
-        <line x1="28.35" y1="62.5" x2="71.65" y2="37.5" />
+    <svg className="logo" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <rect width="64" height="64" rx="15" fill="var(--accent)" />
+      <rect x="27.5" y="32.5" width="9" height="22" rx="4.5" fill="var(--accent-ink)" />
+      <g stroke="var(--accent-ink)" strokeWidth="4.6" strokeLinecap="round">
+        <line x1="32" y1="10" x2="32" y2="27" />
+        <line x1="24.64" y1="14.25" x2="39.36" y2="22.75" />
+        <line x1="24.64" y1="22.75" x2="39.36" y2="14.25" />
       </g>
     </svg>
   );
