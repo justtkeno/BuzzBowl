@@ -91,16 +91,34 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
 .btn.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(1.08); }
 
-/* ---------- friends ---------- */
-/* contain: the home page is a centered grid that would otherwise widen to fit long names. */
-.friends-card { contain: inline-size; border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem .9rem; display: flex; flex-direction: column; gap: .55rem; background: var(--surface); }
-.friends-card .row.between { align-items: center; gap: .75rem; }
-.friends-card .error { margin: 0; }
-.friends-badge { display: inline-grid; place-items: center; min-width: 1.15rem; height: 1.15rem; padding: 0 .3rem; margin-left: .4rem; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: .7rem; font-weight: 700; vertical-align: 1px; }
+/* ---------- friends: edge tab + slide-out panel ---------- */
+.friends-tab {
+  position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 9;
+  display: flex; flex-direction: column; align-items: center; gap: .2rem;
+  padding: .6rem .4rem .55rem .5rem; border: 1px solid var(--border); border-right: none; border-radius: 12px 0 0 12px;
+  background: var(--surface); color: var(--muted); box-shadow: var(--shadow); cursor: pointer;
+}
+.friends-tab:hover { color: var(--text); }
+.friends-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.friends-tab-count { font-size: .72rem; font-weight: 700; color: var(--ok); font-variant-numeric: tabular-nums; line-height: 1; }
+.friends-tab-alert { position: absolute; top: 5px; left: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.friends-back { position: fixed; inset: 0; z-index: 21; background: rgb(0 0 0 / 28%); animation: fade-in .2s ease-out; }
+.friends-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 21; width: min(340px, 88vw);
+  display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border);
+  box-shadow: -12px 0 40px rgb(0 0 0 / 18%); animation: friends-in .22s ease-out; outline: none;
+  padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+}
+@keyframes friends-in { from { transform: translateX(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .friends-drawer { animation: none; } }
+.friends-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: .7rem .75rem .5rem 1rem; }
+.friends-drawer-head h2 { margin: 0; font-size: 1.1rem; }
+.friends-body, .friends-guest { flex: 1; overflow-y: auto; padding: 0 1rem 1rem; display: flex; flex-direction: column; gap: .7rem; }
+.friends-body .error, .friends-body p { margin: 0; }
+.friends-section h3 { margin: .2rem 0 .1rem; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .friend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.friend { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; border-top: 1px solid var(--border); min-width: 0; }
-.friend-list:first-of-type .friend:first-child { border-top: none; }
-.friend.offline .friend-avatar, .friend.offline .friend-name { opacity: .6; }
+.friend { display: flex; align-items: center; gap: .6rem; padding: .45rem 0; min-width: 0; }
+.friend.offline .friend-avatar, .friend.offline .friend-name { opacity: .55; }
 .friend-text { min-width: 0; }
 .friend-text .small { overflow-wrap: anywhere; }
 .friend-name { color: var(--text); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -110,7 +128,5 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .friend-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); background: var(--ok); }
 .friend-dot.room { background: var(--accent); }
 .friend-dot.daily { background: var(--power); }
-.friend-list.sent .friend { opacity: .8; }
-.friends-more { align-self: flex-start; }
 .daily-recent { margin-top: .8rem; }
 .daily-recent .marks { margin-top: .2rem; }

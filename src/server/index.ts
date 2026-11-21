@@ -222,10 +222,18 @@ io.use(accounts.socketMiddleware);
 io.on('connection', (socket) => {
   socket.on('time', (ack: (t: number) => void) => typeof ack === 'function' && ack(Date.now()));
 
+  /** Moving to another room: stop getting the old room's updates, and go offline there unless another tab is still in it. */
+  const leaveSeat = (code: string, playerId: string) => {
+    const seat = `p:${code}:${playerId}`;
+    socket.leave(code);
+    socket.leave(seat);
+    if (!io.sockets.adapter.rooms.get(seat)?.size) store.get(code)?.disconnect(playerId);
+  };
+
   const enter = (room: Room, name: string, token: string | undefined, ack: Ack) => {
     try {
       const prev = socket.data as SocketData;
-      if (prev.code && prev.playerId && prev.code !== room.s.code) store.get(prev.code)?.disconnect(prev.playerId);
+      if (prev.code && prev.playerId && prev.code !== room.s.code) leaveSeat(prev.code, prev.playerId);
       if (prev.watching && prev.code) { socket.leave(prev.code); socket.leave(`w:${prev.code}`); }
       const { playerId, token: tok } = room.join(name, token, accounts.of(socket));
       socket.data = { code: room.s.code, playerId } satisfies SocketData;
@@ -257,7 +265,7 @@ io.on('connection', (socket) => {
     const room = store.get(String(code ?? '').trim());
     if (!room) return ack({ ok: false, error: `No room with code ${String(code).toUpperCase()}.` });
     const prev = socket.data as SocketData;
-    if (prev.code && prev.playerId) store.get(prev.code)?.disconnect(prev.playerId);
+    if (prev.code && prev.playerId) leaveSeat(prev.code, prev.playerId);
     socket.data = { code: room.s.code, watching: true } satisfies SocketData;
     socket.join(room.s.code);
     socket.join(`w:${room.s.code}`);
