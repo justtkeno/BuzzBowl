@@ -594,3 +594,17 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .admin-lock.locked { background: var(--ok-soft); }
 .admin-lock.unlocked { background: color-mix(in srgb, var(--warn) 14%, var(--surface)); }
 .admin-id { font-size: .8rem; overflow-wrap: anywhere; background: var(--surface); padding: .25rem .45rem; border-radius: 6px; }
+
+/* ---------- moderation and admin extras ---------- */
+.btn.danger { color: var(--bad); border-color: var(--bad); background: var(--surface); }
+.admin-actions select { font: inherit; font-size: .8rem; padding: .2rem .3rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); margin-left: .35rem; }
+.troll { display: flex; flex-direction: column; gap: .6rem; background: var(--surface-2); border-radius: 10px; padding: .7rem .8rem; }
+.troll .check { display: flex; gap: .55rem; align-items: flex-start; cursor: pointer; }
+.troll .check input { margin-top: .2rem; }
+.peek { margin-top: .6rem; padding-top: .45rem; border-top: 1px dashed var(--border); font-size: .85rem; color: var(--muted); }
+.announce { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: rgb(0 0 0 / 35%); animation: fade-in .2s ease-out; cursor: pointer; }
+.announce-text { max-width: 900px; padding: 1.2rem 1.6rem; border-radius: 16px; border: 2px solid var(--accent); background: var(--surface); color: var(--text); box-shadow: var(--shadow); font-weight: 800; font-size: clamp(1.6rem, 7vw, 3.2rem); line-height: 1.15; text-align: center; overflow-wrap: anywhere; animation: pop-in .2s ease-out; }
+@media (max-width: 640px) {
+  .admin-actions { display: flex; flex-wrap: wrap; gap: .35rem; white-space: normal; }
+  .admin-actions .btn + .btn, .admin-actions select { margin: 0; }
+}

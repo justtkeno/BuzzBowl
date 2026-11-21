@@ -86,6 +86,15 @@ function Player() {
       if (j) enter(j.code, j.name).catch((e) => setError(e.message));
     };
     const onDisconnect = () => setConnected(false);
+    // The host, reader or admin removed us from the room.
+    const onKicked = ({ banned }: { banned: boolean }) => {
+      joined.current = null;
+      setFresh(false);
+      setState(null);
+      history.replaceState(null, '', '/');
+      setError(banned ? 'You were banned from that room.' : 'You were removed from the room.');
+    };
+    socket.on('kicked', onKicked);
     socket.on('state', onState);
     socket.on('tick', onTick);
     socket.on('typing', onTyping);
@@ -94,7 +103,7 @@ function Player() {
     socket.on('disconnect', onDisconnect);
     return () => {
       socket.off('state', onState); socket.off('tick', onTick); socket.off('typing', onTyping);
-      socket.off('chat', onChat); socket.off('connect', onConnect); socket.off('disconnect', onDisconnect);
+      socket.off('chat', onChat); socket.off('connect', onConnect); socket.off('disconnect', onDisconnect); socket.off('kicked', onKicked);
     };
   }, [enter]);
 

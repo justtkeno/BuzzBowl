@@ -1,5 +1,5 @@
 import {
-  DEFAULT_SETTINGS, SPECTATOR,
+  DEFAULT_SETTINGS, SPECTATOR, buzzWindowSeconds,
   type BotSkill, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
   type Ruling, type ScorePoint, type Settings, type Verdict,
 } from '../../shared/types';
@@ -8,6 +8,7 @@ import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, ty
 import { stripHtml, safeAnswerHtml } from '../game/text';
 import { LocalProvider, parseUpload, QBReaderProvider } from '../questions/providers';
 import { CATALOG_BONUSES, CATALOG_TOSSUPS } from '../questions/catalog';
+import { LIGHTNING } from '../questions/catalog/lightning';
 import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
 import type { Bonus, QuestionProvider, Tossup } from '../questions/types';
 import type { GameRecord } from '../../shared/accounts';
@@ -20,6 +21,8 @@ export interface RoomIO {
   emitTo(playerIds: string[], event: string, payload: unknown): void;
   /** A game finished: one record per logged-in player who played in it. */
   gameOver?(records: { accountId: string; game: GameRecord }[]): void;
+  /** A player was kicked: stop sending them this room's updates. */
+  remove?(playerId: string): void;
 }
 
 /** A logged-in player's account, attached when they join. */
@@ -61,7 +64,16 @@ export const TIMING = {
   lookahead: 3,
 };
 
-interface Player { id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string; admin?: boolean }
+interface Player {
+  id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string; admin?: boolean;
+  /** The host, reader or an admin stopped this player from chatting. */
+  muted?: boolean;
+  /** Admin troll: buzzes are silently ignored, until unfrozen (`frozen`) or for one tossup number (`frozenFor`). */
+  frozen?: boolean;
+  frozenFor?: number;
+  /** Admin troll: this admin sees the answer while the question is read. */
+  peek?: boolean;
+}
 interface Team { id: string; name: string; playerIds: string[] }
 
 interface LiveTossup {
@@ -139,6 +151,8 @@ export interface RoomState {
   seatHold?: { host?: { id: string; until: number }; reader?: { id: string; until: number } };
   /** This game's results were already saved to players' profiles. */
   recorded?: boolean;
+  /** Seat tokens and account ids that were banned from this room. */
+  banned?: { tokens: string[]; accounts: string[] };
 }
 
 const rid =(n = 10) => Array.from({ length: n }, () => 'abcdefghijkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 32)]).join('');
@@ -149,6 +163,8 @@ const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
 
 /** Built-in questions: the original sample packet plus the Trivio catalog. Works offline. */
 const sampleProvider = new LocalProvider([...SAMPLE_TOSSUPS, ...CATALOG_TOSSUPS], [...SAMPLE_BONUSES, ...CATALOG_BONUSES]);
+/** Lightning round: short one-line prompts, no bonuses. */
+const lightningProvider = new LocalProvider(LIGHTNING, []);
 
 export interface RoomDeps {
   qbreader?: QuestionProvider;
@@ -209,6 +225,8 @@ export class Room {
     return id === this.s.hostId || id === this.s.readerId;
   }
   private readerOnline() { return !!this.s.readerId && !!this.player(this.s.readerId)?.online; }
+  /** Lightning round with no reader: each prompt is shown all at once instead of word by word. */
+  private instantReveal() { return this.s.settings.source === 'lightning' && !this.readerOnline(); }
 
   /** Who may advance / start / pause: the reader (and host) when there is a reader, otherwise anyone. */
   private canDirect(id: string) { return this.readerOnline() ? this.isController(id) : true; }
@@ -251,6 +269,7 @@ export class Room {
 
   private provider(): QuestionProvider {
     if (this.s.settings.source === 'sample') return sampleProvider;
+    if (this.s.settings.source === 'lightning') return lightningProvider;
     if (this.s.settings.source === 'upload') return this.uploadProvider ?? sampleProvider;
     return this.qbreader;
   }
@@ -319,6 +338,8 @@ export class Room {
 
   join(name: string, token?: string, account?: JoinAccount): { playerId: string; token: string } {
     const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
+    const ban = this.s.banned;
+    if (ban && ((token && ban.tokens.includes(token)) || (account && ban.accounts.includes(account.id)))) fail('You were banned from this room.');
     let existing = token ? this.s.players.find((p) => p.token === token) : undefined;
     // A seat that belongs to a different account isn't yours, even with its token.
     if (existing?.accountId && account && existing.accountId !== account.id) existing = undefined;
@@ -430,6 +451,116 @@ export class Room {
     this.broadcast();
   }
 
+  // ---------- moderation: the host, the reader, or a site admin ----------
+
+  private mustModerate(by: string, target: string) {
+    const me = this.mustPlayer(by);
+    if (!this.isController(by) && !me.admin) fail('Only the host or reader can do that.');
+    if (this.s.daily) fail('Not available in the daily challenge.');
+    const p = this.mustPlayer(target);
+    if (p.id === by) fail('You can’t do that to yourself.');
+    if (p.admin && !me.admin) fail('You can’t do that to the Trivio creator.');
+    return { me, p };
+  }
+
+  /** Remove a player from the room. With `ban`, their seat and account can't come back. */
+  kick(by: string, target: string, ban = false) {
+    const { me, p } = this.mustModerate(by, target);
+    if (p.bot) fail('Remove bots from the lobby instead.');
+    if (this.s.buzz?.playerId === p.id) fail(`${p.name} is answering right now. Try again in a moment.`);
+    if (ban) {
+      const b = (this.s.banned ??= { tokens: [], accounts: [] });
+      b.tokens.push(p.token);
+      if (p.accountId) b.accounts.push(p.accountId);
+    }
+    this.io.emitTo([p.id], 'kicked', { banned: ban });
+    this.io.remove?.(p.id);
+    this.removePlayer(p);
+    this.system(`${me.name} ${ban ? 'banned' : 'removed'} ${p.name}${ban ? ' from the room' : ''}.`);
+    this.broadcast();
+  }
+
+  private removePlayer(p: Player) {
+    const hadPending = this.pending.length > 0;
+    this.pending = this.pending.filter((x) => x.playerId !== p.id);
+    this.removeFromTeam(p);
+    this.s.players = this.s.players.filter((x) => x !== p);
+    if (this.s.seatHold?.host?.id === p.id) delete this.s.seatHold.host;
+    if (this.s.seatHold?.reader?.id === p.id) delete this.s.seatHold.reader;
+    if (this.s.hostId === p.id) this.s.hostId = this.s.players.find((x) => x.online && !x.bot)?.id ?? null;
+    if (this.s.readerId === p.id) {
+      this.s.readerId = null;
+      if (this.s.buzz?.awaiting) this.applyTossupVerdict(this.s.buzz.awaiting.suggestion, this.s.buzz.awaiting.given);
+      else if (this.s.bonus?.awaiting) this.applyBonusVerdict(this.s.bonus.awaiting.suggestion, this.s.bonus.awaiting.given);
+    }
+    // Their buzz was the only one waiting to be awarded: carry on reading.
+    const t = this.s.tossup;
+    if (hadPending && !this.pending.length && t && this.s.phase === 'reading' && !t.paused) {
+      this.clearTimer('grace');
+      if (t.revealed < t.words.length) this.setTimer('read', 300, () => this.readNext());
+      else this.openDeadWindow();
+    }
+  }
+
+  /** Stop or allow a player's chat messages. */
+  mute(by: string, target: string, muted: boolean) {
+    const { me, p } = this.mustModerate(by, target);
+    if (!!p.muted === muted) return;
+    p.muted = muted || undefined;
+    this.system(`${me.name} ${muted ? 'muted' : 'unmuted'} ${p.name} in chat.`);
+    this.broadcast();
+  }
+
+  /** Give a player (or their team) their buzz back on the current tossup. */
+  allowRebuzz(by: string, target: string) {
+    const { me, p } = this.mustModerate(by, target);
+    const t = this.s.tossup;
+    if (!t || t.ended || (this.s.phase !== 'reading' && this.s.phase !== 'buzz')) fail('No tossup is being read.');
+    const teamId = this.teamOf(p.id) ?? fail(`${p.name} isn’t playing.`);
+    if (!t!.locked.has(teamId!)) fail(`${p.name} hasn’t used their buzz yet.`);
+    t!.locked.delete(teamId!);
+    this.system(`${me.name} let ${this.s.settings.mode === 'teams' ? this.teamName(teamId!) : p.name} buzz again.`);
+    this.broadcast();
+  }
+
+  // ---------- admin-only extras ----------
+
+  /** Admin: see the answer while the question is read. Nobody else is told. */
+  setPeek(by: string, on: boolean) {
+    const me = this.mustAdmin(by);
+    me.peek = on || undefined;
+    this.broadcast();
+  }
+
+  /** Admin: silently ignore someone's buzzes, for one tossup or until unfrozen. Nobody is told. */
+  freeze(by: string, target: string, mode: 'tossup' | 'always' | 'off') {
+    this.mustAdmin(by);
+    const p = this.mustPlayer(target);
+    if (p.id === by) fail('You can’t freeze yourself.');
+    delete p.frozen;
+    delete p.frozenFor;
+    const t = this.s.tossup;
+    const live = !!t && !t.ended && (this.s.phase === 'reading' || this.s.phase === 'buzz');
+    if (mode === 'always') p.frozen = true;
+    else if (mode === 'tossup') p.frozenFor = live ? this.s.tossupNum : this.s.tossupNum + 1;
+    this.broadcast();
+  }
+  private isFrozen(p: Player) { return !!p.frozen || p.frozenFor === this.s.tossupNum; }
+
+  /** Admin: change anyone's display name. It reads like they renamed themselves. */
+  adminRename(by: string, target: string, name: string) {
+    this.mustAdmin(by);
+    this.renamePlayer(this.mustPlayer(target).id, name);
+  }
+
+  /** Admin: flash a big message on everyone's screen, with no name attached. */
+  announce(by: string, text: string) {
+    this.mustAdmin(by);
+    const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    if (!clean) fail('Type a message first.');
+    this.io.emitTo([...this.s.players.filter((p) => p.online).map((p) => p.id), SPECTATOR], 'announce', { text: clean, at: Date.now() });
+  }
+
   renamePlayer(playerId: string, name: string) {
     const p = this.mustPlayer(playerId);
     const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
@@ -490,8 +621,9 @@ export class Room {
   /** "QBReader: Science, History · difficulty 3, 4" for chat announcements. */
   private questionsLabel() {
     const s = this.s.settings, f = s.filters;
-    const source = { qbreader: 'QBReader', sample: 'the built-in questions', upload: 'the uploaded packet' }[s.source] ?? s.source;
+    const source = { qbreader: 'QBReader', sample: 'the built-in questions', upload: 'the uploaded packet', lightning: 'the lightning round' }[s.source] ?? s.source;
     const parts = [f.subcategories.length ? f.subcategories.join(', ') : f.categories.length ? f.categories.join(', ') : 'all categories'];
+    if (s.source === 'lightning' && f.difficulties.length) parts.push(`difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}`);
     if (s.source === 'qbreader') {
       if (f.difficulties.length) parts.push(`difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}`);
       if (f.minYear || f.maxYear) parts.push(f.minYear && f.maxYear ? `${f.minYear}–${f.maxYear}` : f.minYear ? `${f.minYear} on` : `up to ${f.maxYear}`);
@@ -524,7 +656,7 @@ export class Room {
     if (patch.tenValue !== undefined) s.tenValue = clamp(patch.tenValue, 0, 50, s.tenValue);
     if (patch.negValue !== undefined) s.negValue = clamp(patch.negValue, -50, 0, s.negValue);
     if (patch.bonusPartValue !== undefined) s.bonusPartValue = clamp(patch.bonusPartValue, 0, 50, s.bonusPartValue);
-    if (patch.source && ['qbreader', 'sample', 'upload'].includes(patch.source)) {
+    if (patch.source && ['qbreader', 'sample', 'upload', 'lightning'].includes(patch.source)) {
       if (patch.source === 'upload' && !this.uploadProvider) fail('Upload a packet first.');
       s.source = patch.source;
     }
@@ -781,7 +913,8 @@ export class Room {
   }
 
   next(by: string) {
-    if (!this.canDirect(by)) fail('The reader decides when to move on.');
+    const admin = !!this.player(by)?.admin;
+    if (!this.canDirect(by) && !admin) fail('The reader decides when to move on.');
     this.notPaused();
     const { phase, tossup, bonus } = this.s;
     if (phase === 'tossupEnd' && this.s.daily && this.s.tossupNum >= this.s.daily.total) return this.end(by);
@@ -791,10 +924,10 @@ export class Room {
     } else if (phase === 'bonus' && bonus?.done) {
       void this.loadTossup();
     } else if (phase === 'reading' || phase === 'buzz') {
-      if (!this.isController(by)) fail('Only the host or reader can skip a question.');
+      if (!this.isController(by) && !admin) fail('Only the host or reader can skip a question.');
       this.endTossup(null, true);
     } else if (phase === 'bonus') {
-      if (!this.isController(by)) fail('Only the host or reader can skip a bonus.');
+      if (!this.isController(by) && !admin) fail('Only the host or reader can skip a bonus.');
       void this.loadTossup();
     } else if (phase === 'lobby' || phase === 'gameOver') {
       this.start(by);
@@ -883,6 +1016,10 @@ export class Room {
     const t = this.s.tossup;
     if (!t || t.ended || this.s.phase !== 'reading' || t.paused) return;
     if (t.revealed >= t.words.length) return this.openDeadWindow();
+    if (this.instantReveal()) {
+      while (t.revealed < t.words.length) this.revealWord();
+      return this.openDeadWindow();
+    }
     this.revealWord();
     if (t.revealed >= t.words.length) this.openDeadWindow();
     else this.setTimer('read', this.wordMs(t.words[t.revealed - 1]), () => this.readNext());
@@ -898,8 +1035,9 @@ export class Room {
 
   private openDeadWindow() {
     const t = this.s.tossup!;
-    t.deadline = Date.now() + this.s.settings.deadSeconds * 1000;
-    this.setTimer('dead', this.s.settings.deadSeconds * 1000, () => this.endTossup(null));
+    const ms = buzzWindowSeconds(this.s.settings) * 1000;
+    t.deadline = Date.now() + ms;
+    this.setTimer('dead', ms, () => this.endTossup(null));
     this.broadcast();
   }
 
@@ -935,6 +1073,8 @@ export class Room {
     if (!t || this.s.phase !== 'reading' || t.ended) fail('You cannot buzz right now.');
     this.notPaused();
     const teamId = this.teamOf(by) ?? fail(by === this.s.readerId ? 'The reader cannot buzz.' : 'Join a team to buzz.');
+    // A frozen buzzer just does nothing: no error, no buzz.
+    if (this.isFrozen(this.player(by)!)) return;
     if (t!.locked.has(teamId)) fail(this.s.settings.mode === 'teams' ? 'Your team already buzzed on this question.' : 'You already buzzed on this question.');
     if (this.pending.some((p) => p.teamId === teamId)) return;
     const now = Date.now();
@@ -1065,7 +1205,7 @@ export class Room {
       words: t.words, powerIndex: t.powerIndex, answerHtml: safeAnswerHtml(t.q.answer), buzzes: t.markers,
     });
     if (this.s.review.length > 100) this.s.review.pop();
-    t.bonusTeam = winnerTeam && this.s.settings.bonuses ? winnerTeam : null;
+    t.bonusTeam = winnerTeam && this.s.settings.bonuses && this.s.settings.source !== 'lightning' ? winnerTeam : null;
     this.s.phase = 'tossupEnd';
     this.broadcast();
   }
@@ -1157,6 +1297,7 @@ export class Room {
 
   chat(by: string, text: string, scope: 'all' | 'team') {
     const p = this.mustPlayer(by);
+    if (p.muted) fail('You’re muted in this room.');
     const clean = String(text ?? '').trim().slice(0, 300);
     if (!clean) return;
     const teamId = this.teamOf(by);
@@ -1250,7 +1391,7 @@ export class Room {
       ? this.s.teams.map((t) => ({ id: t.id, name: t.name, playerIds: t.playerIds, captainId: this.captainOf(t.id), ...computeTeamTotals(t.id, this.s.rulings, this.s.adjustments) }))
       : [];
     const streaks = this.streaks();
-    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}), ...(p.admin ? { admin: true } : {}) }));
+    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}), ...(p.admin ? { admin: true } : {}), ...(p.muted ? { muted: true } : {}) }));
     // FFA bonus totals live on each player's "team" (themselves).
     const ffaTeams = this.s.settings.mode === 'ffa'
       ? this.s.players.map((p) => ({ id: p.id, name: p.name, playerIds: [p.id], captainId: p.id, ...computeTeamTotals(p.id, this.s.rulings, this.s.adjustments) }))
@@ -1375,7 +1516,7 @@ export class Room {
     s.pausedAt = now;
     const t = s.tossup;
     if (s.phase === 'reading' && t && !t.paused) {
-      if (t.revealed >= t.words.length) { t.deadline = now + s.settings.deadSeconds * 1000; this.setTimer('dead', s.settings.deadSeconds * 1000, () => this.endTossup(null)); }
+      if (t.revealed >= t.words.length) { const ms = buzzWindowSeconds(s.settings) * 1000; t.deadline = now + ms; this.setTimer('dead', ms, () => this.endTossup(null)); }
       else this.setTimer('read', 500, () => this.readNext());
     } else if (s.phase === 'buzz' && s.buzz && !s.buzz.awaiting) {
       const b = s.buzz;
@@ -1403,7 +1544,22 @@ export class Room {
     const bn = s.bonus;
     const viewerTeam = viewer ? this.teamOf(viewer) : null;
     const seesBonusTyping = !!bn && (isReader || viewerTeam === bn.teamId);
+    // Only a logged-in admin gets these; nobody else's state ever mentions peeking or freezing.
+    const me = viewer ? this.player(viewer) : undefined;
+    const adminExtras = me?.admin ? {
+      admin: {
+        peek: !!me.peek,
+        frozen: s.players.filter((p) => p.frozen || (p.frozenFor !== undefined && p.frozenFor >= s.tossupNum)).map((p) => ({ id: p.id, always: !!p.frozen })),
+      },
+      ...(me.peek ? {
+        peek: {
+          tossup: t && !t.ended ? safeAnswerHtml(t.q.answer) : undefined,
+          bonus: bn && !bn.done ? bn.q.answers.map((a) => safeAnswerHtml(a)) : undefined,
+        },
+      } : {}),
+    } : {};
     return {
+      ...adminExtras,
       code: s.code,
       you: viewer,
       hostId: s.hostId,

@@ -1,7 +1,14 @@
 // Types shared by the server and the client. Everything here is plain JSON.
 
 export type Mode = 'ffa' | 'teams';
-export type SourceKind = 'qbreader' | 'sample' | 'upload';
+export type SourceKind = 'qbreader' | 'sample' | 'upload' | 'lightning';
+
+/** Lightning round: with no reader, the whole prompt appears at once and players get at least this long to buzz. */
+export const LIGHTNING_BUZZ_SECONDS = 8;
+
+/** How long players can still buzz once a question is fully shown. */
+export const buzzWindowSeconds = (s: { source: SourceKind; deadSeconds: number }) =>
+  s.source === 'lightning' ? Math.max(LIGHTNING_BUZZ_SECONDS, s.deadSeconds) : s.deadSeconds;
 
 export interface Filters {
   categories: string[];
@@ -111,6 +118,8 @@ export interface PublicPlayer {
   username?: string;
   /** Logged in as a site admin (shown as a creator badge). */
   admin?: boolean;
+  /** The host, reader or an admin muted this player in chat. */
+  muted?: boolean;
 }
 
 export type BotSkill = 'easy' | 'medium' | 'hard' | 'expert';
@@ -268,6 +277,10 @@ export interface PublicState {
   /** Reader only: the next tossups in line, so they can skip any before they are read. */
   upcoming?: UpcomingTossup[];
   upcomingLoading?: boolean;
+  /** Admin only: their own troll settings. Never sent to anyone else. */
+  admin?: { peek: boolean; frozen: { id: string; always: boolean }[] };
+  /** Admin only, while peeking: the answers of the question being read. */
+  peek?: { tossup?: string; bonus?: string[] };
 }
 
 /** One line of the daily-challenge leaderboard. */
