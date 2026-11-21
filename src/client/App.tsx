@@ -3,6 +3,7 @@ import type { ChatMessage, PublicState } from '../shared/types';
 import { Home } from './components/Home';
 import { InviteBanner } from './components/Friends';
 import { Announcement } from './components/Announcement';
+import { WakeScreen } from './components/WakeScreen';
 import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
@@ -17,6 +18,10 @@ const watchCode = () => location.pathname.match(/^\/watch\/([A-Za-z]{4,8})/)?.[1
 const profileName = () => location.pathname.match(/^\/u\/([A-Za-z0-9_]{1,20})\/?$/)?.[1] ?? null;
 
 export function App() {
+  return <><Page /><WakeScreen /></>;
+}
+
+function Page() {
   const watch = watchCode();
   if (watch) return <Spectate code={watch} />;
   const profile = profileName();
@@ -179,11 +184,23 @@ export function useTheme() {
       const t = prefs.theme();
       if (t === 'auto') document.documentElement.removeAttribute('data-theme');
       else document.documentElement.setAttribute('data-theme', t);
+      document.documentElement.setAttribute('data-text', prefs.textSize());
     };
     apply();
     window.addEventListener('qb-theme', apply);
     return () => window.removeEventListener('qb-theme', apply);
   }, []);
+}
+
+export const TEXT_SIZE_LABEL = { s: 'Small', m: 'Medium', l: 'Large' } as const;
+
+/** Small → medium → large question text, saved on this device. */
+export function cycleTextSize() {
+  const order = ['s', 'm', 'l'] as const;
+  const next = order[(order.indexOf(prefs.textSize()) + 1) % order.length];
+  prefs.setTextSize(next);
+  window.dispatchEvent(new Event('qb-theme'));
+  return next;
 }
 
 export function cycleTheme() {

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { PublicState } from '../../shared/types';
 import { ScoreGraph } from './ScoreGraph';
+import { shareRecap } from '../recap';
 import { act, fmtPct, roles } from './util';
 
 export function Summary({ s }: { s: PublicState }) {
@@ -8,11 +9,13 @@ export function Summary({ s }: { s: PublicState }) {
   const players = s.players.filter((p) => p.id !== s.readerId && (p.stats.heard || p.stats.buzzes)).sort((a, b) => b.stats.points - a.stats.points);
   const [focus, setFocus] = useState(players.find((p) => p.id === r.me)?.id ?? players[0]?.id);
   const fp = players.find((p) => p.id === focus);
+  // Ending during the answer screen can leave tossupsRead one behind; finished questions are in the review.
+  const heard = Math.max(s.tossupsRead, s.review.length);
 
   return (
     <div className="card summary">
       <h2>Game summary</h2>
-      <p className="muted">{s.tossupsRead} tossup{s.tossupsRead === 1 ? "" : "s"} heard.</p>
+      <p className="muted">{heard} tossup{heard === 1 ? '' : 's'} heard.</p>
 
       <Podium s={s} />
 
@@ -80,7 +83,10 @@ export function Summary({ s }: { s: PublicState }) {
         </>
       )}
 
-      {r.isController && !s.survival && <button className="btn primary big" onClick={() => act('game:start')}>New game</button>}
+      <div className="row gap summary-actions">
+        {r.isController && !s.survival && <button className="btn primary big" onClick={() => act('game:start')}>New game</button>}
+        {!s.survival && !s.daily && <button className="btn big" onClick={() => void shareRecap(s)}>Share recap</button>}
+      </div>
     </div>
   );
 }

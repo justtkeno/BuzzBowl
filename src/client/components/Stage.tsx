@@ -1,3 +1,4 @@
+import { CategoryChip } from './CategoryChip';
 import { useEffect, useRef, useState } from 'react';
 import type { BuzzMarker, PublicState, Verdict } from '../../shared/types';
 import { DIFFICULTIES, VOTE_SECONDS, buzzWindowSeconds } from '../../shared/types';
@@ -205,7 +206,7 @@ export function TossupCard({ s }: { s: PublicState }) {
     <div className="card tossup">
       <div className="meta">
         <span className="tag">{s.settings.source === 'lightning' ? `⚡ Lightning ${t.num}` : `Tossup ${t.num}`}</span>
-        <span>{t.category}{t.subcategory && t.subcategory !== t.category ? ` · ${t.subcategory}` : ''}</span>
+        <CategoryChip category={t.category} sub={t.subcategory} />
         {t.difficulty ? <span className="muted">{DIFFICULTIES[t.difficulty] ?? `Level ${t.difficulty}`}</span> : null}
         {t.setName && <span className="muted hide-sm">{t.setName}{t.year ? ` (${t.year})` : ''}</span>}
         {readAloudActive(s) && speechSupported() && <SpeakerToggle />}
@@ -223,7 +224,7 @@ export function TossupCard({ s }: { s: PublicState }) {
           {words.map((w, i) => {
             const read = i < t.revealed.length;
             const inPower = t.powerIndex !== undefined && t.powerIndex !== null && i < t.powerIndex;
-            const cls = [teleprompter && !read ? 'unread' : '', teleprompter && i === t.revealed.length - 1 ? 'cursor' : '', (ended || teleprompter) && inPower ? 'power' : ''].join(' ');
+            const cls = [teleprompter && !read ? 'unread' : '', teleprompter && i === t.revealed.length - 1 ? 'cursor' : '', (ended || teleprompter) && inPower ? 'power' : '', !teleprompter ? 'w' : ''].join(' ');
             return (
               <span key={i}>
                 {markersAt(i).map((m, j) => <Marker key={j} m={m} />)}
@@ -255,6 +256,39 @@ export function TossupCard({ s }: { s: PublicState }) {
       {s.phase === 'reading' && t.paused && <div className="status muted">Paused{r.isReader ? ' — press Space to resume' : ' by the reader'}</div>}
       {s.buzz && <BuzzStatus s={s} />}
       {ended && <EndSummary s={s} />}
+      {ended && t.answerKey && t.answerKey.misses.length > 0 && <WhyWrong k={t.answerKey} />}
+    </div>
+  );
+}
+
+const WHY: Record<'rejected' | 'prompt' | 'wrong', string> = {
+  rejected: 'That one is on the answer line’s do-not-accept list.',
+  prompt: 'That was close: it would only have been prompted. It needed more detail.',
+  wrong: 'That didn’t match any accepted answer.',
+};
+
+/** After you miss: what you said, why it missed, and what the answer line would have taken. */
+function WhyWrong({ k }: { k: NonNullable<PublicState['tossup']>['answerKey'] & {} }) {
+  const [open, setOpen] = useState(false);
+  const list = (label: string, items: string[], cls = '') => items.length > 0 && (
+    <div className={`why-row ${cls}`}><span className="why-label">{label}</span><span>{items.join(' · ')}</span></div>
+  );
+  return (
+    <div className="why">
+      {k.misses.map((m, i) => (
+        <div key={i} className="why-miss">
+          <span className="muted">You said</span> <b>“{m.given}”</b>. <span>{WHY[m.why]}</span>
+        </div>
+      ))}
+      {list('Accepted', k.accept, 'ok')}
+      {open ? (
+        <>
+          {list('Prompt on', k.prompt)}
+          {list('Not accepted', k.reject, 'bad')}
+        </>
+      ) : (k.prompt.length > 0 || k.reject.length > 0) && (
+        <button className="btn ghost small why-more" onClick={() => setOpen(true)}>Show prompts and rejects</button>
+      )}
     </div>
   );
 }

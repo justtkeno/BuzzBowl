@@ -31,7 +31,14 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` + `
 4. Scoring (NAQT-style, all configurable): 15 for a correct buzz before the `(*)`, 10 after it, −5 for a wrong answer before the question ends, 0 after. One buzz per player (or per team) per tossup.
 5. In team mode, the team that converts the tossup gets a 3-part bonus. Teammates talk in **team chat**. The captain submits each part.
 6. Press **N** (or **Next tossup**) to continue. **Review** shows every finished question with full text, answer line, and where each player buzzed. Spot a problem (a missing accepted answer, a typo, the wrong category)? Tap **Report** under the answer.
-7. **End game** shows the summary: points, powers/tens/negs, points per tossup heard, average buzz depth, PPB, and a per-category breakdown.
+7. **End game** shows the summary: a podium, points, powers/tens/negs, points per tossup heard, average buzz depth, PPB, and a per-category breakdown. **Share recap** makes an image of the game to send or save.
+
+Small things that help:
+- Missed one? Under the answer, **you said “…”** explains why (didn’t match, would only have been prompted, or on the do-not-accept list) and lists what the answer line accepts.
+- Each category has its own color chip, on the question, in Review and on profiles.
+- **Text size** (⋯ menu, or **Aa** on a computer) makes the question text smaller or larger on that device.
+- During a game the screen stays on, and leaving mid-match (or closing the tab) asks first.
+- When the free server is asleep, the installed app shows **Waking up the server…** until it answers (usually 30–60 seconds).
 
 ### Party mode
 

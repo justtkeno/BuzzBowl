@@ -77,6 +77,15 @@ export type Phase =
 export type BuzzKind = 'power' | 'ten' | 'neg' | 'zero';
 export type Verdict = 'correct' | 'prompt' | 'incorrect';
 
+/** The answer line as the checker understands it (readable forms), for "why was I wrong". */
+export interface AnswerKey {
+  accept: string[];
+  prompt: string[];
+  reject: string[];
+  /** This viewer's wrong answers on the tossup. rejected: on the do-not-accept list; prompt: would only have been prompted; wrong: matched nothing. */
+  misses: { given: string; why: 'rejected' | 'prompt' | 'wrong' }[];
+}
+
 export interface BuzzMarker {
   playerId: string;
   playerName: string;
@@ -161,6 +170,8 @@ export interface PublicTossup {
   words?: string[];
   powerIndex?: number | null;
   answerHtml?: string;
+  /** Once the tossup ends: the answer line, read the way the checker reads it, and why this viewer's misses missed. */
+  answerKey?: AnswerKey;
   buzzes: BuzzMarker[];
   /** Whether this viewer is allowed to see the words as they are read. */
   textVisible: boolean;

@@ -1,7 +1,7 @@
 import { Logo } from './Logo';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../../shared/types';
-import { cycleTheme } from '../App';
+import { TEXT_SIZE_LABEL, cycleTextSize, cycleTheme } from '../App';
 import { prefs } from '../socket';
 import { play, setSoundOn, soundOn } from '../sounds';
 import { AdminPanel } from './AdminPanel';
@@ -49,6 +49,8 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   const [drawer, setDrawer] = useState(false);
   const [toastMsg, setToast] = useState<string | null>(null);
   const [theme, setTheme] = useState(prefs.theme());
+  const [textSize, setTextSize] = useState(prefs.textSize());
+  const [leaving, setLeaving] = useState(false);
   const [tab, setTab] = useState<Tab>('board');
   const [sound, setSound] = useState(soundOn());
   const flash = useFeedback(s);
@@ -56,6 +58,16 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   const achievement = useAchievements(s);
   const toggleSound = () => { setSoundOn(!sound); setSound(!sound); if (!sound) play('correct'); };
   const midGame = s.phase !== 'lobby' && s.phase !== 'gameOver';
+  // Phones shouldn't dim or lock while a question is being read.
+  useWakeLock(midGame && !s.paused);
+  // Mid-match, leaving asks first (and so does closing the tab).
+  const leave = () => (midGame ? setLeaving(true) : onLeave());
+  useEffect(() => {
+    if (!midGame) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [midGame]);
   // Site admins can take the host seat in any room.
   const isAdmin = !!s.players.find((p) => p.id === s.you)?.admin;
   const canModerate = (r.isController || isAdmin) && !r.fixed;
@@ -126,7 +138,8 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Settings</button>}
         <button className="btn ghost hide-sm" onClick={toggleSound} title={sound ? 'Turn sound effects off' : 'Turn sound effects on'} aria-label={sound ? 'Sound on' : 'Sound off'} aria-pressed={sound}>{sound ? '🔊' : '🔇'}</button>
         <button className="btn ghost hide-sm" title="Switch theme (auto / dark / light)" onClick={() => setTheme(cycleTheme())}>{theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}</button>
-        <button className="btn ghost hide-sm" onClick={onLeave}>Leave</button>
+        <button className="btn ghost hide-sm" title={`Question text size: ${TEXT_SIZE_LABEL[textSize]}`} aria-label={`Question text size: ${TEXT_SIZE_LABEL[textSize]}`} onClick={() => setTextSize(cycleTextSize())}>Aa</button>
+        <button className="btn ghost hide-sm" onClick={leave}>Leave</button>
         <div className="menu-wrap show-sm">
           <button className="btn ghost menu-btn" aria-label="More" aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯</button>
           {menu && (
@@ -139,10 +152,11 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
                 <button role="menuitem" onClick={openBigScreen}>📺 Big-screen view</button>
                 <button role="menuitem" onClick={toggleSound}>{sound ? '🔇 Sound off' : '🔊 Sound on'}</button>
                 <button role="menuitem" onClick={() => setTheme(cycleTheme())}>🌓 Theme: {theme}</button>
+                <button role="menuitem" onClick={(e) => { e.stopPropagation(); setTextSize(cycleTextSize()); }}>🔠 Text size: {TEXT_SIZE_LABEL[textSize]}</button>
                 {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}>👥 Players</button>}
                 {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}>🛡 Admin</button>}
                 {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}>🏁 {s.survival ? 'End run' : 'End game'}</button>}
-                <button role="menuitem" onClick={onLeave}>🚪 Leave room</button>
+                <button role="menuitem" onClick={leave}>🚪 Leave room</button>
               </div>
             </>
           )}
@@ -210,12 +224,61 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
       {/* Off screen while questions are being read, so it never gets in the way of buzzing. */}
       <FriendsTab hidden={midGame || drawer} currentCode={s.code} onJoin={onJoinRoom} disabled={!connected} canInvite={!r.fixed} />
       <Announcement />
+      {leaving && <LeaveConfirm s={s} isHost={r.isHost} onStay={() => setLeaving(false)} onLeave={() => { setLeaving(false); onLeave(); }} />}
       {showInvite && <InviteScreen code={s.code} onClose={() => setShowInvite(false)} />}
       {toastMsg && <div className="toast" role="status">{toastMsg}</div>}
       <BuzzFlash flash={buzzFlash} />
       <ScreenFlash flash={flash} />
       <AchievementPop a={achievement} />
       <FlashAnnouncer flash={flash} />
+    </div>
+  );
+}
+
+/** Keep the screen on while `on` (browsers that support it). Re-taken when the tab comes back, since hiding it drops the lock. */
+function useWakeLock(on: boolean) {
+  useEffect(() => {
+    const wl = (navigator as Navigator & { wakeLock?: { request(type: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock;
+    if (!on || !wl) return;
+    let lock: { release(): Promise<void> } | null = null;
+    let done = false;
+    const take = () => {
+      if (done || document.visibilityState !== 'visible') return;
+      wl.request('screen').then((l) => { if (done) void l.release().catch(() => {}); else lock = l; }, () => { /* not allowed (low battery, etc.) */ });
+    };
+    take();
+    document.addEventListener('visibilitychange', take);
+    return () => {
+      done = true;
+      document.removeEventListener('visibilitychange', take);
+      void lock?.release().catch(() => {});
+    };
+  }, [on]);
+}
+
+/** "Are you sure?" before walking out of a match that's still going. */
+function LeaveConfirm({ s, isHost, onStay, onLeave }: { s: PublicState; isHost: boolean; onStay: () => void; onLeave: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onStay();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onStay]);
+  const others = s.players.filter((p) => p.online && !p.bot && p.id !== s.you).length;
+  const body = s.survival
+    ? 'Your run keeps going while you’re away, so any tossup that goes by costs a life. To finish it now, use End run instead.'
+    : s.daily
+      ? 'The daily challenge keeps going while you’re away. You can come back from the home page to finish it, but tossups you miss still count.'
+      : `You’ll drop out of this match${others ? ` with ${others} other player${others === 1 ? '' : 's'}` : ''}. You can rejoin with the room code while it’s still going.${isHost && others ? ' Someone else will take over as host.' : ''}`;
+  return (
+    <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onStay()}>
+      <div className="modal leave-confirm" role="alertdialog" aria-labelledby="leave-title" aria-describedby="leave-body">
+        <h2 id="leave-title">{s.survival ? 'Leave your run?' : s.daily ? 'Leave the daily challenge?' : 'Leave the game?'}</h2>
+        <p id="leave-body" className="muted">{body}</p>
+        <div className="row gap end">
+          <button className="btn" autoFocus onClick={onStay}>Stay</button>
+          <button className="btn bad" onClick={onLeave}>Leave</button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
 } from '../../shared/profile';
 import { adminDeleteAccount, adminResetProfile, adminUnlockBadges, fetchProfile, updateMe, useAccount } from '../account';
 import { Announcement } from './Announcement';
+import { CategoryDot } from './CategoryChip';
 import { useTheme } from '../App';
 import { AccountBar, Avatar, CreatorBadge, tint } from './Account';
 import { FriendButton, FriendsTab, InviteBanner } from './Friends';
@@ -319,7 +320,7 @@ function Subjects({ p }: { p: PublicProfile }) {
           const few = s.heard < BEST_SUBJECT_MIN_HEARD;
           return (
             <div key={s.category} className={`subject ${few ? 'few' : ''}`}>
-              <div className="subject-name">{s.category}{s.category === p.bestSubject && <span className="badge best-badge">best</span>}</div>
+              <div className="subject-name"><CategoryDot category={s.category} />{s.category}{s.category === p.bestSubject && <span className="badge best-badge">best</span>}</div>
               <div className="subject-bar" title={`${fixed(s.ppth, 2)} points per tossup`}>
                 <div className={`fill ${s.ppth < 0 ? 'neg' : ''}`} style={{ width: `${(Math.abs(s.ppth) / max) * 100}%` }} />
               </div>
