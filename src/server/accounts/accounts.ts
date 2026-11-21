@@ -2,8 +2,11 @@ import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'no
 import { promisify } from 'node:util';
 import express, { type Request, type Response } from 'express';
 import type { Socket } from 'socket.io';
-import { BIO_MAX, PASSWORD_MIN, USERNAME_RE, summarize, type GameRecord, type Me, type PublicProfile } from '../../shared/accounts';
-import type { AccountStore, User } from './store';
+import {
+  BIO_MAX, FRIENDS_MAX, PASSWORD_MIN, USERNAME_RE, summarize,
+  type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type PublicProfile,
+} from '../../shared/accounts';
+import type { AccountStore, FriendLink, User } from './store';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -15,6 +18,28 @@ const RECENT_GAMES = 15;
 
 /** Who a socket is logged in as. */
 export interface SocketAccount { id: string; username: string; admin: boolean }
+
+/** Where a logged-in account is right now (accounts with no entry are offline). */
+export interface Presence { status: 'online' | 'room' | 'daily'; room?: FriendRoom }
+
+/** How `me` stands with each other account they have a friend link with. */
+interface Relation { friend: boolean; incoming?: number; outgoing?: number }
+function relations(links: FriendLink[], me: string): Map<string, Relation> {
+  const out = new Map<string, Relation>();
+  for (const l of links) {
+    const other = l.from === me ? l.to : l.from;
+    const r = out.get(other) ?? { friend: false };
+    if (l.accepted) r.friend = true;
+    else if (l.from === me) r.outgoing = l.at;
+    else r.incoming = l.at;
+    out.set(other, r);
+  }
+  // Both asked at once: that's a yes from each side.
+  for (const r of out.values()) if (r.incoming !== undefined && r.outgoing !== undefined) r.friend = true;
+  return out;
+}
+
+const STATUS_ORDER: Record<Friend['status'], number> = { room: 0, daily: 1, online: 2, offline: 3 };
 
 /**
  * Site admins.
@@ -86,6 +111,9 @@ export class Accounts {
   ready = false;
   private sockets = new WeakMap<Socket, SocketAccount>();
   private allow = limiter(20, 10 * 60_000);
+  private allowFriendRequest = limiter(30, 10 * 60_000);
+  /** Set by the server, which knows the sockets and rooms: where each of these accounts is right now. */
+  presence: (accountIds: string[]) => Map<string, Presence> = () => new Map();
 
   constructor(private store: AccountStore) {}
 
@@ -151,6 +179,29 @@ export class Accounts {
       ...summarize(games),
       recent: games.slice(0, RECENT_GAMES),
     };
+  }
+
+  // ---------- friends ----------
+
+  async friends(u: User): Promise<FriendsList> {
+    const rel = relations(await this.store.friendLinks(u.id), u.id);
+    const users = await this.store.usersByIds([...rel.keys()]);
+    const friendIds = users.filter((x) => rel.get(x.id)!.friend).map((x) => x.id);
+    const where = this.presence(friendIds);
+    const list: FriendsList = { friends: [], incoming: [], outgoing: [] };
+    for (const x of users) {
+      const r = rel.get(x.id)!;
+      const who = { username: x.username, displayName: x.displayName, admin: isAdmin(x) };
+      if (r.friend) {
+        const p = where.get(x.id);
+        list.friends.push({ ...who, status: p?.status ?? 'offline', ...(p?.room ? { room: p.room } : {}) });
+      } else if (r.incoming !== undefined) list.incoming.push({ ...who, at: r.incoming });
+      else if (r.outgoing !== undefined) list.outgoing.push({ ...who, at: r.outgoing });
+    }
+    list.friends.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.displayName.localeCompare(b.displayName));
+    list.incoming.sort((a, b) => b.at - a.at);
+    list.outgoing.sort((a, b) => b.at - a.at);
+    return list;
   }
 
   // ---------- HTTP ----------
@@ -232,6 +283,51 @@ export class Accounts {
       const p = await this.profile(String(req.params.username));
       if (!p) return res.status(404).json({ error: 'No player with that username.' });
       res.json({ profile: p });
+    }));
+
+    // ---------- friends ----------
+
+    const loggedIn = async (req: Request, res: Response) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) res.status(401).json({ error: 'Log in to add friends.' });
+      return u;
+    };
+
+    r.get('/friends', wrap(async (req, res) => {
+      const me = await loggedIn(req, res);
+      if (me) res.json(await this.friends(me));
+    }));
+
+    /** Send a friend request, or accept theirs if they already asked you. */
+    r.post('/friends', wrap(async (req, res) => {
+      const me = await loggedIn(req, res);
+      if (!me) return;
+      if (!this.allowFriendRequest(me.id)) return res.status(429).json({ error: 'Too many friend requests. Wait a few minutes.' });
+      const name = String(req.body?.username ?? '').trim().replace(/^@/, '');
+      const them = USERNAME_RE.test(name) ? await this.store.userByName(name) : null;
+      if (!them) return res.status(404).json({ error: 'No player with that username.' });
+      if (them.id === me.id) return res.status(400).json({ error: 'That’s you!' });
+      const mine = relations(await this.store.friendLinks(me.id), me.id);
+      const r = mine.get(them.id);
+      if (r?.incoming !== undefined && !r.friend) {
+        await this.store.acceptFriend(them.id, me.id);
+      } else if (!r) {
+        if (mine.size >= FRIENDS_MAX) return res.status(400).json({ error: `You can have up to ${FRIENDS_MAX} friends and requests.` });
+        if (relations(await this.store.friendLinks(them.id), them.id).size >= FRIENDS_MAX) {
+          return res.status(400).json({ error: `@${them.username} can’t take more friend requests.` });
+        }
+        await this.store.requestFriend(me.id, them.id, Date.now());
+      }
+      res.json(await this.friends(me));
+    }));
+
+    /** Unfriend, decline their request, or cancel yours. */
+    r.delete('/friends/:username', wrap(async (req, res) => {
+      const me = await loggedIn(req, res);
+      if (!me) return;
+      const them = await this.store.userByName(String(req.params.username));
+      if (them) await this.store.removeFriend(me.id, them.id);
+      res.json(await this.friends(me));
     }));
 
     // ---------- admin moderation ----------

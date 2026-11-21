@@ -70,6 +70,7 @@ Anyone can still play as a guest. **Sign up** on the home screen (username + pas
 - a public profile at `/u/<username>` with games, wins, points per game and per tossup, powers/tens/negs, buzz accuracy and depth, best game, a per-subject breakdown with your **best subject**, and recent games
 - a green check next to your name in rooms (links to your profile), and your seat back if you rejoin from another device
 - your display name and room settings remembered on any device
+- **friends**: add someone by username from the **Friends** card on the home screen (or **Add friend** on their profile). Once they accept, you see who's online and who's in a room, with **Join** and **Watch** buttons. Friends only see your room after you've both said yes. Daily-challenge rooms are never shown.
 
 Results are saved when the host ends a game, or when everyone walks away from a game with at least 3 tossups heard. Solo games count toward stats but not wins. Passwords are hashed with scrypt, sessions are an HTTP-only cookie, and login/signup are rate-limited. There is no email password reset.
 

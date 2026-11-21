@@ -5,6 +5,7 @@ import { randomName } from '../names';
 import { prefs } from '../socket';
 import { AccountBar } from './Account';
 import { DailyCard } from './Daily';
+import { FriendsCard } from './Friends';
 import { InstallButton } from './InstallButton';
 
 interface Props {
@@ -60,6 +61,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
               <button className="btn big grow" disabled={busy || !connected} onClick={() => run(() => onCreate(name.trim(), true))}>Solo practice</button>
             </div>
             <DailyCard busy={busy} connected={connected} onPlay={() => run(() => onDaily(name.trim()))} openOnLoad={dailyOpen} />
+            <FriendsCard busy={busy} connected={connected} onJoin={(c) => run(() => onJoin(c, name.trim()))} />
             <div className="divider"><span>or join with a code</span></div>
             <form className="row gap" onSubmit={(e) => { e.preventDefault(); run(() => onJoin(code.trim().toUpperCase(), name.trim())); }}>
               <input className="grow code-input" value={code} maxLength={8} placeholder="ABCD" onChange={(e) => setCode(e.target.value.toUpperCase())} />

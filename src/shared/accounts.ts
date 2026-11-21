@@ -131,3 +131,43 @@ export function summarize(games: GameRecord[]): Pick<PublicProfile, 'totals' | '
   const bestSubject = top && top.heard >= BEST_SUBJECT_MIN_HEARD && top.points > 0 ? top.category : null;
   return { totals: t, subjects, bestSubject };
 }
+
+// ---------- friends ----------
+
+/** Friends plus pending requests (both ways) per account. */
+export const FRIENDS_MAX = 200;
+
+/** Where a friend is right now. Daily-challenge rooms are never shown, so nobody can join or watch one. */
+export type FriendStatus = 'offline' | 'online' | 'room' | 'daily';
+
+export interface FriendRoom {
+  code: string;
+  /** lobby: not started yet; playing: a game is running; over: on the results screen. */
+  phase: 'lobby' | 'playing' | 'over';
+  mode: Mode;
+  /** People connected in the room (bots not counted). */
+  players: number;
+}
+
+export interface Friend {
+  username: string;
+  displayName: string;
+  admin: boolean;
+  status: FriendStatus;
+  room?: FriendRoom;
+}
+
+export interface FriendRequest {
+  username: string;
+  displayName: string;
+  admin: boolean;
+  at: number;
+}
+
+export interface FriendsList {
+  friends: Friend[];
+  /** Requests waiting on you. */
+  incoming: FriendRequest[];
+  /** Requests you sent that haven't been accepted. */
+  outgoing: FriendRequest[];
+}

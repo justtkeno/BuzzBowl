@@ -100,7 +100,7 @@ export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup
           <button type="button" role="tab" aria-selected={tab === 'login'} className={tab === 'login' ? 'on' : ''} onClick={() => setTab('login')}>Log in</button>
           <button type="button" role="tab" aria-selected={tab === 'signup'} className={tab === 'signup' ? 'on' : ''} onClick={() => setTab('signup')}>Sign up</button>
         </div>
-        {tab === 'signup' && <p className="muted small">An account keeps your stats from every game on a public profile, puts a check mark by your name, and remembers your name and room settings on any device.</p>}
+        {tab === 'signup' && <p className="muted small">An account keeps your stats from every game on a public profile, puts a check mark by your name, lets you add friends and join their games, and remembers your name and room settings on any device.</p>}
         <label className="field">
           <span>Username</span>
           <input ref={first} value={username} maxLength={20} autoComplete="username" autoCapitalize="off" spellCheck={false} onChange={(e) => setUsername(e.target.value)} placeholder={tab === 'signup' ? 'letters, numbers, _' : ''} />

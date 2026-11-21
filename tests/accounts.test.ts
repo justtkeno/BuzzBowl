@@ -215,3 +215,85 @@ describe('admin moderation API', () => {
     expect((await (await fetch(`${base}/me`, { headers: { cookie: troll.cookie } })).json()).user).toBeNull();
   });
 });
+
+describe('friends API', () => {
+  let server: Server;
+  let base: string;
+  let dir: string;
+  let accounts: Accounts;
+  let where = new Map<string, import('../src/server/accounts/accounts').Presence>();
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-friends-'));
+    accounts = new Accounts(new FileAccountStore(join(dir, 'accounts.json')));
+    await accounts.init();
+    accounts.presence = (ids) => new Map([...where].filter(([id]) => ids.includes(id)));
+    const app = express();
+    app.use('/api', accounts.router());
+    server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+  });
+  afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  const req = (method: string, path: string, body?: unknown, cookie?: string) =>
+    fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const signup = async (username: string) => {
+    const res = await req('POST', '/signup', { username, password: 'long-enough-pw' });
+    return { cookie: res.headers.get('set-cookie')!.split(';')[0], user: (await res.json()).user };
+  };
+  const list = async (cookie: string) => (await req('GET', '/friends', undefined, cookie)).json();
+
+  it('needs a login and a real username that isn’t yours', async () => {
+    expect((await req('GET', '/friends')).status).toBe(401);
+    const me = await signup('solo_sam');
+    expect((await req('POST', '/friends', { username: 'nobody_here' }, me.cookie)).status).toBe(404);
+    expect((await req('POST', '/friends', { username: 'SOLO_SAM' }, me.cookie)).status).toBe(400);
+  });
+
+  it('sends a request, accepts it, shows where friends are, and unfriends', async () => {
+    const amy = await signup('amy');
+    const ben = await signup('ben');
+    // Amy asks (with an @ and different case); Ben sees it waiting.
+    const sent = await (await req('POST', '/friends', { username: '@BEN' }, amy.cookie)).json();
+    expect(sent.outgoing.map((r: any) => r.username)).toEqual(['ben']);
+    expect(sent.friends).toEqual([]);
+    expect((await list(ben.cookie)).incoming.map((r: any) => r.username)).toEqual(['amy']);
+    // Presence is hidden until they're friends.
+    where = new Map([[amy.user.id, { status: 'room', room: { code: 'ABCD', phase: 'lobby', mode: 'ffa', players: 2 } }]]);
+    expect((await list(ben.cookie)).friends).toEqual([]);
+    // Ben accepts by adding her back.
+    const accepted = await (await req('POST', '/friends', { username: 'amy' }, ben.cookie)).json();
+    expect(accepted.incoming).toEqual([]);
+    expect(accepted.friends).toEqual([{ username: 'amy', displayName: 'amy', admin: false, status: 'room', room: { code: 'ABCD', phase: 'lobby', mode: 'ffa', players: 2 } }]);
+    expect((await list(amy.cookie)).friends).toMatchObject([{ username: 'ben', status: 'offline' }]);
+    expect((await list(amy.cookie)).friends[0].room).toBeUndefined();
+    // Asking again changes nothing.
+    expect((await (await req('POST', '/friends', { username: 'ben' }, amy.cookie)).json()).friends).toHaveLength(1);
+    // Either side can unfriend.
+    expect((await (await req('DELETE', '/friends/AMY', undefined, ben.cookie)).json()).friends).toEqual([]);
+    expect((await list(amy.cookie)).friends).toEqual([]);
+    where = new Map();
+  });
+
+  it('lets the other side decline, and the sender cancel', async () => {
+    const cal = await signup('cal');
+    const dee = await signup('dee');
+    await req('POST', '/friends', { username: 'dee' }, cal.cookie);
+    expect((await (await req('DELETE', '/friends/cal', undefined, dee.cookie)).json()).incoming).toEqual([]);
+    expect((await list(cal.cookie)).outgoing).toEqual([]);
+    await req('POST', '/friends', { username: 'dee' }, cal.cookie);
+    expect((await (await req('DELETE', '/friends/dee', undefined, cal.cookie)).json()).outgoing).toEqual([]);
+    expect((await list(dee.cookie)).incoming).toEqual([]);
+  });
+
+  it('drops friend links when an account is deleted', async () => {
+    const store = new FileAccountStore(null);
+    await store.requestFriend('a', 'b', 1);
+    await store.acceptFriend('a', 'b');
+    await store.requestFriend('c', 'a', 2);
+    await store.deleteUser('a');
+    expect(await store.friendLinks('b')).toEqual([]);
+    expect(await store.friendLinks('c')).toEqual([]);
+  });
+});

@@ -4,6 +4,7 @@ import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, type GameRecord, type PublicProfile } 
 import { adminDeleteAccount, adminResetProfile, fetchProfile, updateMe, useAccount } from '../account';
 import { useTheme } from '../App';
 import { AccountBar, CreatorBadge } from './Account';
+import { FriendButton } from './Friends';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -55,6 +56,7 @@ export function Profile({ username }: { username: string }) {
               </div>
               <div className="row gap">
                 {mine && !editing && <button className="btn small" onClick={() => setEditing(true)}>Edit profile</button>}
+                {!mine && <FriendButton username={p.username} />}
                 <CopyLink />
               </div>
             </section>
