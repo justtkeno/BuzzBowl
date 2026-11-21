@@ -5,6 +5,7 @@ import { randomName } from '../names';
 import { prefs } from '../socket';
 import { AccountBar } from './Account';
 import { DailyCard } from './Daily';
+import { SurvivalCard } from './Survival';
 import { FriendsTab } from './Friends';
 import { InstallButton } from './InstallButton';
 
@@ -15,11 +16,14 @@ interface Props {
   onJoin: (code: string, name: string) => Promise<void>;
   onCreate: (name: string, solo: boolean) => Promise<void>;
   onDaily: (name: string) => Promise<void>;
+  onSurvival: (name: string) => Promise<void>;
   /** Opened at /daily: show today's results right away. */
   dailyOpen: boolean;
+  /** Opened at /survival: show the leaderboard right away. */
+  survivalOpen: boolean;
 }
 
-export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily, dailyOpen }: Props) {
+export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily, onSurvival, dailyOpen, survivalOpen }: Props) {
   const [name, setName] = useState(() => prefs.name() || randomName());
   const [code, setCode] = useState(initialCode ?? '');
   const [busy, setBusy] = useState(false);
@@ -61,6 +65,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
               <button className="btn big grow" disabled={busy || !connected} onClick={() => run(() => onCreate(name.trim(), true))}>Solo practice</button>
             </div>
             <DailyCard busy={busy} connected={connected} onPlay={() => run(() => onDaily(name.trim()))} openOnLoad={dailyOpen} />
+            <SurvivalCard busy={busy} connected={connected} onPlay={() => run(() => onSurvival(name.trim()))} openOnLoad={survivalOpen} />
             <div className="divider"><span>or join with a code</span></div>
             <form className="row gap" onSubmit={(e) => { e.preventDefault(); run(() => onJoin(code.trim().toUpperCase(), name.trim())); }}>
               <input className="grow code-input" value={code} maxLength={8} placeholder="ABCD" onChange={(e) => setCode(e.target.value.toUpperCase())} />

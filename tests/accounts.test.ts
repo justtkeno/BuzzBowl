@@ -289,7 +289,7 @@ describe('friends API', () => {
     // Ben accepts by adding her back.
     const accepted = await (await req('POST', '/friends', { username: 'amy' }, ben.cookie)).json();
     expect(accepted.incoming).toEqual([]);
-    expect(accepted.friends).toEqual([{ username: 'amy', displayName: 'amy', admin: false, status: 'room', room: { code: 'ABCD', phase: 'lobby', mode: 'ffa', players: 2 } }]);
+    expect(accepted.friends).toEqual([{ username: 'amy', displayName: 'amy', admin: false, color: 'orange', frame: 'none', status: 'room', room: { code: 'ABCD', phase: 'lobby', mode: 'ffa', players: 2 } }]);
     expect((await list(amy.cookie)).friends).toMatchObject([{ username: 'ben', status: 'offline' }]);
     expect((await list(amy.cookie)).friends[0].room).toBeUndefined();
     // Asking again changes nothing.
@@ -397,7 +397,7 @@ describe('profile privacy and pins', () => {
     await req('POST', '/friends', { username: 'shy' }, friend.cookie);
 
     await req('PATCH', '/me', { visibility: 'friends' }, owner.cookie);
-    expect(await view('shy')).toEqual({ username: 'shy', displayName: 'shy', createdAt: owner.user.createdAt, admin: false, locked: 'friends' });
+    expect(await view('shy')).toEqual({ username: 'shy', displayName: 'shy', createdAt: owner.user.createdAt, admin: false, locked: 'friends', color: 'orange', frame: 'none' });
     expect((await view('shy', stranger.cookie)).locked).toBe('friends');
     expect((await view('shy', friend.cookie)).totals).toBeDefined();
     expect((await view('shy', owner.cookie)).visibility).toBe('friends');
@@ -426,5 +426,111 @@ describe('profile privacy and pins', () => {
     await req('POST', '/admin/users/Hao/badges', { unlock: false }, cookie);
     expect((await view('Hao', cookie)).badges.some((b: any) => !b.earned)).toBe(true);
     expect((await req('POST', '/admin/users/nobody_x/badges', { unlock: true }, cookie)).status).toBe(404);
+  });
+});
+
+describe('badge rewards', () => {
+  it('pairs every color and frame but the defaults with a real badge, and falls back to the defaults', async () => {
+    const { AVATAR_FRAMES, BADGE_BY_ID, DEFAULT_COLOR, DEFAULT_FRAME, PROFILE_COLORS, isUnlocked, lookFor } = await import('../src/shared/profile');
+    for (const r of [...PROFILE_COLORS, ...AVATAR_FRAMES]) {
+      if (r.id === DEFAULT_COLOR || r.id === DEFAULT_FRAME) expect(r.badge).toBeUndefined();
+      else expect(BADGE_BY_ID.has(r.badge!)).toBe(true);
+    }
+    expect(PROFILE_COLORS.every((c) => /^#[0-9a-f]{6}$/.test(c.light) && /^#[0-9a-f]{6}$/.test(c.dark))).toBe(true);
+    expect(lookFor({})).toEqual({ color: 'orange', frame: 'none' });
+    expect(lookFor({ color: 'plaid', frame: 'spikes' })).toEqual({ color: 'orange', frame: 'none' });
+    // A badge that's gone (an admin re-locked them) shows the default instead.
+    expect(lookFor({ color: 'gold', frame: 'halo' }, new Set(['dailyWin']))).toEqual({ color: 'gold', frame: 'none' });
+    expect(lookFor({ color: 'gold', frame: 'halo' }, new Set())).toEqual({ color: 'orange', frame: 'none' });
+    const teal = PROFILE_COLORS.find((c) => c.id === 'teal')!;
+    expect(isUnlocked(teal, new Set(['firstPower']))).toBe(true);
+    expect(isUnlocked(teal, new Set(['debut']))).toBe(false);
+  });
+
+  describe('HTTP', () => {
+    let server: Server;
+    let base: string;
+    let dir: string;
+    let store: FileAccountStore;
+
+    beforeAll(async () => {
+      dir = mkdtempSync(join(tmpdir(), 'bb-rewards-'));
+      store = new FileAccountStore(join(dir, 'accounts.json'));
+      const accounts = new Accounts(store);
+      await accounts.init();
+      const app = express();
+      app.use('/api', accounts.router());
+      server = createServer(app);
+      await new Promise<void>((r) => server.listen(0, r));
+      base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+    });
+    afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
+
+    const req = (method: string, path: string, body?: unknown, cookie?: string) =>
+      fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+    const signup = async (username: string) => {
+      const res = await req('POST', '/signup', { username, password: 'long-enough-pw' });
+      return { cookie: res.headers.get('set-cookie')!.split(';')[0], user: (await res.json()).user };
+    };
+    const view = async (username: string, cookie?: string) => (await (await req('GET', `/users/${username}`, undefined, cookie)).json()).profile;
+    const me = async (cookie: string) => (await (await req('GET', '/me', undefined, cookie)).json()).user;
+
+    it('starts on the defaults and only takes rewards whose badge was earned', async () => {
+      const p = await signup('painter');
+      expect(p.user).toMatchObject({ color: 'orange', frame: 'none' });
+      expect(await view('painter')).toMatchObject({ color: 'orange', frame: 'none' });
+
+      // Nothing earned yet: locked rewards are refused, unknown ids too, the defaults are fine.
+      let res = await req('PATCH', '/me', { color: 'blue' }, p.cookie);
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toMatch(/Debut/);
+      expect((await req('PATCH', '/me', { color: 'plaid' }, p.cookie)).status).toBe(400);
+      expect((await req('PATCH', '/me', { frame: 'spikes' }, p.cookie)).status).toBe(400);
+      expect((await req('PATCH', '/me', { color: 'orange', frame: 'none' }, p.cookie)).status).toBe(200);
+
+      // One won game with powers: Debut, First power and First win.
+      await store.addGames([{ userId: p.user.id, game: game() }]);
+      res = await req('PATCH', '/me', { color: 'teal', frame: 'ring', bio: 'hi' }, p.cookie);
+      expect(res.status).toBe(200);
+      expect((await res.json()).user).toMatchObject({ color: 'teal', frame: 'ring', bio: 'hi' });
+      // A locked one in the same request fails the whole request.
+      res = await req('PATCH', '/me', { color: 'blue', frame: 'halo', bio: 'changed' }, p.cookie);
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toMatch(/Champion/);
+      expect(await me(p.cookie)).toMatchObject({ color: 'teal', frame: 'ring', bio: 'hi' });
+      expect(await view('painter')).toMatchObject({ color: 'teal', frame: 'ring' });
+      expect((await req('PATCH', '/me', { color: 'gold' }, p.cookie)).status).toBe(403);
+    });
+
+    it('lets admin-granted badges unlock rewards, shows them to friends and on locked profiles, and resets them on re-lock', async () => {
+      const admin = await signup('Hao');
+      const pal = await signup('palette');
+      const stranger = await signup('passerby');
+      expect((await req('PATCH', '/me', { color: 'gold', frame: 'halo' }, admin.cookie)).status).toBe(403);
+      await req('POST', '/admin/users/Hao/badges', { unlock: true }, admin.cookie);
+      expect((await req('PATCH', '/me', { color: 'gold', frame: 'halo', visibility: 'private' }, admin.cookie)).status).toBe(200);
+
+      // Cosmetic, so it shows even when the stats are hidden.
+      expect(await view('Hao', stranger.cookie)).toMatchObject({ locked: 'private', color: 'gold', frame: 'halo' });
+      await req('POST', '/friends', { username: 'Hao' }, pal.cookie);
+      let list = await (await req('GET', '/friends', undefined, admin.cookie)).json();
+      expect(list.incoming[0]).toMatchObject({ username: 'palette', color: 'orange', frame: 'none' });
+      await req('POST', '/friends', { username: 'palette' }, admin.cookie);
+      list = await (await req('GET', '/friends', undefined, pal.cookie)).json();
+      expect(list.friends[0]).toMatchObject({ username: 'Hao', color: 'gold', frame: 'halo' });
+
+      // Re-locking takes back what only the granted badges unlocked.
+      await req('POST', '/admin/users/Hao/badges', { unlock: false }, admin.cookie);
+      expect(await view('Hao', admin.cookie)).toMatchObject({ color: 'orange', frame: 'none' });
+      expect(await me(admin.cookie)).toMatchObject({ color: 'orange', frame: 'none' });
+      list = await (await req('GET', '/friends', undefined, pal.cookie)).json();
+      expect(list.friends[0]).toMatchObject({ color: 'orange', frame: 'none' });
+    });
+
+    it('shows the default when a stored reward is no longer unlocked', async () => {
+      const u = await signup('faded');
+      await store.updateUser(u.user.id, { color: 'violet', frame: 'star' }); // as if the badges went away
+      expect(await view('faded')).toMatchObject({ color: 'orange', frame: 'none' });
+    });
   });
 });

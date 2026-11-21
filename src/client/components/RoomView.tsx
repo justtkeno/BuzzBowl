@@ -9,6 +9,7 @@ import { Announcement } from './Announcement';
 import { PlayersPanel } from './PlayersPanel';
 import { Chat } from './Chat';
 import { DailyResults } from './Daily';
+import { SurvivalChip, SurvivalResults } from './Survival';
 import { FriendsTab } from './Friends';
 import { ReaderQueue } from './ReaderQueue';
 import { AchievementPop, BuzzFlash, FlashAnnouncer, ScreenFlash, useAchievements, useBuzzFlash, useFeedback } from './Feedback';
@@ -28,12 +29,14 @@ interface Props {
   fresh: boolean; onRename: (name: string) => Promise<void>; onLeave: () => void;
   /** Move to a friend's room. */
   onJoinRoom: (code: string) => void;
+  /** Start a new survival run (Play again). */
+  onSurvival?: () => Promise<void>;
 }
 
 type Tab = 'board' | 'chat' | 'rulings';
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
 
-export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, onJoinRoom }: Props) {
+export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, onJoinRoom, onSurvival }: Props) {
   const r = roles(s);
   useReadAloud(s);
   const [showSettings, setShowSettings] = useState(false);
@@ -55,7 +58,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   const midGame = s.phase !== 'lobby' && s.phase !== 'gameOver';
   // Site admins can take the host seat in any room.
   const isAdmin = !!s.players.find((p) => p.id === s.you)?.admin;
-  const canModerate = (r.isController || isAdmin) && !s.daily;
+  const canModerate = (r.isController || isAdmin) && !r.fixed;
 
   useEffect(() => {
     let t: ReturnType<typeof setTimeout>;
@@ -94,6 +97,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   };
   const openProtests = s.protests.length;
   const openBigScreen = () => window.open(`/watch/${s.code}`, '_blank', 'noopener');
+  const endPrompt = s.survival ? 'End this run now? It counts as finished, with the tossups you’ve played.' : 'End the game and show the summary?';
 
   return (
     <div className={`room ${s.phase === 'reading' ? 'is-reading' : ''}`}>
@@ -102,7 +106,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         <div className="brand small"><Logo /><span className="hide-sm">Trivio</span></div>
         {s.daily ? (
           <span className="chip daily-chip">Daily <b>#{s.daily.number}</b>{s.tossup && s.phase !== 'gameOver' ? ` · ${s.tossup.num}/${s.daily.total}` : ''}</span>
-        ) : (
+        ) : s.survival ? <SurvivalChip s={s} /> : (
           <>
             <button className="chip" onClick={() => shareInvite(s.code)} title="Copy invite link">Room <b>{s.code}</b> ⧉</button>
             <button className="btn primary small hide-sm" onClick={() => setShowInvite(true)} title="Show a big QR code people can scan">Invite</button>
@@ -111,7 +115,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         <span className={`phase phase-${s.phase}`}>{s.paused ? 'Paused' : phaseLabel[s.phase]}</span>
         {r.isReader && <span className="badge reader hide-sm">You are reading</span>}
         <div className="grow" />
-        {r.isController && midGame && !s.daily && (
+        {r.isController && midGame && !r.fixed && (
           <button className={`btn ${s.paused ? 'primary' : 'ghost'} pause-btn`} onClick={() => act('game:hold', !s.paused)} title={s.paused ? 'Resume the game' : 'Pause the whole game'}>
             {s.paused ? '▶ Resume' : '❚❚'}<span className="hide-sm">{s.paused ? '' : ' Pause'}</span>
           </button>
@@ -119,7 +123,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         {canModerate && <button className="btn ghost hide-sm" onClick={() => setShowPlayers(true)} title="Kick, ban or mute players">👥 Players</button>}
         {isAdmin && <button className="btn ghost hide-sm" onClick={() => setShowAdmin(true)} title="Admin tools">🛡 Admin</button>}
         <button className="btn ghost hide-sm" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
-        {r.isController && !s.daily && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Settings</button>}
+        {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Settings</button>}
         <button className="btn ghost hide-sm" onClick={toggleSound} title={sound ? 'Turn sound effects off' : 'Turn sound effects on'} aria-label={sound ? 'Sound on' : 'Sound off'} aria-pressed={sound}>{sound ? '🔊' : '🔇'}</button>
         <button className="btn ghost hide-sm" title="Switch theme (auto / dark / light)" onClick={() => setTheme(cycleTheme())}>{theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}</button>
         <button className="btn ghost hide-sm" onClick={onLeave}>Leave</button>
@@ -129,15 +133,15 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
             <>
               <div className="menu-back" onClick={() => setMenu(false)} />
               <div className="menu" role="menu" onClick={() => setMenu(false)}>
-                {!s.daily && <button role="menuitem" onClick={() => setShowInvite(true)}>📷 Invite (QR code)</button>}
+                {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}>📷 Invite (QR code)</button>}
                 <button role="menuitem" onClick={() => setShowReview(true)}>📜 Review questions{s.review.length ? ` (${s.review.length})` : ''}</button>
-                {r.isController && !s.daily && <button role="menuitem" onClick={() => setShowSettings(true)}>⚙️ Settings</button>}
+                {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}>⚙️ Settings</button>}
                 <button role="menuitem" onClick={openBigScreen}>📺 Big-screen view</button>
                 <button role="menuitem" onClick={toggleSound}>{sound ? '🔇 Sound off' : '🔊 Sound on'}</button>
                 <button role="menuitem" onClick={() => setTheme(cycleTheme())}>🌓 Theme: {theme}</button>
                 {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}>👥 Players</button>}
                 {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}>🛡 Admin</button>}
-                {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm('End the game and show the summary?')) act('game:end'); }}>🏁 End game</button>}
+                {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}>🏁 {s.survival ? 'End run' : 'End game'}</button>}
                 <button role="menuitem" onClick={onLeave}>🚪 Leave room</button>
               </div>
             </>
@@ -153,6 +157,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         <section className="stage-col">
           {s.phase === 'lobby' && <Lobby s={s} fresh={fresh} onRename={onRename} onSettings={() => setShowSettings(true)} onBigInvite={() => setShowInvite(true)} onBigScreen={openBigScreen} />}
           {s.phase === 'gameOver' && s.daily && <DailyResults />}
+          {s.phase === 'gameOver' && s.survival && <SurvivalResults s={s} onPlayAgain={onSurvival} />}
           {s.phase === 'gameOver' && <Summary s={s} />}
           {midGame && <Stage s={s} />}
           {r.isReader && midGame && (
@@ -161,11 +166,11 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
               <button className="btn" onClick={() => { if (confirm('End the match now and show the final scores?')) act('game:end'); }}>🏁 End match</button>
             </div>
           )}
-          {r.isReader && (s.phase === 'lobby' || midGame) && <ReaderQueue s={s} onChangeQuestions={s.daily ? undefined : () => setShowQuestions(true)} />}
+          {r.isReader && (s.phase === 'lobby' || midGame) && <ReaderQueue s={s} onChangeQuestions={r.fixed ? undefined : () => setShowQuestions(true)} />}
           {r.isController && !r.isReader && midGame && (
             <div className="row gap end subtle-controls hide-sm">
               <button className="btn ghost small" onClick={openBigScreen}>Big-screen view</button>
-              <button className="btn ghost small" onClick={() => { if (confirm('End the game and show the summary?')) act('game:end'); }}>End game</button>
+              <button className="btn ghost small" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}>{s.survival ? 'End run' : 'End game'}</button>
             </div>
           )}
         </section>
@@ -203,7 +208,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
       {showAdmin && isAdmin && <AdminPanel s={s} onClose={() => setShowAdmin(false)} onPlayers={() => { setShowAdmin(false); setShowPlayers(true); }} />}
       {showPlayers && canModerate && <PlayersPanel s={s} onClose={() => setShowPlayers(false)} />}
       {/* Off screen while questions are being read, so it never gets in the way of buzzing. */}
-      <FriendsTab hidden={midGame || drawer} currentCode={s.code} onJoin={onJoinRoom} disabled={!connected} canInvite={!s.daily} />
+      <FriendsTab hidden={midGame || drawer} currentCode={s.code} onJoin={onJoinRoom} disabled={!connected} canInvite={!r.fixed} />
       <Announcement />
       {showInvite && <InviteScreen code={s.code} onClose={() => setShowInvite(false)} />}
       {toastMsg && <div className="toast" role="status">{toastMsg}</div>}

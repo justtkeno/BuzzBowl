@@ -2,6 +2,7 @@ import { BuzzMap } from './Stage';
 import { useState } from 'react';
 import type { PublicState } from '../../shared/types';
 import { resultLabel } from './util';
+import { ReportQuestion } from './Report';
 
 export function Review({ s, onClose }: { s: PublicState; onClose: () => void }) {
   const [open, setOpen] = useState<number | null>(s.review[0]?.num ?? null);
@@ -36,7 +37,10 @@ export function Review({ s, onClose }: { s: PublicState; onClose: () => void }) 
                     {q.buzzes.map((b, i) => <li key={i}>{b.playerName} at word {b.wordIndex} of {q.words.length}: “{b.given || '—'}” → {resultLabel[b.result]}</li>)}
                   </ul>
                 )}
-                {q.setName && <p className="muted small">{q.setName}</p>}
+                <div className="review-foot">
+                  {q.setName && <span className="muted small">{q.setName}</span>}
+                  <ReportQuestion s={s} num={q.num} />
+                </div>
               </div>
             )}
           </div>

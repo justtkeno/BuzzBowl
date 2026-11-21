@@ -22,6 +22,8 @@ export function roles(s: PublicState) {
   return {
     me, isHost, isReader, readerOnline, myTeam,
     isController: isHost || isReader,
+    /** Daily challenge or survival: fixed settings, solo, nothing that changes a score. */
+    fixed: !!s.daily || !!s.survival,
     canDirect: readerOnline ? isHost || isReader : true,
   };
 }

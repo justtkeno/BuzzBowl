@@ -7,8 +7,14 @@ export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 export const PASSWORD_MIN = 8;
 export const BIO_MAX = 200;
 
+/** Badge rewards a player picked: ids from PROFILE_COLORS and AVATAR_FRAMES (the defaults when not picked or no longer unlocked). */
+export interface Look {
+  color: string;
+  frame: string;
+}
+
 /** The logged-in user, as they see themselves. */
-export interface Me {
+export interface Me extends Look {
   id: string;
   username: string;
   displayName: string;
@@ -41,6 +47,8 @@ export interface GameRecord {
   abandoned?: boolean;
   /** The daily challenge's number when this game was that day's challenge. */
   daily?: number;
+  /** True when this game was a survival run. */
+  survival?: boolean;
   tossups: number;
   points: number;
   powers: number;
@@ -83,7 +91,7 @@ export interface ProfileTotals {
   bestStreak: number;
 }
 
-export interface PublicProfile {
+export interface PublicProfile extends Look {
   username: string;
   displayName: string;
   bio: string;
@@ -97,6 +105,8 @@ export interface PublicProfile {
   recent: GameRecord[];
   /** Daily challenge record, once they've played one while logged in. */
   daily?: DailyProfile;
+  /** Best survival run, once they've finished one while logged in. */
+  survival?: SurvivalProfile;
   /** Stat ids they pinned to the top. */
   pinned: string[];
   badges: BadgeState[];
@@ -106,8 +116,8 @@ export interface PublicProfile {
   badgesUnlocked?: boolean;
 }
 
-/** What others see of a profile that isn't open to them. */
-export interface LockedProfile {
+/** What others see of a profile that isn't open to them (the color and frame are cosmetic, so they still show). */
+export interface LockedProfile extends Look {
   username: string;
   displayName: string;
   createdAt: number;
@@ -138,6 +148,16 @@ export interface DailyProfile {
   /** Dailies where every tossup was answered correctly. */
   perfect: number;
   recent: DailyDay[];
+}
+
+/** A player's survival record on their profile. */
+export interface SurvivalProfile {
+  runs: number;
+  /** Best run: tossups answered correctly, then points. */
+  best: { correct: number; tossups: number; points: number; powers: number; at: number };
+  /** Where that best run sits on the all-time board, and how many players are on it. */
+  rank: number;
+  players: number;
 }
 
 /** Need this many tossups heard in a subject before it can be "best subject". */
@@ -187,8 +207,8 @@ export function summarize(games: GameRecord[]): Pick<PublicProfile, 'totals' | '
 /** Friends plus pending requests (both ways) per account. */
 export const FRIENDS_MAX = 200;
 
-/** Where a friend is right now. Daily-challenge rooms are never shown, so nobody can join or watch one. */
-export type FriendStatus = 'offline' | 'online' | 'room' | 'daily';
+/** Where a friend is right now. Daily-challenge and survival rooms are never shown, so nobody can join or watch one. */
+export type FriendStatus = 'offline' | 'online' | 'room' | 'daily' | 'survival';
 
 export interface FriendRoom {
   code: string;
@@ -199,7 +219,7 @@ export interface FriendRoom {
   players: number;
 }
 
-export interface Friend {
+export interface Friend extends Look {
   username: string;
   displayName: string;
   admin: boolean;
@@ -207,7 +227,7 @@ export interface Friend {
   room?: FriendRoom;
 }
 
-export interface FriendRequest {
+export interface FriendRequest extends Look {
   username: string;
   displayName: string;
   admin: boolean;

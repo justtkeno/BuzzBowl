@@ -30,7 +30,7 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` + `
 3. **Start game.** Words appear as they are read. Press **Space** (or tap the big button) to buzz. Reading stops for everyone, you get 7 seconds to type, and others watch you type.
 4. Scoring (NAQT-style, all configurable): 15 for a correct buzz before the `(*)`, 10 after it, −5 for a wrong answer before the question ends, 0 after. One buzz per player (or per team) per tossup.
 5. In team mode, the team that converts the tossup gets a 3-part bonus. Teammates talk in **team chat**. The captain submits each part.
-6. Press **N** (or **Next tossup**) to continue. **Review** shows every finished question with full text, answer line, and where each player buzzed.
+6. Press **N** (or **Next tossup**) to continue. **Review** shows every finished question with full text, answer line, and where each player buzzed. Spot a problem (a missing accepted answer, a typo, the wrong category)? Tap **Report** under the answer.
 7. **End game** shows the summary: points, powers/tens/negs, points per tossup heard, average buzz depth, PPB, and a per-category breakdown.
 
 ### Party mode
@@ -41,6 +41,12 @@ For a quick free-for-all with no reader. In the lobby, the host taps **Party mod
 - **Topic vote**: after each tossup, players pick the next one's category from three choices (only categories the room's filters allow). The next tossup starts when everyone has voted, after 10 seconds, or when anyone taps **Start now** (or presses **N**). Keys **1**–**3** vote. Ties are broken at random.
 
 Both are separate settings under **Without a reader**, so either can be used on its own. They switch off while someone holds the reader seat, and never apply to the daily challenge.
+
+### Survival
+
+**Survival** on the home page (under the daily challenge) is an endless solo run: tossups keep coming until you've missed 3. A wrong answer (a neg, or a wrong answer after the question ends) or a tossup that goes dead without a buzz costs a life; the three dots in the top bar are your lives. Your score is how many tossups you got right (ties go to points, then whoever got there first). Questions are mixed categories with no bonuses, a little harder the longer you last (built-in questions when QBReader can't be reached).
+
+Like the daily challenge it's fixed and solo: same settings for everyone, nobody else can join, no skipping, pausing, reader, bots, protests or score changes. Reloading goes back into the same run, and the clock keeps going while you're away, so leaving can't save a life. A run you walk away from ends where it stands. **End run** in the ⋯ menu gives up and counts the tossups so far. At the end you see your run, your best ever and your rank, with **Play again**. The **Board** shows each player's best run, all time and this week (from Monday, Eastern time). Logged-in players get their best run on their profile.
 
 ### Reader (moderator) seat
 
@@ -80,9 +86,10 @@ Anyone can still play as a guest. **Sign up** on the home screen (username + pas
 - a green check next to your name in rooms (links to your profile), and your seat back if you rejoin from another device
 - your display name and room settings remembered on any device
 - **badges** on your profile, earned from your games and daily challenges (first power, 10 in a row, clean sheet, daily champion, week streak and more). On your own profile, **Show all** lists the ones still to get, with progress
+- **badge rewards**: badges unlock a **profile color** and **avatar frames** (ring, dashed, double ring, flame, star, halo), picked in **Edit profile**. They show on your profile, next to your name at the top of the page and in friends' lists. Tap a locked one to see which badge it needs
 - **pinned stats**: in **Edit profile**, pick up to 3 stats (daily 1st places, points per game, buzz depth…) to show at the top of your profile
 - **privacy**: in **Edit profile**, choose who sees your stats, badges and games: everyone, friends only, or only you. Your name and username always show so friends can find you
-- **friends**: tap the small people tab on the right edge of the screen to slide out your friends, and add someone by username there (or with **Add friend** on their profile). Once they accept, you see who's online and who's in a room, with **Join** and **Watch** buttons. In a room, the tab shows in the lobby and after the game, never while questions are being read, and each online friend gets an **Invite** button: they see a small "Alex invited you to play · Join" banner wherever they are on the site. Friends only see your room after you've both said yes. Daily-challenge rooms are never shown.
+- **friends**: tap the small people tab on the right edge of the screen to slide out your friends, and add someone by username there (or with **Add friend** on their profile). Once they accept, you see who's online and who's in a room, with **Join** and **Watch** buttons. In a room, the tab shows in the lobby and after the game, never while questions are being read, and each online friend gets an **Invite** button: they see a small "Alex invited you to play · Join" banner wherever they are on the site. Friends only see your room after you've both said yes. Daily-challenge and survival rooms are never shown.
 
 Results are saved when the host ends a game, or when everyone walks away from a game with at least 3 tossups heard. Solo games count toward stats but not wins. Passwords are hashed with scrypt, sessions are an HTTP-only cookie, and login/signup are rate-limited. There is no email password reset.
 
@@ -139,6 +146,7 @@ src/
     questions/               QBReader / local / uploaded question providers, sample packet
     rooms/room.ts            room state machine (timers, buzz arbitration, bonuses, reader, protests)
     rooms/store.ts           RoomStore interface + in-memory implementation
+    daily/, survival/        daily challenge and survival: question picking, leaderboards (Postgres or JSON file)
   client/                    React app (Vite)
 tests/                       Vitest unit tests (answer checking, scoring, room flow)
 ```

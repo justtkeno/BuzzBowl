@@ -6,8 +6,11 @@ import {
   BIO_MAX, FRIENDS_MAX, PASSWORD_MIN, USERNAME_RE, summarize,
   type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type ProfileView, type PublicProfile,
 } from '../../shared/accounts';
-import { BADGES, VISIBILITIES, badgesFor, cleanPinned, type Visibility } from '../../shared/profile';
-import type { AccountStore, FriendLink, User } from './store';
+import {
+  BADGES, BADGE_BY_ID, VISIBILITIES, badgesFor, cleanPinned, colorById, earnedIds, frameById, isColor, isFrame, isUnlocked, lookFor,
+  type Reward, type Visibility,
+} from '../../shared/profile';
+import type { AccountStore, FriendLink, User, UserPatch } from './store';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -21,7 +24,7 @@ const RECENT_GAMES = 15;
 export interface SocketAccount { id: string; username: string; admin: boolean }
 
 /** Where a logged-in account is right now (accounts with no entry are offline). */
-export interface Presence { status: 'online' | 'room' | 'daily'; room?: FriendRoom }
+export interface Presence { status: 'online' | 'room' | 'daily' | 'survival'; room?: FriendRoom }
 
 /** How `me` stands with each other account they have a friend link with. */
 interface Relation { friend: boolean; incoming?: number; outgoing?: number }
@@ -40,7 +43,7 @@ function relations(links: FriendLink[], me: string): Map<string, Relation> {
   return out;
 }
 
-const STATUS_ORDER: Record<Friend['status'], number> = { room: 0, daily: 1, online: 2, offline: 3 };
+const STATUS_ORDER: Record<Friend['status'], number> = { room: 0, daily: 1, survival: 1, online: 2, offline: 3 };
 
 /**
  * Site admins.
@@ -89,7 +92,7 @@ const cleanName = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().sl
 
 export function toMe(u: User): Me {
   return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u), ...(isAdmin(u) ? { adminLocked } : {}), settings: u.settings,
-    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned) };
+    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u) };
 }
 
 /** Tiny in-memory limiter for login/signup attempts, per IP. */
@@ -119,7 +122,7 @@ export class Accounts {
 
   constructor(private store: AccountStore) {}
 
-  /** Extra profile sections from elsewhere (the daily challenge), added when a profile is shown. */
+  /** Extra profile sections from elsewhere (the daily challenge, survival), added when a profile is shown. */
   profileExtras?: (user: { id: string }) => Promise<Partial<PublicProfile>>;
   /** Finds the daily challenge a solo game saved before games carried `daily` belongs to (its number), if any. */
   findDaily?: (accountId: string, at: number, points: number) => Promise<number | null>;
@@ -189,7 +192,9 @@ export class Accounts {
     const privileged = owner || (!!viewer && isAdmin(viewer));
     if (visibility !== 'public' && !privileged) {
       const friend = visibility === 'friends' && !!viewer && !!relations(await this.store.friendLinks(u.id), u.id).get(viewer.id)?.friend;
-      if (!friend) return { username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u), locked: visibility };
+      if (!friend) {
+        return { username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u), locked: visibility, ...lookFor(u, await this.earnedBadges(u)) };
+      }
     }
     const games = await this.store.games(u.id, PROFILE_GAMES);
     const recent = games.slice(0, RECENT_GAMES);
@@ -202,16 +207,29 @@ export class Accounts {
     }
     const p: PublicProfile = {
       username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u),
+      ...lookFor(u),
       ...summarize(games),
       recent,
-      ...(await this.profileExtras?.(u).catch((e) => { console.error('Profile extras failed:', e); return {}; })),
+      ...(await this.extras(u)),
       pinned: cleanPinned(u.pinned),
       badges: [],
       ...(privileged ? { visibility } : {}),
       ...(viewer && isAdmin(viewer) ? { badgesUnlocked: !!u.grantedBadges?.length } : {}),
     };
     p.badges = badgesFor({ games, p, granted: u.grantedBadges });
+    Object.assign(p, lookFor(u, earnedIds(p.badges)));
     return p;
+  }
+
+  private extras(u: User): Promise<Partial<PublicProfile>> {
+    return this.profileExtras?.(u).catch((e) => { console.error('Profile extras failed:', e); return {}; }) ?? Promise.resolve({});
+  }
+
+  /** The badges an account has now: earned from games and daily results, or granted by an admin. */
+  async earnedBadges(u: User): Promise<Set<string>> {
+    const games = await this.store.games(u.id, PROFILE_GAMES);
+    const p = { ...summarize(games), ...(await this.extras(u)) };
+    return earnedIds(badgesFor({ games, p, granted: u.grantedBadges }));
   }
 
   /** The account `username` if they and `meId` are friends. */
@@ -231,7 +249,8 @@ export class Accounts {
     const list: FriendsList = { friends: [], incoming: [], outgoing: [] };
     for (const x of users) {
       const r = rel.get(x.id)!;
-      const who = { username: x.username, displayName: x.displayName, admin: isAdmin(x) };
+      // Rewards were checked when picked (and again when an admin re-locks badges), so the list skips recomputing badges.
+      const who = { username: x.username, displayName: x.displayName, admin: isAdmin(x), ...lookFor(x) };
       if (r.friend) {
         const p = where.get(x.id);
         list.friends.push({ ...who, status: p?.status ?? 'offline', ...(p?.room ? { room: p.room } : {}) });
@@ -307,7 +326,7 @@ export class Accounts {
       const u = await this.userFrom(req.headers.cookie);
       if (!u) return res.status(401).json({ error: 'Log in first.' });
       const b = req.body ?? {};
-      const patch: Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned'>> = {};
+      const patch: UserPatch = {};
       if ('displayName' in b) {
         const n = cleanName(b.displayName);
         if (!n) return res.status(400).json({ error: 'Pick a display name.' });
@@ -320,6 +339,16 @@ export class Accounts {
         patch.visibility = b.visibility;
       }
       if ('pinned' in b) patch.pinned = cleanPinned(b.pinned);
+      if ('color' in b && !isColor(b.color)) return res.status(400).json({ error: 'Pick a profile color.' });
+      if ('frame' in b && !isFrame(b.frame)) return res.status(400).json({ error: 'Pick an avatar frame.' });
+      const wanted: Reward[] = [];
+      if ('color' in b) { patch.color = b.color; wanted.push(colorById(b.color)); }
+      if ('frame' in b) { patch.frame = b.frame; wanted.push(frameById(b.frame)); }
+      if (wanted.some((r) => r.badge)) {
+        const earned = await this.earnedBadges(u);
+        const locked = wanted.find((r) => !isUnlocked(r, earned));
+        if (locked) return res.status(403).json({ error: `Earn the ${BADGE_BY_ID.get(locked.badge!)?.name ?? locked.badge} badge to unlock ${locked.name}.` });
+      }
       await this.store.updateUser(u.id, patch);
       res.json({ user: toMe({ ...u, ...patch }) });
     }));
@@ -394,6 +423,11 @@ export class Accounts {
       if (!u) return res.status(404).json({ error: 'No player with that username.' });
       const grantedBadges = req.body?.unlock ? BADGES.map((b) => b.id) : [];
       await this.store.updateUser(u.id, { grantedBadges });
+      if (!grantedBadges.length && (u.color || u.frame)) {
+        // Rewards those badges unlocked go back to the defaults.
+        const look = lookFor(u, await this.earnedBadges({ ...u, grantedBadges }));
+        if (look.color !== (u.color ?? look.color) || look.frame !== (u.frame ?? look.frame)) await this.store.updateUser(u.id, look);
+      }
       console.log(`Admin ${grantedBadges.length ? 'unlocked' : 're-locked'} badges for @${u.username}`);
       res.json({ ok: true, unlocked: grantedBadges.length > 0 });
     }));

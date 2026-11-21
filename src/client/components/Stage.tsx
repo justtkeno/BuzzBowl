@@ -5,6 +5,7 @@ import { socket } from '../socket';
 import { play } from '../sounds';
 import { readAloudActive, setSpeechOn, speechSupported, useSpeechOn } from '../speech';
 import { act, colorFor, isTouch, resultLabel, roles, useNow, vibrate } from './util';
+import { ReportQuestion } from './Report';
 
 export function Stage({ s }: { s: PublicState }) {
   const r = roles(s);
@@ -54,7 +55,7 @@ export function Stage({ s }: { s: PublicState }) {
         if (r.isReader && s.phase === 'reading' && t) act('game:pause', !t.paused);
         else buzz();
       } else if (e.key === 'n' || e.key === 'N') {
-        if (canNext || s.vote || (canSkip && (s.phase === 'reading' || s.phase === 'bonus'))) act('game:next');
+        if (canNext || s.vote || (canSkip && !s.survival && (s.phase === 'reading' || s.phase === 'bonus'))) act('game:next');
       } else if (s.vote && /^[1-9]$/.test(e.key) && s.vote.options[Number(e.key) - 1]) {
         act('vote', s.vote.options[Number(e.key) - 1]);
       } else if (e.key === 'ArrowRight' && r.isController && s.phase === 'reading' && t) {
@@ -84,14 +85,14 @@ export function Stage({ s }: { s: PublicState }) {
             <small>{canBuzz ? (isTouch() ? 'tap' : 'Space / tap') : ''}</small>
           </button>
         )}
-        {r.isController && t && s.phase === 'reading' && !s.daily && <ReaderControls s={s} />}
-        {isAdmin && !r.isController && t && s.phase === 'reading' && <button className="btn ghost" onClick={() => act('game:next')}>Skip tossup</button>}
-        {canSkip && (s.phase === 'buzz' || (s.phase === 'bonus' && !bonusDone)) && (
+        {r.isController && t && s.phase === 'reading' && !r.fixed && <ReaderControls s={s} />}
+        {isAdmin && !r.isController && t && s.phase === 'reading' && !s.survival && <button className="btn ghost" onClick={() => act('game:next')}>Skip tossup</button>}
+        {canSkip && !s.survival && (s.phase === 'buzz' || (s.phase === 'bonus' && !bonusDone)) && (
           <button className="btn ghost" onClick={() => act('game:next')}>Skip {s.phase === 'bonus' ? 'bonus' : 'tossup'}</button>
         )}
         {canNext && (
           <button className="btn primary big next-btn" onClick={() => act('game:next')} disabled={s.paused}>
-            {s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : s.settings.source === 'lightning' ? 'Next question' : 'Next tossup'} <kbd>N</kbd>
+            {s.survival?.done ? 'See results' : s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : s.settings.source === 'lightning' ? 'Next question' : 'Next tossup'} <kbd>N</kbd>
           </button>
         )}
         {s.vote && <VotePanel s={s} />}
@@ -238,7 +239,10 @@ export function TossupCard({ s }: { s: PublicState }) {
       )}
 
       {(ended || r.isReader) && t.answerHtml && (
-        <div className="answer"><span className="label">ANSWER</span> <span dangerouslySetInnerHTML={{ __html: t.answerHtml }} /></div>
+        <div className="answer">
+          <span className="label">ANSWER</span> <span dangerouslySetInnerHTML={{ __html: t.answerHtml }} />
+          {ended && s.review.some((x) => x.num === t.num) && <> <ReportQuestion s={s} num={t.num} /></>}
+        </div>
       )}
       {!ended && !r.isReader && s.peek?.tossup && (
         <div className="peek" title="Only you can see this"><span aria-hidden="true">👀</span> <span dangerouslySetInnerHTML={{ __html: s.peek.tossup }} /></div>

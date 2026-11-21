@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { USERNAME_RE, type Friend, type FriendRequest, type FriendsList } from '../../shared/accounts';
 import { removeFriend, sendFriendRequest, useFriends } from '../friends';
 import { call, socket } from '../socket';
-import { AccountDialog, CreatorBadge } from './Account';
+import { AccountDialog, Avatar as UserAvatar, CreatorBadge } from './Account';
 
 /** How often the list refreshes while the panel is open, and (for the tab's counts) while it's closed. */
 const OPEN_POLL_MS = 15_000;
@@ -18,15 +18,15 @@ function statusText(f: Friend) {
     return `${f.room.mode === 'teams' ? 'Teams game' : 'In a game'} · ${people}`;
   }
   if (f.status === 'daily') return 'Daily challenge';
+  if (f.status === 'survival') return 'Playing survival';
   return f.status === 'online' ? 'Online' : 'Offline';
 }
 
-function Avatar({ name, status }: { name: string; status?: Friend['status'] }) {
+function Avatar({ name, status, color, frame }: { name: string; status?: Friend['status']; color?: string; frame?: string }) {
   return (
-    <span className="avatar friend-avatar" aria-hidden="true">
-      {name.slice(0, 1).toUpperCase()}
+    <UserAvatar name={name} color={color} frame={frame} className="friend-avatar">
       {status && status !== 'offline' && <span className={`friend-dot ${status}`} />}
-    </span>
+    </UserAvatar>
   );
 }
 
@@ -81,7 +81,7 @@ export function FriendsTab({ onJoin, currentCode, hidden, disabled, canInvite }:
   useEffect(() => { if (hidden) setOpen(false); }, [hidden]);
 
   const list = f.list;
-  const playing = list?.friends.filter((x) => x.status === 'room' || x.status === 'daily').length ?? 0;
+  const playing = list?.friends.filter((x) => x.status === 'room' || x.status === 'daily' || x.status === 'survival').length ?? 0;
   const online = list?.friends.filter((x) => x.status === 'online').length ?? 0;
   const requests = list?.incoming.length ?? 0;
   const label = !f.me ? 'Friends' : `Friends: ${playing + online} online${requests ? `, ${plural(requests, 'friend request')}` : ''}`;
@@ -165,13 +165,13 @@ function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab, can
   };
 
   const friends = list?.friends ?? [];
-  const playing = friends.filter((x) => x.status === 'room' || x.status === 'daily');
+  const playing = friends.filter((x) => x.status === 'room' || x.status === 'daily' || x.status === 'survival');
   const online = friends.filter((x) => x.status === 'online');
   const offline = friends.filter((x) => x.status === 'offline');
 
   const row = (x: Friend) => (
     <li key={x.username} className={`friend ${x.status}`}>
-      <Avatar name={x.displayName} status={x.status} />
+      <Avatar name={x.displayName} status={x.status} color={x.color} frame={x.frame} />
       <div className="grow friend-text">
         <Name who={x} newTab={newTab} />
         <div className="muted small">{x.room && x.room.code === currentCode ? 'In your room' : statusText(x)}</div>
@@ -237,7 +237,7 @@ function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab, can
 function RequestRow({ r, newTab, children }: { r: FriendRequest; newTab?: boolean; children: React.ReactNode }) {
   return (
     <li className="friend">
-      <Avatar name={r.displayName} />
+      <Avatar name={r.displayName} color={r.color} frame={r.frame} />
       <div className="grow friend-text">
         <Name who={r} newTab={newTab} />
         <div className="muted small">@{r.username}</div>

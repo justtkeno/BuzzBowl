@@ -100,6 +100,7 @@ export class RoomBots {
   add(by: string, skill: unknown) {
     if (!this.isController(by)) throw new ActionError('Only the host can add bots.');
     if (this.s.daily) throw new ActionError('The daily challenge is played solo.');
+    if (this.s.survival) throw new ActionError('Survival is played solo.');
     const level = isSkill(skill) ? skill : 'medium';
     if (this.bots().length >= MAX_BOTS) throw new ActionError(`A room can have up to ${MAX_BOTS} bots.`);
     const taken = new Set(this.s.players.map((p) => p.name.toLowerCase()));

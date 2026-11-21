@@ -20,12 +20,15 @@ export interface User {
   pinned?: string[];
   /** Badges a site admin unlocked for them, earned or not. */
   grantedBadges?: string[];
+  /** Badge rewards they picked (ids from PROFILE_COLORS / AVATAR_FRAMES). Missing means the default. */
+  color?: string;
+  frame?: string;
 }
 
 /** A friend request from `from` to `to`; once accepted, the two are friends. */
 export interface FriendLink { from: string; to: string; accepted: boolean; at: number }
 
-export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges'>>;
+export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges' | 'color' | 'frame'>>;
 
 /** Where accounts live. Postgres in production, a JSON file for local development and tests. */
 export interface AccountStore {
@@ -191,6 +194,8 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS pinned JSONB;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS granted_badges JSONB;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS color TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS frame TEXT;
 CREATE TABLE IF NOT EXISTS sessions (
   hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -216,11 +221,13 @@ CREATE INDEX IF NOT EXISTS friends_to ON friends (to_id);
 interface UserRow {
   id: string; username: string; key: string; password_hash: string; display_name: string; bio: string;
   settings: Record<string, unknown> | null; created_at: string; visibility: Visibility | null; pinned: string[] | null; granted_badges: string[] | null;
+  color: string | null; frame: string | null;
 }
 const fromRow = (r: UserRow | undefined): User | null => r ? {
   id: r.id, username: r.username, key: r.key, passwordHash: r.password_hash, displayName: r.display_name,
   bio: r.bio, settings: r.settings, createdAt: Number(r.created_at),
   visibility: r.visibility ?? 'public', pinned: r.pinned ?? [], grantedBadges: r.granted_badges ?? [],
+  ...(r.color ? { color: r.color } : {}), ...(r.frame ? { frame: r.frame } : {}),
 } : null;
 
 export class PgAccountStore implements AccountStore {
@@ -254,7 +261,7 @@ export class PgAccountStore implements AccountStore {
     return fromRow((await this.pool.query<UserRow>('SELECT * FROM users WHERE key = $1', [username.toLowerCase()])).rows[0]);
   }
   async updateUser(id: string, patch: UserPatch) {
-    const cols: Record<keyof UserPatch, string> = { displayName: 'display_name', bio: 'bio', settings: 'settings', visibility: 'visibility', pinned: 'pinned', grantedBadges: 'granted_badges' };
+    const cols: Record<keyof UserPatch, string> = { displayName: 'display_name', bio: 'bio', settings: 'settings', visibility: 'visibility', pinned: 'pinned', grantedBadges: 'granted_badges', color: 'color', frame: 'frame' };
     const keys = (Object.keys(patch) as (keyof UserPatch)[]).filter((k) => k in cols);
     if (!keys.length) return;
     const sets = keys.map((k, i) => `${cols[k]} = $${i + 2}`).join(', ');

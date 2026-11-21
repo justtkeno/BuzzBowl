@@ -1,8 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
 import { PASSWORD_MIN, USERNAME_RE } from '../../shared/accounts';
+import { DEFAULT_COLOR, DEFAULT_FRAME, colorById } from '../../shared/profile';
 import { login, logout, signup, useAccount } from '../account';
 import '../accounts.css';
 import { SiteAdminPanel } from './SiteAdmin';
+
+/**
+ * Class and style that give an element (and what's inside it) a profile color as its accent, in either theme.
+ * The default color leaves the site's own accent alone unless `force` is set (for previews inside a tinted card).
+ */
+export function tint(color: string | undefined, force = false): { className?: string; style?: React.CSSProperties } {
+  if (!force && (!color || color === DEFAULT_COLOR)) return {};
+  const c = colorById(color);
+  return { className: 'tinted', style: { '--c-light': c.light, '--c-dark': c.dark } as React.CSSProperties };
+}
+
+/** A player's avatar: the first letter of their name in their profile color, with their frame. */
+export function Avatar({ name, color, frame, size, className, force, children }: {
+  name: string; color?: string; frame?: string; size?: 'big'; className?: string; force?: boolean; children?: React.ReactNode;
+}) {
+  const t = tint(color, force);
+  const cls = ['avatar', size, frame && frame !== DEFAULT_FRAME ? `frame-${frame}` : '', t.className, className].filter(Boolean).join(' ');
+  return (
+    <span className={cls} style={t.style} aria-hidden="true">
+      {(Array.from(name.trim())[0] ?? '?').toUpperCase()}
+      {children}
+    </span>
+  );
+}
 
 /** Small check mark next to a logged-in player's name, linking to their profile. Admins get a creator badge too. */
 export function Verified({ username, admin }: { username?: string; admin?: boolean }) {
@@ -40,7 +65,7 @@ export function AccountBar() {
       {me ? (
         <>
           <a className="account-me" href={`/u/${me.username}`}>
-            <span className="avatar" aria-hidden="true">{me.displayName.slice(0, 1).toUpperCase()}</span>
+            <Avatar name={me.displayName} color={me.color} frame={me.frame} />
             <span>{me.displayName}</span>
             {me.admin && <CreatorBadge />}
             <span className="muted small">@{me.username}</span>

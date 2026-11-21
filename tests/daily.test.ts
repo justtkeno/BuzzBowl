@@ -131,6 +131,7 @@ describe('daily room', () => {
     expect(() => room.setReader(me, me)).toThrow('no reader');
     expect(() => room.join('Friend')).toThrow('solo');
     expect(() => room.pauseGame(me, true)).toThrow('paused');
+    expect(() => room.upload(me, [{ question: 'q', answer: 'a' }])).toThrow('same questions');
   });
 });
 
