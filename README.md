@@ -1,4 +1,4 @@
-# BuzzBowl
+# Trivio
 
 Real-time multiplayer quiz bowl practice that plays like a tournament match: pyramidal tossups read word by word, server-judged buzzer races, powers and negs, team bonuses, protests, and a reader (moderator) seat for reading questions aloud.
 

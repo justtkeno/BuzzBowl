@@ -1,3 +1,4 @@
+import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
 import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, type GameRecord, type PublicProfile } from '../../shared/accounts';
 import { adminDeleteAccount, adminResetProfile, fetchProfile, updateMe, useAccount } from '../account';
@@ -29,26 +30,26 @@ export function Profile({ username }: { username: string }) {
     fetchProfile(username).then(setP, (e) => setErr(e.message));
   }, [username]);
 
-  useEffect(() => { document.title = p ? `${p.displayName} (@${p.username}) · BuzzBowl` : 'BuzzBowl'; }, [p]);
+  useEffect(() => { document.title = p ? `${p.displayName} (@${p.username}) · Trivio` : 'Trivio'; }, [p]);
 
   const mine = !!me && !!p && me.username.toLowerCase() === p.username.toLowerCase();
 
   return (
     <div className="profile-page">
       <header className="profile-top">
-        <a className="brand small" href="/"><span className="logo">QB</span> BuzzBowl</a>
+        <a className="brand small" href="/"><Logo /> Trivio</a>
         <AccountBar />
       </header>
       <main className="profile">
-        {err && <div className="card"><h2>Player not found</h2><p className="muted">{err}</p><a className="btn" href="/">Back to BuzzBowl</a></div>}
+        {err && <div className="card"><h2>Player not found</h2><p className="muted">{err}</p><a className="btn" href="/">Back to Trivio</a></div>}
         {!p && !err && <p className="muted">Loading profile…</p>}
-        {deleted && <div className="card"><h2>Account deleted</h2><p className="muted">@{username} and its saved games are gone.</p><a className="btn" href="/">Back to BuzzBowl</a></div>}
+        {deleted && <div className="card"><h2>Account deleted</h2><p className="muted">@{username} and its saved games are gone.</p><a className="btn" href="/">Back to Trivio</a></div>}
         {p && !deleted && (
           <>
             <section className="card profile-head">
               <span className="avatar big" aria-hidden="true">{p.displayName.slice(0, 1).toUpperCase()}</span>
               <div className="grow">
-                <h1>{p.displayName} <span className="verified" title="Verified BuzzBowl account"><Check /></span>{p.admin && <CreatorBadge />}</h1>
+                <h1>{p.displayName} <span className="verified" title="Verified Trivio account"><Check /></span>{p.admin && <CreatorBadge />}</h1>
                 <div className="muted small">@{p.username} · joined {new Date(p.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
                 {editing ? <EditProfile p={p} onDone={(np) => { if (np) setP(np); setEditing(false); }} /> : p.bio && <p className="bio">{p.bio}</p>}
               </div>

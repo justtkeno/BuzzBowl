@@ -1,3 +1,4 @@
+import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
 import { useAccount } from '../account';
 import { randomName } from '../names';
@@ -37,7 +38,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
     <div className="home">
       <div className="home-card">
         <AccountBar />
-        <div className="brand"><span className="logo">QB</span> BuzzBowl</div>
+        <div className="brand"><Logo /> Trivio</div>
         <p className="muted">Pyramidal tossups, real buzzer races, powers, negs and bonuses. Play in real time with friends or drill alone.</p>
 
         <label className="field">

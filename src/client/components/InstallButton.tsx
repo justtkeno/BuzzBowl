@@ -13,7 +13,7 @@ export function InstallButton() {
     <div className="install-ios">
       <button className="btn ghost install-btn" onClick={() => setHint(!hint)} aria-expanded={hint}><span aria-hidden="true">＋</span> Add to Home Screen</button>
       {hint && (
-        <p className="muted small">In Safari, tap <b>Share</b> <span aria-label="share icon">⬆︎</span>, then <b>Add to Home Screen</b>. BuzzBowl opens full-screen like an app.</p>
+        <p className="muted small">In Safari, tap <b>Share</b> <span aria-label="share icon">⬆︎</span>, then <b>Add to Home Screen</b>. Trivio opens full-screen like an app.</p>
       )}
     </div>
   );

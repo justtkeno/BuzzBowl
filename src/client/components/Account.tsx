@@ -20,8 +20,8 @@ export function Verified({ username, admin }: { username?: string; admin?: boole
 export function CreatorBadge({ username }: { username?: string }) {
   const inner = <><Crown />creator</>;
   return username
-    ? <a className="creator-badge" href={`/u/${username}`} target="_blank" rel="noreferrer" title="BuzzBowl creator · view profile">{inner}</a>
-    : <span className="creator-badge" title="BuzzBowl creator">{inner}</span>;
+    ? <a className="creator-badge" href={`/u/${username}`} target="_blank" rel="noreferrer" title="Trivio creator · view profile">{inner}</a>
+    : <span className="creator-badge" title="Trivio creator">{inner}</span>;
 }
 
 function Crown() {

@@ -130,7 +130,7 @@ const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt;
 };
 
-/** Built-in questions: the original sample packet plus the BuzzBowl catalog. Works offline. */
+/** Built-in questions: the original sample packet plus the Trivio catalog. Works offline. */
 const sampleProvider = new LocalProvider([...SAMPLE_TOSSUPS, ...CATALOG_TOSSUPS], [...SAMPLE_BONUSES, ...CATALOG_BONUSES]);
 
 export interface RoomDeps {
@@ -375,7 +375,7 @@ export class Room {
     if (this.s.hostId === p.id) return;
     this.s.hostId = p.id;
     if (this.s.seatHold?.host) delete this.s.seatHold.host;
-    this.system(`${admin.name} (BuzzBowl creator) made ${p.name} the host.`);
+    this.system(`${admin.name} (Trivio creator) made ${p.name} the host.`);
     this.broadcast();
   }
 
@@ -388,7 +388,7 @@ export class Room {
       if (!old) return;
       this.s.readerId = null;
       if (this.s.settings.mode === 'teams') this.autoAssign(old);
-      this.system(`${admin.name} (BuzzBowl creator) took ${old.name} out of the reader's seat.`);
+      this.system(`${admin.name} (Trivio creator) took ${old.name} out of the reader's seat.`);
       return this.broadcast();
     }
     const p = this.mustPlayer(target);
@@ -399,7 +399,7 @@ export class Room {
       fail(`${p.name}'s team is playing a bonus. Try again after it.`);
     }
     this.seatReader(p);
-    this.system(`${admin.name} (BuzzBowl creator) made ${p.name} the reader.`);
+    this.system(`${admin.name} (Trivio creator) made ${p.name} the reader.`);
     this.broadcast();
   }
 
@@ -409,7 +409,7 @@ export class Room {
     if (!p.admin) fail('Only site admins can take the host seat.');
     if (this.s.hostId === by) return;
     this.s.hostId = by;
-    this.system(`${p.name} (BuzzBowl creator) is now the host.`);
+    this.system(`${p.name} (Trivio creator) is now the host.`);
     this.broadcast();
   }
 

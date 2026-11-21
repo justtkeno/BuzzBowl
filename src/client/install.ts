@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-// "Install BuzzBowl" support: Android/desktop Chrome fire `beforeinstallprompt`; iPhone Safari needs
+// "Install Trivio" support: Android/desktop Chrome fire `beforeinstallprompt`; iPhone Safari needs
 // Share → Add to Home Screen, so we show a short hint there instead.
 
 interface BeforeInstallPromptEvent extends Event { prompt(): Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> }
