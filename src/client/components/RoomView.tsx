@@ -40,6 +40,7 @@ const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n 
 export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, onJoinRoom, onSurvival }: Props) {
   const r = roles(s);
   useReadAloud(s);
+  const topbar = useTopbarHeight();
   const [showSettings, setShowSettings] = useState(false);
   const [showQuestions, setShowQuestions] = useState(false);
   const [showReview, setShowReview] = useState(false);
@@ -115,7 +116,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   return (
     <div className={`room ${s.phase === 'reading' ? 'is-reading' : ''}`}>
       {!connected && <div className="conn-banner" role="status"><span className="spinner" /> Connection lost — reconnecting…</div>}
-      <header className="topbar">
+      <header className="topbar" ref={topbar}>
         <div className="brand small"><Logo /><span className="hide-sm">Trivio</span></div>
         {s.daily ? (
           <span className="chip daily-chip">Daily <b>#{s.daily.number}</b>{s.tossup && s.phase !== 'gameOver' ? ` · ${s.tossup.num}/${s.daily.total}` : ''}</span>
@@ -325,4 +326,22 @@ function MobileStrip({ s, unread, protests, onOpen }: { s: PublicState; unread: 
       {protests > 0 && <button className="btn ms-btn" onClick={() => onOpen('rulings')}>Rulings<span className="dot">{protests}</span></button>}
     </div>
   );
+}
+
+/**
+ * Keeps --topbar-h equal to the top bar's real height, so the phone score strip sticks right under it.
+ * The bar is taller in a home-screen app (it leaves room for the status bar) and when its buttons wrap.
+ */
+function useTopbarHeight() {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const set = () => document.documentElement.style.setProperty('--topbar-h', `${Math.round(el.getBoundingClientRect().height)}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el, { box: 'border-box' }); // padding for the status bar counts too
+    return () => ro.disconnect();
+  }, []);
+  return ref;
 }
