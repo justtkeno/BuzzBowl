@@ -33,6 +33,15 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` + `
 6. Press **N** (or **Next tossup**) to continue. **Review** shows every finished question with full text, answer line, and where each player buzzed.
 7. **End game** shows the summary: points, powers/tens/negs, points per tossup heard, average buzz depth, PPB, and a per-category breakdown.
 
+### Party mode
+
+For a quick free-for-all with no reader. In the lobby, the host taps **Party mode** (or picks **Party** under Format in Settings):
+
+- **Read aloud**: every phone reads the tossup out loud with its built-in voice, in step with the words appearing on screen. Reading stops when someone buzzes and picks up again after a wrong answer. Each device can mute itself with the **Read aloud** chip on the question card, so in the same room one phone or the big-screen view can do the talking.
+- **Topic vote**: after each tossup, players pick the next one's category from three choices (only categories the room's filters allow). The next tossup starts when everyone has voted, after 10 seconds, or when anyone taps **Start now** (or presses **N**). Keys **1**–**3** vote. Ties are broken at random.
+
+Both are separate settings under **Without a reader**, so either can be used on its own. They switch off while someone holds the reader seat, and never apply to the daily challenge.
+
 ### Reader (moderator) seat
 
 Anyone can click **Be the reader** in the lobby. The reader:
@@ -114,7 +123,7 @@ Pick **⚡ Lightning round** as the question source in Settings for fast one-lin
 
 ## How the timing stays fair
 
-The server owns the clock. It reveals each word (`tick` events) and records when it sent it. A buzz carries the number of words that client had shown. The server trusts that count only back to words sent within the last 1.2 s (plausible lag), and after the first buzz arrives it waits 120 ms for slower connections, then awards the buzz to whoever had seen the fewest words. Points (power vs. ten, neg vs. no penalty) use that word count. Clients never decide anything. Players never receive words before they're read, and players never receive answers before the tossup ends. Only the reader gets both early.
+The server owns the clock. It reveals each word (`tick` events) and records when it sent it. A buzz carries the number of words that client had shown. The server trusts that count only back to words sent within the last 1.2 s (plausible lag), and after the first buzz arrives it waits 120 ms for slower connections, then awards the buzz to whoever had seen the fewest words. Points (power vs. ten, neg vs. no penalty) use that word count. Clients never decide anything. Players never receive words before they're read, and players never receive answers before the tossup ends. Only the reader gets both early. Read aloud follows the same rule: a device only speaks words it has already been sent.
 
 ## Project layout
 

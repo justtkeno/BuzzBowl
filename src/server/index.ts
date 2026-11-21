@@ -351,6 +351,7 @@ io.on('connection', (socket) => {
   socket.on('ruling:override', handle(socket, (r, p, rulingId) => r.override(p, rulingId)));
   socket.on('score:adjust', handle(socket, (r, p, target, delta) => r.adjust(p, target, delta)));
   socket.on('packet:upload', handle(socket, (r, p, packet) => r.upload(p, packet)));
+  socket.on('vote', handle(socket, (r, p, category) => r.castVote(p, String(category ?? ''))));
 
   socket.on('disconnect', () => {
     const { code, playerId } = socket.data as SocketData;

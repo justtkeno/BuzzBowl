@@ -168,6 +168,20 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .ruling-box { flex: 1 1 100%; display: flex; flex-direction: column; gap: .6rem; background: var(--power-soft); border: 1px solid var(--power); border-radius: var(--radius); padding: .8rem; }
 .sugg { font-weight: 700; }
 .s-correct { color: var(--ok); } .s-incorrect { color: var(--bad); } .s-prompt { color: var(--warn); }
+.vote { flex: 1 1 100%; display: flex; flex-direction: column; gap: .55rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem .8rem; }
+.vote-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; font-weight: 600; }
+.vote .countdown { flex: none; height: 8px; min-width: 0; }
+.vote .countdown span { display: none; }
+.vote-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .45rem; }
+.vote-opt { display: flex; align-items: center; gap: .4rem; min-height: 48px; padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; text-align: left; transition: background .12s, border-color .12s; }
+.vote-opt:hover:not(:disabled) { background: var(--surface-2); }
+.vote-opt.on { border-color: var(--accent); background: var(--accent-soft); }
+.vote-opt:disabled { cursor: default; opacity: .6; }
+.vote-name { flex: 1; font-weight: 600; }
+.vote-count { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; min-width: 1ch; }
+.vote-opt kbd { margin: 0; }
+.speaker { margin-left: auto; border: 1px solid var(--border); background: transparent; color: var(--muted); border-radius: 999px; padding: 0 .6rem; font-size: .75rem; line-height: 1.6; cursor: pointer; }
+.speaker.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .reader-controls { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; background: var(--power-soft); border-radius: var(--radius); padding: .6rem .8rem; }
 .wpm { display: flex; align-items: center; gap: .5rem; font-size: .85rem; flex: 1; min-width: 180px; }
 .wpm input { flex: 1; accent-color: var(--power); }
@@ -235,6 +249,20 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .seg button { border: 0; background: var(--surface); padding: .4rem .9rem; cursor: pointer; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .5; cursor: default; }
+.source-seg { display: grid; grid-template-columns: repeat(4, auto); width: min(100%, 34rem); }
+.source-seg button { padding: .45rem .6rem; white-space: nowrap; }
+/* Four sources don't fit on one line on a phone: two rows of two. */
+@media (max-width: 520px) { .source-seg { grid-template-columns: 1fr 1fr; } }
+.upload { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: .6rem 0 .3rem; }
+.upload-btn { position: relative; overflow: hidden; }
+.upload-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
+.upload-btn.busy { opacity: .6; }
+.upload-btn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.upload-help { font-size: .85rem; margin-bottom: .4rem; }
+.upload-help summary { cursor: pointer; color: var(--muted); width: fit-content; }
+.upload-help pre { margin: .4rem 0; padding: .6rem .7rem; background: var(--surface-2); border-radius: 8px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 14rem; overflow: auto; }
+.upload-help p { margin: .2rem 0 .3rem; }
+.upload-help code { font: 12px ui-monospace, monospace; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem 1rem; margin-top: .6rem; }
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin-top: .5rem; }
 .check { display: flex; gap: .5rem; align-items: flex-start; margin: .35rem 0; cursor: pointer; }
@@ -273,6 +301,12 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
   .room:not(.is-reading) .subtle-controls { padding-bottom: 0; }
   input[type='text'], input:not([type]), input[type='number'], select, textarea { font-size: 16px; } /* stops iOS zooming in */
   .next-btn { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 10; min-height: 64px; font-size: 1.15rem; box-shadow: 0 6px 24px rgb(0 0 0 / 22%); }
+  /* The topic vote is pinned to the bottom of the screen, like the Next button, so it's always in reach. */
+  .vote { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 10; gap: .45rem; padding: .6rem .65rem; box-shadow: 0 6px 24px rgb(0 0 0 / 22%); }
+  .vote-options { grid-template-columns: repeat(3, 1fr); gap: .35rem; }
+  .vote-opt { flex-direction: column; justify-content: center; gap: 0; min-height: 52px; padding: .35rem .3rem; text-align: center; font-size: .85rem; line-height: 1.2; }
+  .vote-name { flex: none; }
+  .vote-count { min-height: 1.1em; }
   .answerbox .answer-row { flex-wrap: nowrap; }
   .answerbox .answer-row input { min-width: 0; }
   .answerbox .answer-row .btn { padding-inline: .9rem; }

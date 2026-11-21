@@ -1,12 +1,12 @@
 import {
-  DEFAULT_SETTINGS, SPECTATOR, buzzWindowSeconds,
+  CATEGORIES, DEFAULT_SETTINGS, SPECTATOR, VOTE_SECONDS, buzzWindowSeconds,
   type BotSkill, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
-  type Ruling, type ScorePoint, type Settings, type Verdict,
+  type Filters, type Ruling, type ScorePoint, type Settings, type Verdict,
 } from '../../shared/types';
 import { checkAnswerDetailed } from '../game/answerCheck';
 import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, type Adjustment, type HeardEntry } from '../game/scoring';
 import { stripHtml, safeAnswerHtml } from '../game/text';
-import { LocalProvider, parseUpload, QBReaderProvider } from '../questions/providers';
+import { LocalProvider, parseUpload, QBReaderProvider, shuffle } from '../questions/providers';
 import { CATALOG_BONUSES, CATALOG_TOSSUPS } from '../questions/catalog';
 import { LIGHTNING } from '../questions/catalog/lightning';
 import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
@@ -62,6 +62,9 @@ export const TIMING = {
   teamSize: 4,
   /** How many upcoming tossups the reader can preview. */
   lookahead: 3,
+  /** How long players have to vote on the next topic. */
+  voteMs: VOTE_SECONDS * 1000,
+  voteOptions: 3,
 };
 
 interface Player {
@@ -151,6 +154,10 @@ export interface RoomState {
   seatHold?: { host?: { id: string; until: number }; reader?: { id: string; until: number } };
   /** This game's results were already saved to players' profiles. */
   recorded?: boolean;
+  /** Open topic vote between tossups (topicVote setting, no reader). */
+  vote?: { options: string[]; votes: Record<string, string>; deadline: number } | null;
+  /** The category players voted for; used by the next tossup only. */
+  nextCategory?: string | null;
   /** Seat tokens and account ids that were banned from this room. */
   banned?: { tokens: string[]; accounts: string[] };
 }
@@ -308,6 +315,7 @@ export class Room {
       if (t) { if (t.deadline) t.deadline += shift; t.revealTimes = t.revealTimes.map((x) => x + shift); }
       if (b?.deadline) b.deadline += shift;
       if (bn?.deadline) bn.deadline += shift;
+      if (this.s.vote) this.s.vote.deadline += shift;
       this.system('Game resumed.');
     }
     this.broadcast();
@@ -649,9 +657,10 @@ export class Room {
     if (patch.answerSeconds !== undefined) s.answerSeconds = clamp(patch.answerSeconds, 2, 30, s.answerSeconds);
     if (patch.bonusSeconds !== undefined) s.bonusSeconds = clamp(patch.bonusSeconds, 5, 60, s.bonusSeconds);
     if (patch.deadSeconds !== undefined) s.deadSeconds = clamp(patch.deadSeconds, 1, 30, s.deadSeconds);
-    for (const k of ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules'] as const) {
+    for (const k of ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules', 'readAloud', 'topicVote'] as const) {
       if (typeof patch[k] === 'boolean') s[k] = patch[k]!;
     }
+    if (!s.topicVote && this.s.vote) this.cancelVote();
     if (patch.powerValue !== undefined) s.powerValue = clamp(patch.powerValue, 0, 50, s.powerValue);
     if (patch.tenValue !== undefined) s.tenValue = clamp(patch.tenValue, 0, 50, s.tenValue);
     if (patch.negValue !== undefined) s.negValue = clamp(patch.negValue, -50, 0, s.negValue);
@@ -808,7 +817,7 @@ export class Room {
   }
 
   private resetScores() {
-    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null });
+    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null, vote: null, nextCategory: null });
   }
 
   end(by: string) {
@@ -818,6 +827,8 @@ export class Room {
     this.loadGen++;
     if (this.s.tossup && !this.s.tossup.ended) this.s.tossup.ended = true;
     this.s.buzz = null;
+    this.s.vote = null;
+    this.s.nextCategory = null;
     this.s.paused = false;
     this.s.pausedAt = null;
     this.s.phase = 'gameOver';
@@ -917,6 +928,7 @@ export class Room {
     const admin = !!this.player(by)?.admin;
     if (!this.canDirect(by) && !admin) fail('The reader decides when to move on.');
     this.notPaused();
+    if (this.s.vote) return this.closeVote();
     const { phase, tossup, bonus } = this.s;
     if (phase === 'tossupEnd' && this.s.daily && this.s.tossupNum >= this.s.daily.total) return this.end(by);
     if (phase === 'tossupEnd') {
@@ -939,10 +951,13 @@ export class Room {
     this.dispose();
     this.pending = [];
     const gen = ++this.loadGen;
-    Object.assign(this.s, { phase: 'loading', buzz: null, bonus: null, message: null });
+    const voted = this.s.nextCategory ?? null;
+    Object.assign(this.s, { phase: 'loading', buzz: null, bonus: null, message: null, vote: null, nextCategory: null });
     this.broadcast();
-    let q: Tossup | null = this.upcoming.shift() ?? null;
+    let q: Tossup | null = voted ? null : this.upcoming.shift() ?? null;
     try {
+      // The voted topic narrows the room's filters for this one tossup; if it has nothing left, fall back to the filters.
+      if (voted) q = await this.provider().nextTossup(this.onlyCategory(voted), this.s.seenTossups);
       q ??= await this.provider().nextTossup(this.s.settings.filters, this.s.seenTossups);
     } catch (e: any) {
       if (gen !== this.loadGen) return;
@@ -1208,7 +1223,66 @@ export class Room {
     if (this.s.review.length > 100) this.s.review.pop();
     t.bonusTeam = winnerTeam && this.s.settings.bonuses && this.s.settings.source !== 'lightning' ? winnerTeam : null;
     this.s.phase = 'tossupEnd';
+    if (!t.bonusTeam) this.openVote();
     this.broadcast();
+  }
+
+  // ---------- topic vote ----------
+
+  private votingOn() { return this.s.settings.topicVote && !this.s.daily && !this.readerOnline(); }
+
+  /** Online human players who can vote (the reader and bots don't). */
+  private voters() { return this.s.players.filter((p) => p.online && !p.bot && this.teamOf(p.id)); }
+
+  /** The room's filters narrowed to one category (keeping any subcategories picked inside it). */
+  private onlyCategory(category: string): Filters {
+    const f = this.s.settings.filters;
+    const subs = CATEGORIES[category] ?? [];
+    return { ...f, categories: [category], subcategories: f.subcategories.filter((sc) => subs.includes(sc)) };
+  }
+
+  /** Between tossups: offer a few categories for the next one. The next tossup starts when the vote closes. */
+  private openVote() {
+    if (!this.votingOn()) return;
+    const pool = this.s.settings.filters.categories.length ? [...this.s.settings.filters.categories] : Object.keys(CATEGORIES);
+    if (pool.length < 2) return;
+    const last = this.s.tossup?.q.category;
+    // Prefer categories other than the one just played, so the topics move around.
+    const fresh = shuffle(pool.filter((c) => c !== last));
+    const options = [...fresh, ...pool.filter((c) => c === last)].slice(0, TIMING.voteOptions);
+    this.s.vote = { options, votes: {}, deadline: Date.now() + TIMING.voteMs };
+    this.setTimer('vote', TIMING.voteMs, () => this.closeVote());
+  }
+
+  castVote(by: string, category: string) {
+    const v = this.s.vote ?? fail('There is no vote open.');
+    if (!this.voters().some((p) => p.id === by)) fail('Only players can vote.');
+    if (!v!.options.includes(category)) fail('That topic is not on the ballot.');
+    this.notPaused();
+    v!.votes[by] = category;
+    const voters = this.voters();
+    if (voters.every((p) => v!.votes[p.id])) return this.closeVote();
+    this.broadcast();
+  }
+
+  /** Count the votes (ties broken at random, no votes = any option) and start the next tossup. */
+  private closeVote() {
+    const v = this.s.vote;
+    if (!v) return;
+    this.clearTimer('vote');
+    const counts = new Map(v.options.map((o) => [o, 0]));
+    for (const c of Object.values(v.votes)) if (counts.has(c)) counts.set(c, counts.get(c)! + 1);
+    const top = Math.max(...counts.values());
+    const leaders = v.options.filter((o) => counts.get(o) === top);
+    this.s.nextCategory = leaders[Math.floor(Math.random() * leaders.length)];
+    this.s.vote = null;
+    void this.loadTossup();
+  }
+
+  /** Vote switched off mid-vote: stay on this tossup and let someone press Next. */
+  private cancelVote() {
+    this.clearTimer('vote');
+    this.s.vote = null;
   }
 
   // ---------- bonuses ----------
@@ -1290,7 +1364,7 @@ export class Room {
     const bn = this.s.bonus;
     if (!bn) return;
     bn.current++;
-    if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.broadcast(); }
+    if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.openVote(); this.broadcast(); }
     else this.startBonusPart();
   }
 
@@ -1508,6 +1582,7 @@ export class Room {
   private rearm() {
     const s = this.s;
     const now = Date.now();
+    s.vote = null; // a vote doesn't survive a restart; whoever is there presses Next
     if (s.phase === 'loading') {
       s.phase = s.tossup ? 'tossupEnd' : s.tossupNum ? 'tossupEnd' : 'lobby';
       if (s.tossup && !s.tossup.ended) s.tossup.ended = true;
@@ -1617,6 +1692,7 @@ export class Room {
       history: shared.history,
       highlights: shared.highlights,
       daily: s.daily ? { day: s.daily.day, number: s.daily.number, total: s.daily.total, done: s.daily.done } : undefined,
+      vote: s.vote ? this.publicVote(s.vote, viewer) : null,
       ...(isReader ? {
         upcoming: this.upcoming.map((q) => ({
           id: q.id, category: q.category, subcategory: q.subcategory, difficulty: q.difficulty, setName: q.setName, year: q.year,
@@ -1624,6 +1700,16 @@ export class Room {
         })),
         upcomingLoading: this.fillingQueue,
       } : {}),
+    };
+  }
+
+  private publicVote(v: NonNullable<RoomState['vote']>, viewer: string | null) {
+    const counts: Record<string, number> = Object.fromEntries(v.options.map((o) => [o, 0]));
+    for (const c of Object.values(v.votes)) if (c in counts) counts[c]++;
+    const voters = this.voters();
+    return {
+      options: v.options, counts, mine: (viewer && v.votes[viewer]) || null, deadline: v.deadline,
+      voters: voters.length, voted: voters.filter((p) => v.votes[p.id]).length,
     };
   }
 

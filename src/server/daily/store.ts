@@ -153,9 +153,11 @@ export class PgDailyStore implements DailyStore {
   }
   async rankOf(x: DailyRow) {
     const r = await this.pool.query(
+      // $4 needs its type spelled out: inside COALESCE(..., 2) Postgres would read it as an integer
+      // and reject a fractional depth like 0.53, which made the daily status fail for anyone who had played.
       `SELECT count(*)::int AS n FROM daily_results WHERE day = $1 AND player_key <> $2 AND (
-         points > $3 OR (points = $3 AND COALESCE(depth, 2) < COALESCE($4, 2))
-         OR (points = $3 AND COALESCE(depth, 2) = COALESCE($4, 2) AND created_at < $5))`,
+         points > $3 OR (points = $3 AND COALESCE(depth, 2) < COALESCE($4::double precision, 2))
+         OR (points = $3 AND COALESCE(depth, 2) = COALESCE($4::double precision, 2) AND created_at < $5))`,
       [x.day, x.playerKey, x.points, x.depth, x.createdAt],
     );
     return 1 + (r.rows[0].n as number);
