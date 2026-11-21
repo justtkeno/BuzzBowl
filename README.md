@@ -26,7 +26,7 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` + `
 ## How to play
 
 1. **Create room** → share the 4-letter code or invite link. **Solo practice** starts a private room immediately.
-2. The host opens **Settings** to pick free-for-all or teams, scoring, speed, and question filters. Settings can also change mid-match (⋯ menu → ⚙️ Settings on phones): a longer or shorter answer, buzz-window or bonus time applies to a clock that is already running, and chat tells everyone what changed.
+2. The host opens **Settings** to pick free-for-all or teams, the game length (no limit, or a set number of tossups), scoring, speed, and question filters. With a set length, the question card shows "Tossup 7 of 20", and after the last tossup (and its bonus) **Finish game** shows the summary. The host can change the length mid-game. Settings can also change mid-match (⋯ menu → ⚙️ Settings on phones): a longer or shorter answer, buzz-window or bonus time applies to a clock that is already running, and chat tells everyone what changed.
 3. **Start game.** Words appear as they are read. Press **Space** (or tap the big button) to buzz. Reading stops for everyone, you get 10 seconds to type, and others watch you type.
 4. Scoring (NAQT-style, all configurable): 15 for a correct buzz before the `(*)`, 10 after it, −5 for a wrong answer before the question ends, 0 after. One buzz per player (or per team) per tossup.
 5. In team mode, the team that converts the tossup gets a 3-part bonus. Teammates talk in **team chat**. The captain submits each part.
