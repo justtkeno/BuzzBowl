@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import type { Me, PublicProfile } from '../shared/accounts';
+import type { Me, ProfileView } from '../shared/accounts';
+import type { Visibility } from '../shared/profile';
 import { prefs, socket } from './socket';
 
 // The logged-in account, shared by every component. Guests have me = null.
@@ -82,7 +83,7 @@ export async function logout() {
   reconnect();
 }
 
-export async function updateMe(patch: { displayName?: string; bio?: string }) {
+export async function updateMe(patch: { displayName?: string; bio?: string; visibility?: Visibility; pinned?: string[] }) {
   const { user } = await api<{ user: Me }>('/me', { method: 'PATCH', body: patch });
   set(user);
   return user;
@@ -102,7 +103,7 @@ export async function adminDeleteAccount(username: string) {
 }
 
 export async function fetchProfile(username: string) {
-  const { profile } = await api<{ profile: PublicProfile }>(`/users/${encodeURIComponent(username)}`);
+  const { profile } = await api<{ profile: ProfileView }>(`/users/${encodeURIComponent(username)}`);
   return profile;
 }
 

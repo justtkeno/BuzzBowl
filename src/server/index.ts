@@ -197,6 +197,11 @@ for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); process.exit(0); });
 }
 
+/** Last invite per sender and friend, so nobody can spam someone with invites. */
+const lastInvite = new Map<string, number>();
+const INVITE_GAP_MS = 20_000;
+setInterval(() => { const cut = Date.now() - INVITE_GAP_MS; for (const [k, t] of lastInvite) if (t < cut) lastInvite.delete(k); }, 60_000).unref();
+
 type Ack = (res: { ok: true; [k: string]: unknown } | { ok: false; error: string }) => void;
 
 /** Wrap a handler so thrown ActionErrors come back to the client as { ok: false, error }. */
@@ -314,6 +319,34 @@ io.on('connection', (socket) => {
     const room = store.get(String(code ?? '').trim());
     if (!room) return ack({ ok: false, error: `No room with code ${String(code).toUpperCase()}.` });
     enter(room, name, token, ack);
+  });
+
+  // Invite a friend into the room you're in. They get a banner wherever they are on the site.
+  socket.on('friend:invite', async (username: unknown, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    const me = accounts.of(socket);
+    if (!me) return ack({ ok: false, error: 'Log in to invite friends.' });
+    const { code, playerId } = socket.data as SocketData;
+    const room = code ? store.get(code) : undefined;
+    const seat = room?.s.players.find((p) => p.id === playerId);
+    if (!room || !seat) return ack({ ok: false, error: 'Join a room first.' });
+    if (room.s.daily) return ack({ ok: false, error: 'The daily challenge is solo.' });
+    try {
+      const them = await accounts.friendOf(me.id, String(username ?? ''));
+      if (!them) return ack({ ok: false, error: 'You can only invite friends.' });
+      if (room.s.players.some((p) => p.accountId === them.id && p.online)) return ack({ ok: false, error: 'They’re already here.' });
+      const key = `${me.id}>${them.id}`;
+      if (Date.now() - (lastInvite.get(key) ?? 0) < INVITE_GAP_MS) return ack({ ok: false, error: 'You just invited them.' });
+      const targets = [...io.sockets.sockets.values()].filter((s) => accounts.of(s)?.id === them.id);
+      if (!targets.length) return ack({ ok: false, error: 'They’re offline right now.' });
+      lastInvite.set(key, Date.now());
+      const invite = { code: room.s.code, from: { username: me.username, displayName: seat.name }, at: Date.now() };
+      for (const s of targets) s.emit('invite', invite);
+      ack({ ok: true });
+    } catch (e) {
+      console.error('friend:invite failed:', e);
+      ack({ ok: false, error: 'Could not send the invite.' });
+    }
   });
 
   socket.on('player:rename', handle(socket, (r, p, name) => r.renamePlayer(p, name)));

@@ -22,6 +22,7 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - `server/game/`: pure logic: `text.ts` (normalizing, typo tolerance), `answerLine.ts` (parsing answer lines), `answerCheck.ts`, `scoring.ts`
 - `server/questions/`: QBReader / built-in catalog (`catalog/`, original questions) / sample / upload providers
 - `server/accounts/`: sign-up, sessions, profiles, game history, friends (presence comes from `index.ts`), admin (`ADMIN_ACCOUNT_IDS`)
+- `shared/profile.ts`: profile visibility, pinnable stats (`PIN_STATS`) and badges (`BADGES`, worked out from saved games + daily results by `badgesFor`, nothing stored)
 - `server/daily/`: daily challenge: one 10-tossup set per day (US Eastern), stored once, leaderboard
 - `client/components/`: `Stage.tsx` (main play view), `RoomView`, `Lobby`, `SettingsPanel`, `Scoreboard`, `Review`, `Rulings`, `Summary`, `Chat`, `ReaderQueue` (reader's Up next), `Daily`, `Account`/`Profile`, `Friends` (right-edge tab + slide-out panel on home, profiles and rooms between games; profile button), `AdminPanel`, `Spectate` (big-screen view at `/watch/CODE`, server viewer id `SPECTATOR`), `ScoreGraph`, `Feedback` (result/buzz flashes and sounds)
 - `client/speech.ts`: read-aloud (text-to-speech) for rooms with no reader; speaks only words already revealed. Topic voting lives in `Room` (`openVote` / `castVote` / `closeVote`) and `Stage.tsx` (`VotePanel`).

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { USERNAME_RE, type Friend, type FriendRequest, type FriendsList } from '../../shared/accounts';
 import { removeFriend, sendFriendRequest, useFriends } from '../friends';
+import { call, socket } from '../socket';
 import { AccountDialog, CreatorBadge } from './Account';
 
 /** How often the list refreshes while the panel is open, and (for the tab's counts) while it's closed. */
@@ -57,10 +58,12 @@ interface TabProps {
   hidden?: boolean;
   /** Join buttons disabled (not connected, or busy). */
   disabled?: boolean;
+  /** Show Invite buttons (you're in a room friends can join). */
+  canInvite?: boolean;
 }
 
 /** A small tab on the right edge that slides out a friends panel. Works for guests too (it offers to log in). */
-export function FriendsTab({ onJoin, currentCode, hidden, disabled }: TabProps) {
+export function FriendsTab({ onJoin, currentCode, hidden, disabled, canInvite }: TabProps) {
   const [open, setOpen] = useState(false);
   const [login, setLogin] = useState<null | 'login' | 'signup'>(null);
   const f = useFriends(open ? OPEN_POLL_MS : CLOSED_POLL_MS);
@@ -105,7 +108,7 @@ export function FriendsTab({ onJoin, currentCode, hidden, disabled }: TabProps) 
               <button className="btn ghost small" onClick={() => setOpen(false)} aria-label="Close friends">✕</button>
             </header>
             {f.me ? (
-              <FriendsPanel list={list} change={f.change} onJoin={join} currentCode={currentCode} disabled={disabled} newTab={!!currentCode} />
+              <FriendsPanel list={list} change={f.change} onJoin={join} currentCode={currentCode} disabled={disabled} newTab={!!currentCode} canInvite={canInvite} />
             ) : (
               <div className="friends-guest">
                 <p className="muted">Log in to add friends by username, see when they’re online, and jump into their games.</p>
@@ -130,9 +133,21 @@ interface PanelProps {
   currentCode?: string;
   disabled?: boolean;
   newTab?: boolean;
+  canInvite?: boolean;
 }
 
-function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab }: PanelProps) {
+const INVITE_COOLDOWN_MS = 20_000;
+
+function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab, canInvite }: PanelProps) {
+  const [invited, setInvited] = useState<Set<string>>(new Set());
+  const invite = async (x: Friend) => {
+    setErr(null); setNote(null);
+    try {
+      await call('friend:invite', x.username);
+      setInvited((s) => new Set(s).add(x.username));
+      setTimeout(() => setInvited((s) => { const n = new Set(s); n.delete(x.username); return n; }), INVITE_COOLDOWN_MS);
+    } catch (e: any) { setErr(e.message); }
+  };
   const [name, setName] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -161,12 +176,23 @@ function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab }: P
         <Name who={x} newTab={newTab} />
         <div className="muted small">{x.room && x.room.code === currentCode ? 'In your room' : statusText(x)}</div>
       </div>
-      {x.room && x.room.code !== currentCode && (
-        <div className="row gap friend-actions">
-          <a className="btn ghost small" href={`/watch/${x.room.code}`} target={newTab ? '_blank' : undefined} rel="noreferrer" aria-label={`Watch ${x.displayName}’s room`}>Watch</a>
-          <button className="btn primary small" disabled={disabled} onClick={() => onJoin(x.room!.code)} aria-label={`Join ${x.displayName}’s room`}>Join</button>
-        </div>
-      )}
+      {(() => {
+        const elsewhere = !!x.room && x.room.code !== currentCode;
+        const invitable = canInvite && (x.status === 'online' || elsewhere);
+        if (!elsewhere && !invitable) return null;
+        return (
+          <div className="row gap friend-actions">
+            {invitable ? (
+              <button className="btn ghost small" disabled={disabled || invited.has(x.username)} onClick={() => void invite(x)} aria-label={`Invite ${x.displayName} to your room`}>
+                {invited.has(x.username) ? 'Invited' : 'Invite'}
+              </button>
+            ) : (
+              <a className="btn ghost small" href={`/watch/${x.room!.code}`} rel="noreferrer" aria-label={`Watch ${x.displayName}’s room`}>Watch</a>
+            )}
+            {elsewhere && <button className="btn primary small" disabled={disabled} onClick={() => onJoin(x.room!.code)} aria-label={`Join ${x.displayName}’s room`}>Join</button>}
+          </div>
+        );
+      })()}
     </li>
   );
   const section = (title: string, items: React.ReactNode[]) => items.length > 0 && (
@@ -253,5 +279,45 @@ export function FriendButton({ username }: { username: string }) {
       )}
       {err && <span className="error small">{err}</span>}
     </>
+  );
+}
+
+interface Invite { code: string; from: { username: string; displayName: string }; at: number }
+const INVITE_SHOWN_MS = 30_000;
+
+/** "Alex invited you to play" with a Join button, when a friend invites you. Quiet during the daily challenge. */
+export function InviteBanner({ currentCode, onJoin, quiet }: { currentCode?: string; onJoin?: (code: string) => void; quiet?: boolean }) {
+  const [invite, setInvite] = useState<Invite | null>(null);
+  const here = useRef({ currentCode, quiet });
+  here.current = { currentCode, quiet };
+
+  useEffect(() => {
+    const on = (i: Invite) => {
+      if (here.current.quiet || i.code === here.current.currentCode) return;
+      setInvite(i);
+    };
+    socket.on('invite', on);
+    return () => { socket.off('invite', on); };
+  }, []);
+  useEffect(() => {
+    if (!invite) return;
+    const t = setTimeout(() => setInvite(null), INVITE_SHOWN_MS);
+    return () => clearTimeout(t);
+  }, [invite]);
+  // Already got there some other way.
+  useEffect(() => { if (invite && invite.code === currentCode) setInvite(null); }, [currentCode]);
+
+  if (!invite) return null;
+  const join = () => {
+    setInvite(null);
+    if (onJoin) onJoin(invite.code); else location.href = `/r/${invite.code}`;
+  };
+  return (
+    <div className="invite-banner" role="status">
+      <Avatar name={invite.from.displayName} status="room" />
+      <span className="grow"><b>{invite.from.displayName}</b> invited you to play</span>
+      <button className="btn primary small" onClick={join}>Join</button>
+      <button className="btn ghost small" onClick={() => setInvite(null)} aria-label="Dismiss invite">✕</button>
+    </div>
   );
 }

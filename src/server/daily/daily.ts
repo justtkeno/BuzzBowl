@@ -141,6 +141,7 @@ export class Daily {
       avgPoints: points.reduce((a, b) => a + b, 0) / points.length,
       streak, longestStreak,
       leadingToday: h[0].row.day === today && h[0].rank === 1 && h[0].players >= 2,
+      perfect: h.filter((x) => /^[PT]+$/.test(x.row.marks)).length,
       recent: h.slice(0, 7).map((x) => ({ day: x.row.day, number: dailyNumber(x.row.day), points: x.row.points, rank: x.rank, players: x.players, marks: x.row.marks })),
     };
   }

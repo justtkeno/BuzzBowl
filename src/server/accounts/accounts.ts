@@ -4,8 +4,9 @@ import express, { type Request, type Response } from 'express';
 import type { Socket } from 'socket.io';
 import {
   BIO_MAX, FRIENDS_MAX, PASSWORD_MIN, USERNAME_RE, summarize,
-  type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type PublicProfile,
+  type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type ProfileView, type PublicProfile,
 } from '../../shared/accounts';
+import { VISIBILITIES, badgesFor, cleanPinned, type Visibility } from '../../shared/profile';
 import type { AccountStore, FriendLink, User } from './store';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
@@ -87,7 +88,8 @@ function readCookie(header: string | undefined, name: string): string | null {
 const cleanName = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
 
 export function toMe(u: User): Me {
-  return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u), ...(isAdmin(u) ? { adminLocked } : {}), settings: u.settings };
+  return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u), ...(isAdmin(u) ? { adminLocked } : {}), settings: u.settings,
+    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned) };
 }
 
 /** Tiny in-memory limiter for login/signup attempts, per IP. */
@@ -175,9 +177,20 @@ export class Accounts {
       .catch((e) => console.error('Could not save game results:', e));
   }
 
-  async profile(username: string): Promise<PublicProfile | null> {
+  /**
+   * A profile as `viewer` may see it. Stats, badges and games stay hidden unless the profile is public,
+   * the viewer is a friend (friends only), the owner, or a site admin.
+   */
+  async profile(username: string, viewer: User | null = null): Promise<ProfileView | null> {
     const u = await this.store.userByName(username);
     if (!u) return null;
+    const visibility: Visibility = u.visibility ?? 'public';
+    const owner = viewer?.id === u.id;
+    const privileged = owner || (!!viewer && isAdmin(viewer));
+    if (visibility !== 'public' && !privileged) {
+      const friend = visibility === 'friends' && !!viewer && !!relations(await this.store.friendLinks(u.id), u.id).get(viewer.id)?.friend;
+      if (!friend) return { username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u), locked: visibility };
+    }
     const games = await this.store.games(u.id, PROFILE_GAMES);
     const recent = games.slice(0, RECENT_GAMES);
     if (this.findDaily) {
@@ -187,12 +200,24 @@ export class Accounts {
         if (n) recent[i] = { ...g, daily: n };
       }));
     }
-    return {
+    const p: PublicProfile = {
       username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u),
       ...summarize(games),
       recent,
       ...(await this.profileExtras?.(u).catch((e) => { console.error('Profile extras failed:', e); return {}; })),
+      pinned: cleanPinned(u.pinned),
+      badges: [],
+      ...(privileged ? { visibility } : {}),
     };
+    p.badges = badgesFor({ games, p });
+    return p;
+  }
+
+  /** The account `username` if they and `meId` are friends. */
+  async friendOf(meId: string, username: string): Promise<User | null> {
+    const them = await this.store.userByName(username);
+    if (!them || them.id === meId) return null;
+    return relations(await this.store.friendLinks(meId), meId).get(them.id)?.friend ? them : null;
   }
 
   // ---------- friends ----------
@@ -281,7 +306,7 @@ export class Accounts {
       const u = await this.userFrom(req.headers.cookie);
       if (!u) return res.status(401).json({ error: 'Log in first.' });
       const b = req.body ?? {};
-      const patch: Partial<Pick<User, 'displayName' | 'bio' | 'settings'>> = {};
+      const patch: Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned'>> = {};
       if ('displayName' in b) {
         const n = cleanName(b.displayName);
         if (!n) return res.status(400).json({ error: 'Pick a display name.' });
@@ -289,12 +314,17 @@ export class Accounts {
       }
       if ('bio' in b) patch.bio = String(b.bio ?? '').trim().slice(0, BIO_MAX);
       if ('settings' in b) patch.settings = b.settings && typeof b.settings === 'object' ? b.settings : null;
+      if ('visibility' in b) {
+        if (!VISIBILITIES.includes(b.visibility)) return res.status(400).json({ error: 'Pick who can see your profile.' });
+        patch.visibility = b.visibility;
+      }
+      if ('pinned' in b) patch.pinned = cleanPinned(b.pinned);
       await this.store.updateUser(u.id, patch);
       res.json({ user: toMe({ ...u, ...patch }) });
     }));
 
     r.get('/users/:username', wrap(async (req, res) => {
-      const p = await this.profile(String(req.params.username));
+      const p = await this.profile(String(req.params.username), await this.userFrom(req.headers.cookie));
       if (!p) return res.status(404).json({ error: 'No player with that username.' });
       res.json({ profile: p });
     }));

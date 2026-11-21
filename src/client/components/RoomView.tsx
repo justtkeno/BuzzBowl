@@ -203,7 +203,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
       {showAdmin && isAdmin && <AdminPanel s={s} onClose={() => setShowAdmin(false)} onPlayers={() => { setShowAdmin(false); setShowPlayers(true); }} />}
       {showPlayers && canModerate && <PlayersPanel s={s} onClose={() => setShowPlayers(false)} />}
       {/* Off screen while questions are being read, so it never gets in the way of buzzing. */}
-      <FriendsTab hidden={midGame || drawer} currentCode={s.code} onJoin={onJoinRoom} disabled={!connected} />
+      <FriendsTab hidden={midGame || drawer} currentCode={s.code} onJoin={onJoinRoom} disabled={!connected} canInvite={!s.daily} />
       <Announcement />
       {showInvite && <InviteScreen code={s.code} onClose={() => setShowInvite(false)} />}
       {toastMsg && <div className="toast" role="status">{toastMsg}</div>}

@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { Accounts, hashPassword, verifyPassword } from '../src/server/accounts/accounts';
 import { FileAccountStore } from '../src/server/accounts/store';
 import { Room, TIMING, type RoomIO } from '../src/server/rooms/room';
-import { summarize, type GameRecord } from '../src/shared/accounts';
+import { summarize, type GameRecord, type PublicProfile } from '../src/shared/accounts';
 import type { QuestionProvider, Tossup } from '../src/server/questions/types';
 
 const game = (over: Partial<GameRecord> = {}): GameRecord => ({
@@ -132,7 +132,7 @@ describe('recent games', () => {
     ]);
     await vi.waitFor(async () => expect(await store.games('u1', 10)).toHaveLength(3));
     accounts.findDaily = async (id, at, points) => (id === 'u1' && at === 1000 && points === 145 ? 3 : null);
-    const recent = (await accounts.profile('hao'))!.recent;
+    const recent = ((await accounts.profile('hao')) as PublicProfile).recent;
     expect(Object.fromEntries(recent.map((g) => [g.at, g.daily]))).toEqual({ 1000: 3, 2000: undefined, 3000: 4 });
     rmSync(dir, { recursive: true, force: true });
   });
@@ -319,5 +319,97 @@ describe('friends API', () => {
     await store.deleteUser('a');
     expect(await store.friendLinks('b')).toEqual([]);
     expect(await store.friendLinks('c')).toEqual([]);
+  });
+});
+
+describe('badges', () => {
+  it('awards badges from games and daily results, with progress on the rest', async () => {
+    const { badgesFor } = await import('../src/shared/profile');
+    const games = [game({ points: 120, powers: 3, tens: 4, negs: 0, tossups: 12, correctDepthSum: 7 * 0.35 }), game({ rank: 1 })];
+    const s = summarize(games);
+    const daily = { played: 8, wins: 1, podiums: 2, bestRank: 1, bestScore: 150, avgPoints: 80, streak: 2, longestStreak: 7, leadingToday: false, perfect: 0, recent: [] };
+    const by = Object.fromEntries(badgesFor({ games, p: { ...s, daily } }).map((b) => [b.id, b]));
+    expect(by.debut.earned).toBe(true);
+    expect(by.firstPower.earned).toBe(true);
+    expect(by.firstWin.earned).toBe(true);
+    expect(by.century.earned).toBe(true);
+    expect(by.clean.earned).toBe(true);
+    expect(by.earlyBuzzer.earned).toBe(true);
+    expect(by.dailyWin.earned).toBe(true);
+    expect(by.dailyWeek.earned).toBe(true);
+    expect(by.dailyPerfect.earned).toBe(false);
+    expect(by.regular).toEqual({ id: 'regular', earned: false, have: 2, need: 25 });
+    expect(by.powerHungry).toMatchObject({ earned: false, have: 5, need: 50 });
+  });
+
+  it('keeps only known pinned stats, once each, at most three', async () => {
+    const { cleanPinned } = await import('../src/shared/profile');
+    expect(cleanPinned(['dailyWins', 'nope', 'dailyWins', 'ppg', 'powers', 'wins'])).toEqual(['dailyWins', 'ppg', 'powers']);
+    expect(cleanPinned('dailyWins')).toEqual([]);
+  });
+});
+
+describe('profile privacy and pins', () => {
+  let server: Server;
+  let base: string;
+  let dir: string;
+  let accounts: Accounts;
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-privacy-'));
+    accounts = new Accounts(new FileAccountStore(join(dir, 'accounts.json')));
+    await accounts.init();
+    const app = express();
+    app.use('/api', accounts.router());
+    server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+  });
+  afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  const req = (method: string, path: string, body?: unknown, cookie?: string) =>
+    fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const signup = async (username: string) => {
+    const res = await req('POST', '/signup', { username, password: 'long-enough-pw' });
+    return { cookie: res.headers.get('set-cookie')!.split(';')[0], user: (await res.json()).user };
+  };
+  const view = async (username: string, cookie?: string) => (await (await req('GET', `/users/${username}`, undefined, cookie)).json()).profile;
+
+  it('saves visibility and pins, and rejects a bad visibility', async () => {
+    const owner = await signup('pinner');
+    expect(owner.user).toMatchObject({ visibility: 'public', pinned: [] });
+    const res = await req('PATCH', '/me', { pinned: ['dailyWins', 'bogus', 'ppg'] }, owner.cookie);
+    expect((await res.json()).user.pinned).toEqual(['dailyWins', 'ppg']);
+    expect((await req('PATCH', '/me', { visibility: 'everyone' }, owner.cookie)).status).toBe(400);
+    const p = await view('pinner');
+    expect(p.pinned).toEqual(['dailyWins', 'ppg']);
+    expect(p.badges.length).toBeGreaterThan(10);
+    expect(p.visibility).toBeUndefined(); // only the owner sees their setting
+    expect((await view('pinner', owner.cookie)).visibility).toBe('public');
+  });
+
+  it('hides stats from everyone but friends, the owner and admins', async () => {
+    const owner = await signup('shy');
+    const friend = await signup('pal');
+    const stranger = await signup('rando');
+    const admin = await signup('Hao');
+    await req('POST', '/friends', { username: 'pal' }, owner.cookie);
+    await req('POST', '/friends', { username: 'shy' }, friend.cookie);
+
+    await req('PATCH', '/me', { visibility: 'friends' }, owner.cookie);
+    expect(await view('shy')).toEqual({ username: 'shy', displayName: 'shy', createdAt: owner.user.createdAt, admin: false, locked: 'friends' });
+    expect((await view('shy', stranger.cookie)).locked).toBe('friends');
+    expect((await view('shy', friend.cookie)).totals).toBeDefined();
+    expect((await view('shy', owner.cookie)).visibility).toBe('friends');
+
+    await req('PATCH', '/me', { visibility: 'private' }, owner.cookie);
+    expect((await view('shy', friend.cookie)).locked).toBe('private');
+    expect((await view('shy', owner.cookie)).totals).toBeDefined();
+    expect((await view('shy', admin.cookie)).visibility).toBe('private');
+
+    // Invites go to friends only.
+    expect((await accounts.friendOf(owner.user.id, 'PAL'))?.username).toBe('pal');
+    expect(await accounts.friendOf(owner.user.id, 'rando')).toBeNull();
+    expect(await accounts.friendOf(owner.user.id, 'shy')).toBeNull();
   });
 });
