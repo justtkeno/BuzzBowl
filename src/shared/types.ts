@@ -244,6 +244,8 @@ export interface Ruling {
   correctedTo?: string;
   /** Bonus rulings: the tossup this bonus followed (for the score graph). */
   tossup?: number;
+  /** A correct answer cancelled because an earlier buzz on the same tossup was ruled correct afterwards (protest or override). Holds that ruling's id; the points come back if it's reversed again. */
+  voidedBy?: string;
 }
 
 export interface Protest {

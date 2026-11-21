@@ -149,7 +149,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
                 {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}>📷 Invite (QR code)</button>}
                 <button role="menuitem" onClick={() => setShowReview(true)}>📜 Review questions{s.review.length ? ` (${s.review.length})` : ''}</button>
                 {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}>⚙️ Settings</button>}
-                <button role="menuitem" onClick={openBigScreen}>📺 Big-screen view</button>
+                {!r.fixed && <button role="menuitem" onClick={openBigScreen}>📺 Big-screen view</button>}
                 <button role="menuitem" onClick={toggleSound}>{sound ? '🔇 Sound off' : '🔊 Sound on'}</button>
                 <button role="menuitem" onClick={() => setTheme(cycleTheme())}>🌓 Theme: {theme}</button>
                 <button role="menuitem" onClick={(e) => { e.stopPropagation(); setTextSize(cycleTextSize()); }}>🔠 Text size: {TEXT_SIZE_LABEL[textSize]}</button>
@@ -183,7 +183,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
           {r.isReader && (s.phase === 'lobby' || midGame) && <ReaderQueue s={s} onChangeQuestions={r.fixed ? undefined : () => setShowQuestions(true)} />}
           {r.isController && !r.isReader && midGame && (
             <div className="row gap end subtle-controls hide-sm">
-              <button className="btn ghost small" onClick={openBigScreen}>Big-screen view</button>
+              {!r.fixed && <button className="btn ghost small" onClick={openBigScreen}>Big-screen view</button>}
               <button className="btn ghost small" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}>{s.survival ? 'End run' : 'End game'}</button>
             </div>
           )}

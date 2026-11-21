@@ -155,7 +155,7 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
                 <div className="row gap site-room-actions">
                   <a className="btn small ghost" href={`/watch/${r.code}`} target="_blank" rel="noreferrer">Watch</a>
                   {!r.daily && !r.survival && <a className="btn small" href={`/r/${r.code}`}>Join</a>}
-                  <button className="btn small bad" disabled={busy} onClick={() => close(r.code)}>Close</button>
+                  <button className="btn small bad" disabled={busy} onClick={() => close(r.code)} aria-label={`Close room ${r.code}`} title={`Close room ${r.code}`}>Close</button>
                 </div>
               </li>
             );
