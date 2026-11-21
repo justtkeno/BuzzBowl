@@ -46,6 +46,17 @@ Anyone can click **Be the reader** in the lobby. The reader:
 
 By default players don't see the text while the reader reads (they listen). Turn on "Show question text to players" to show it.
 
+### Managing players
+
+The host or reader can open **👥 Players** (top bar, or the ⋯ menu on a phone) to:
+
+- **Mute** someone so they can't send chat messages, and unmute them later
+- **Kick** someone out of the room (they can rejoin with the link)
+- **Ban** someone: their seat and, if they're logged in, their account can't rejoin this room
+- **Let buzz again**: give a player (or team) back their buzz on the tossup being read, for example after a misclick
+
+Everyone sees a note in chat when one of these happens. None of them are available in the daily challenge.
+
 ### Big screen, pause and restarts
 
 - **Big-screen view**: open `/watch/CODE` (or **📺 Big-screen view** in the lobby or ⋯ menu) on a projector or TV. It shows the question, buzzes and a large scoreboard, and never joins as a player.

@@ -28,11 +28,13 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - `tests/`: one file per area. `room.test.ts` drives `Room` through the `RoomIO` interface with fake timers.
 
 ## Rules to keep
-- The server owns all timing and every ruling. Clients never decide anything. Players never receive words before they're read, or answers before the tossup ends. Only the reader gets both early.
+- The server owns all timing and every ruling. Clients never decide anything. Players never receive words before they're read, or answers before the tossup ends. Only the reader gets both early, plus a site admin who turned on Peek (answers only, in `snapshot`'s admin extras).
 - Daily-challenge rooms must stay fair: fixed settings, solo, and nothing that changes a score (adjust, override, protests, reader seat, bots, pause) is allowed.
 - `Room` touches the network only through `RoomIO`, which keeps it testable without sockets.
 - Rooms are in memory and saved to `data/rooms-<port>.json` (`Room.toJSON` / `Room.restore`), so deploys use a single instance. A restored game comes back paused.
 - Timers go through `setTimer` so the whole-game pause (`pauseGame`) can freeze and resume them. Don't call `setTimeout` directly in `Room`.
+- Moderation (`kick`/ban, `mute`, `allowRebuzz`) is for the host, the reader, or a site admin in any room, never in the daily challenge, and nobody but an admin can act on an admin.
+- Admin-only troll tools (`setPeek`, `freeze`, `adminRename`, `announce`) are secret by design: peeking and freezing never appear in anyone else's state or chat. The owner chose to let Peek work in the daily challenge too. Their admin panel is not documented in `README.md`.
 - Feedback effects stay minimal and quiet (thin edge glow, small chips, soft sounds). The owner asked for smooth and minimalistic, nothing flashy.
 - Phone layout matters most: most players are on phones. Check changes at 375px wide.
 

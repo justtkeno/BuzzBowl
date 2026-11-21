@@ -111,6 +111,8 @@ export interface PublicPlayer {
   username?: string;
   /** Logged in as a site admin (shown as a creator badge). */
   admin?: boolean;
+  /** The host, reader or an admin muted this player in chat. */
+  muted?: boolean;
 }
 
 export type BotSkill = 'easy' | 'medium' | 'hard' | 'expert';
@@ -268,6 +270,10 @@ export interface PublicState {
   /** Reader only: the next tossups in line, so they can skip any before they are read. */
   upcoming?: UpcomingTossup[];
   upcomingLoading?: boolean;
+  /** Admin only: their own troll settings. Never sent to anyone else. */
+  admin?: { peek: boolean; frozen: { id: string; always: boolean }[] };
+  /** Admin only, while peeking: the answers of the question being read. */
+  peek?: { tossup?: string; bonus?: string[] };
 }
 
 /** One line of the daily-challenge leaderboard. */

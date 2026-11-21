@@ -13,7 +13,10 @@ export function Stage({ s }: { s: PublicState }) {
   const canBuzz = s.phase === 'reading' && !!t && !r.isReader && !!r.myTeam && !myTeamLocked && !s.paused;
   const iAmAnswering = s.phase === 'buzz' && s.buzz?.playerId === r.me && !s.buzz.awaitingRuling;
   const bonusDone = s.phase === 'bonus' && s.bonus?.done;
-  const canNext = r.canDirect && (s.phase === 'tossupEnd' || !!bonusDone);
+  // The site admin can move things along in any room.
+  const isAdmin = !!s.players.find((p) => p.id === r.me)?.admin;
+  const canSkip = r.isController || isAdmin;
+  const canNext = (r.canDirect || isAdmin) && (s.phase === 'tossupEnd' || !!bonusDone);
   const [buzzing, setBuzzing] = useState(false);
   // Phones only open the keyboard when focus happens inside a tap, but the answer box appears a moment
   // later (after the server awards the buzz). Focusing this hidden input during the tap opens the keyboard
@@ -21,6 +24,12 @@ export function Stage({ s }: { s: PublicState }) {
   const keeper = useRef<HTMLInputElement>(null);
 
   useEffect(() => setBuzzing(false), [s.phase, t?.num]);
+  // A buzz the server didn't award (someone was faster) lets go after a moment.
+  useEffect(() => {
+    if (!buzzing) return;
+    const h = setTimeout(() => setBuzzing(false), 1500);
+    return () => clearTimeout(h);
+  }, [buzzing]);
   useEffect(() => {
     if (s.phase !== 'buzz' || s.buzz?.playerId !== r.me) keeper.current?.blur();
   }, [s.phase, s.buzz?.playerId]);
@@ -44,7 +53,7 @@ export function Stage({ s }: { s: PublicState }) {
         if (r.isReader && s.phase === 'reading' && t) act('game:pause', !t.paused);
         else buzz();
       } else if (e.key === 'n' || e.key === 'N') {
-        if (canNext || (r.isController && (s.phase === 'reading' || s.phase === 'bonus'))) act('game:next');
+        if (canNext || (canSkip && (s.phase === 'reading' || s.phase === 'bonus'))) act('game:next');
       } else if (e.key === 'ArrowRight' && r.isController && s.phase === 'reading' && t) {
         act('game:revealTo', t.revealed.length + 1);
       }
@@ -73,7 +82,8 @@ export function Stage({ s }: { s: PublicState }) {
           </button>
         )}
         {r.isController && t && s.phase === 'reading' && !s.daily && <ReaderControls s={s} />}
-        {r.isController && (s.phase === 'buzz' || (s.phase === 'bonus' && !bonusDone)) && (
+        {isAdmin && !r.isController && t && s.phase === 'reading' && <button className="btn ghost" onClick={() => act('game:next')}>Skip tossup</button>}
+        {canSkip && (s.phase === 'buzz' || (s.phase === 'bonus' && !bonusDone)) && (
           <button className="btn ghost" onClick={() => act('game:next')}>Skip {s.phase === 'bonus' ? 'bonus' : 'tossup'}</button>
         )}
         {canNext && (
@@ -189,6 +199,9 @@ export function TossupCard({ s }: { s: PublicState }) {
 
       {(ended || r.isReader) && t.answerHtml && (
         <div className="answer"><span className="label">ANSWER</span> <span dangerouslySetInnerHTML={{ __html: t.answerHtml }} /></div>
+      )}
+      {!ended && !r.isReader && s.peek?.tossup && (
+        <div className="peek" title="Only you can see this"><span aria-hidden="true">👀</span> <span dangerouslySetInnerHTML={{ __html: s.peek.tossup }} /></div>
       )}
       {ended && t.buzzes.length > 0 && <BuzzMap buzzes={t.buzzes} totalWords={t.totalWords} powerIndex={t.powerIndex} order={s.players.map((p) => p.id)} />}
 
@@ -360,6 +373,9 @@ export function BonusCard({ s }: { s: PublicState }) {
       {bn.awaitingRuling && (r.isReader
         ? <RulingBox given={bn.awaitingRuling.given} suggestion={bn.awaitingRuling.suggestion} />
         : <div className="status muted">“{bn.awaitingRuling.given}” — waiting for the reader’s ruling</div>)}
+      {!r.isReader && !bn.revealing && !bn.done && s.peek?.bonus?.[bn.current] && (
+        <div className="peek" title="Only you can see this"><span aria-hidden="true">👀</span> <span dangerouslySetInnerHTML={{ __html: s.peek.bonus[bn.current] }} /></div>
+      )}
       {bn.done && <div className="end-line">Bonus total: <b>{bn.parts.filter((p) => p.correct).length * s.settings.bonusPartValue}</b></div>}
     </div>
   );
