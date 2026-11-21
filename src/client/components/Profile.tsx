@@ -2,7 +2,8 @@ import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
 import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, isLocked, type DailyProfile, type GameRecord, type ProfileView, type PublicProfile } from '../../shared/accounts';
 import { BADGE_BY_ID, PIN_MAX, PIN_STATS, VISIBILITIES, VISIBILITY_LABEL, type Visibility } from '../../shared/profile';
-import { adminDeleteAccount, adminResetProfile, fetchProfile, updateMe, useAccount } from '../account';
+import { adminDeleteAccount, adminResetProfile, adminUnlockBadges, fetchProfile, updateMe, useAccount } from '../account';
+import { Announcement } from './Announcement';
 import { useTheme } from '../App';
 import { AccountBar, CreatorBadge } from './Account';
 import { FriendButton, FriendsTab, InviteBanner } from './Friends';
@@ -99,6 +100,7 @@ export function Profile({ username }: { username: string }) {
       </main>
       <FriendsTab />
       <InviteBanner />
+      <Announcement />
     </div>
   );
 }
@@ -187,6 +189,12 @@ function AdminCard({ p, onChange, onDeleted }: { p: PublicProfile; onChange: (p:
       <div className="row gap">
         <button className="btn small" disabled={busy || p.displayName === p.username} onClick={() => reset(true, false)}>Reset display name</button>
         <button className="btn small" disabled={busy || !p.bio} onClick={() => reset(false, true)}>Clear bio</button>
+        <button className="btn small" disabled={busy} onClick={() => run(async () => {
+          const unlock = !p.badgesUnlocked;
+          await adminUnlockBadges(p.username, unlock);
+          onChange({ ...(await fetchProfile(p.username)) as PublicProfile });
+          setNote(unlock ? 'Every badge is unlocked on this profile.' : 'Badges are back to the ones they earned.');
+        })}>{p.badgesUnlocked ? 'Re-lock badges' : 'Unlock all badges'}</button>
         {confirming ? (
           <span className="confirm">
             <span className="small">Really delete @{p.username}? This can’t be undone.</span>

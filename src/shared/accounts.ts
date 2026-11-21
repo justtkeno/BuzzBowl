@@ -102,6 +102,8 @@ export interface PublicProfile {
   badges: BadgeState[];
   /** Only sent to the owner (and admins), who see the full profile whatever the setting. */
   visibility?: Visibility;
+  /** Admins only: a site admin unlocked badges for this account. */
+  badgesUnlocked?: boolean;
 }
 
 /** What others see of a profile that isn't open to them. */

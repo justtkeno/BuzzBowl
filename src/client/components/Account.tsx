@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { PASSWORD_MIN, USERNAME_RE } from '../../shared/accounts';
 import { login, logout, signup, useAccount } from '../account';
 import '../accounts.css';
+import { SiteAdminPanel } from './SiteAdmin';
 
 /** Small check mark next to a logged-in player's name, linking to their profile. Admins get a creator badge too. */
 export function Verified({ username, admin }: { username?: string; admin?: boolean }) {
@@ -32,6 +33,7 @@ function Crown() {
 export function AccountBar() {
   const { me, loaded } = useAccount();
   const [open, setOpen] = useState<null | 'login' | 'signup'>(null);
+  const [admin, setAdmin] = useState(false);
   if (!loaded) return <div className="account-bar" />;
   return (
     <div className="account-bar">
@@ -43,6 +45,7 @@ export function AccountBar() {
             {me.admin && <CreatorBadge />}
             <span className="muted small">@{me.username}</span>
           </a>
+          {me.admin && <button className="btn ghost small" onClick={() => setAdmin(true)} title="Site admin: announce to everyone, rooms, badges" aria-label="Site admin">🛡</button>}
           <button className="btn ghost small" onClick={() => void logout()}>Log out</button>
         </>
       ) : (
@@ -53,6 +56,7 @@ export function AccountBar() {
         </>
       )}
       {open && <AccountDialog initial={open} onClose={() => setOpen(null)} />}
+      {admin && <SiteAdminPanel onClose={() => setAdmin(false)} />}
     </div>
   );
 }

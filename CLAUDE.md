@@ -36,6 +36,7 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - Rooms are in memory and saved to `data/rooms-<port>.json` (`Room.toJSON` / `Room.restore`), so deploys use a single instance. A restored game comes back paused.
 - Timers go through `setTimer` so the whole-game pause (`pauseGame`) can freeze and resume them. Don't call `setTimeout` directly in `Room`.
 - Moderation (`kick`/ban, `mute`, `allowRebuzz`) is for the host, the reader, or a site admin in any room, never in the daily challenge, and nobody but an admin can act on an admin.
+- Site admin panel (`SiteAdmin.tsx`, the 🛡 button by an admin's name on home and profiles; `site:overview` / `site:announce` / `site:closeRoom` sockets in `index.ts`): announce to every screen (skips players mid-daily), list/watch/join/close rooms, unlock all badges (`grantedBadges`, also on any profile's admin card). Admin only, server-checked.
 - Admin-only troll tools (`setPeek`, `freeze`, `adminRename`, `announce`) are secret by design: peeking and freezing never appear in anyone else's state or chat. The owner chose to let Peek work in the daily challenge too. Their admin panel is not documented in `README.md`.
 - Feedback effects stay minimal and quiet (thin edge glow, small chips, soft sounds). The owner asked for smooth and minimalistic, nothing flashy.
 - Phone layout matters most: most players are on phones. Check changes at 375px wide.
