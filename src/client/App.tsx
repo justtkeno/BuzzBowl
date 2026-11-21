@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../shared/types';
 import { Home } from './components/Home';
+import { InviteBanner } from './components/Friends';
 import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
@@ -142,14 +143,24 @@ function Player() {
   };
 
   if (!state) {
-    return <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} onDaily={startDaily} dailyOpen={location.pathname === '/daily'} />;
+    return (
+      <>
+        <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} onDaily={startDaily} dailyOpen={location.pathname === '/daily'} />
+        <InviteBanner onJoin={(code) => { enter(code, prefs.name() || randomName()).catch((e) => setError(e.message)); }} />
+      </>
+    );
   }
   // From the friends panel: hop straight into a friend's room.
   const joinFriend = (code: string) => {
     const name = joined.current?.name || prefs.name() || randomName();
     enter(code, name).then(() => setFresh(false), (e) => toast(e.message));
   };
-  return <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} onJoinRoom={joinFriend} />;
+  return (
+    <>
+      <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} onJoinRoom={joinFriend} />
+      <InviteBanner currentCode={state.code} quiet={!!state.daily && !state.daily.done} onJoin={joinFriend} />
+    </>
+  );
 }
 
 export function useTheme() {

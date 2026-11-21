@@ -1,6 +1,7 @@
 // Account and profile types shared by the server and the client. Plain JSON.
 
 import type { CategoryStats, Mode } from './types';
+import type { BadgeState, Visibility } from './profile';
 
 export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 export const PASSWORD_MIN = 8;
@@ -19,6 +20,10 @@ export interface Me {
   adminLocked?: boolean;
   /** Last room settings used as host, synced across devices. */
   settings: Record<string, unknown> | null;
+  /** Who can see their stats, badges and games. */
+  visibility: Visibility;
+  /** Stat ids pinned to the top of their profile (see PIN_STATS). */
+  pinned: string[];
 }
 
 /** One finished game, from one account's point of view. */
@@ -92,7 +97,24 @@ export interface PublicProfile {
   recent: GameRecord[];
   /** Daily challenge record, once they've played one while logged in. */
   daily?: DailyProfile;
+  /** Stat ids they pinned to the top. */
+  pinned: string[];
+  badges: BadgeState[];
+  /** Only sent to the owner (and admins), who see the full profile whatever the setting. */
+  visibility?: Visibility;
 }
+
+/** What others see of a profile that isn't open to them. */
+export interface LockedProfile {
+  username: string;
+  displayName: string;
+  createdAt: number;
+  admin: boolean;
+  locked: Exclude<Visibility, 'public'>;
+}
+
+export type ProfileView = PublicProfile | LockedProfile;
+export const isLocked = (p: ProfileView): p is LockedProfile => 'locked' in p;
 
 /** One finished daily challenge on a profile. */
 export interface DailyDay { day: string; number: number; points: number; rank: number; players: number; marks: string }
@@ -111,6 +133,8 @@ export interface DailyProfile {
   longestStreak: number;
   /** Currently #1 on today's leaderboard (it can still change until midnight Eastern). */
   leadingToday: boolean;
+  /** Dailies where every tossup was answered correctly. */
+  perfect: number;
   recent: DailyDay[];
 }
 

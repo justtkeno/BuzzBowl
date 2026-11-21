@@ -1,10 +1,11 @@
 import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
-import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, type DailyProfile, type GameRecord, type PublicProfile } from '../../shared/accounts';
+import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, isLocked, type DailyProfile, type GameRecord, type ProfileView, type PublicProfile } from '../../shared/accounts';
+import { BADGE_BY_ID, PIN_MAX, PIN_STATS, VISIBILITIES, VISIBILITY_LABEL, type Visibility } from '../../shared/profile';
 import { adminDeleteAccount, adminResetProfile, fetchProfile, updateMe, useAccount } from '../account';
 import { useTheme } from '../App';
 import { AccountBar, CreatorBadge } from './Account';
-import { FriendButton, FriendsTab } from './Friends';
+import { FriendButton, FriendsTab, InviteBanner } from './Friends';
 import { Marks } from './Daily';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -22,7 +23,7 @@ const when = (t: number) => {
 export function Profile({ username }: { username: string }) {
   useTheme();
   const { me } = useAccount();
-  const [p, setP] = useState<PublicProfile | null>(null);
+  const [p, setP] = useState<ProfileView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [deleted, setDeleted] = useState(false);
@@ -53,7 +54,10 @@ export function Profile({ username }: { username: string }) {
               <div className="grow">
                 <h1>{p.displayName} <span className="verified" title="Verified Trivio account"><Check /></span>{p.admin && <CreatorBadge />}</h1>
                 <div className="muted small">@{p.username} · joined {new Date(p.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
-                {editing ? <EditProfile p={p} onDone={(np) => { if (np) setP(np); setEditing(false); }} /> : p.bio && <p className="bio">{p.bio}</p>}
+                {!isLocked(p) && p.visibility && p.visibility !== 'public' && !editing && (
+                  <div className="visibility-note small">🔒 {p.visibility === 'private' ? (mine ? 'Private: only you can see your stats' : 'Private profile · you can see it as an admin') : (mine ? 'Friends only: only your friends can see your stats' : 'Friends-only profile · you can see it as an admin')}</div>
+                )}
+                {!isLocked(p) && (editing ? <EditProfile p={p} onDone={(np) => { if (np) setP(np); setEditing(false); }} /> : p.bio && <p className="bio">{p.bio}</p>)}
               </div>
               <div className="row gap">
                 {mine && !editing && <button className="btn small" onClick={() => setEditing(true)}>Edit profile</button>}
@@ -62,6 +66,15 @@ export function Profile({ username }: { username: string }) {
               </div>
             </section>
 
+            {isLocked(p) ? (
+              <section className="card locked-card">
+                <h2>🔒 {p.locked === 'private' ? 'This profile is private' : 'Friends only'}</h2>
+                <p className="muted">{p.locked === 'private' ? `${p.displayName} keeps their stats, badges and games to themselves.` : `Only ${p.displayName}’s friends can see their stats, badges and games. Add them as a friend to see more.`}</p>
+              </section>
+            ) : (
+            <>
+            <Pinned p={p} mine={mine} onEdit={() => setEditing(true)} />
+            <Badges p={p} mine={mine} />
             {p.totals.games === 0 ? (
               <section className="card">
                 <h2>No games yet</h2>
@@ -79,10 +92,13 @@ export function Profile({ username }: { username: string }) {
               </>
             )}
             {me?.admin && !mine && !p.admin && <AdminCard p={p} onChange={setP} onDeleted={() => setDeleted(true)} />}
+            </>
+            )}
           </>
         )}
       </main>
       <FriendsTab />
+      <InviteBanner />
     </div>
   );
 }
@@ -102,14 +118,17 @@ function CopyLink() {
 function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfile | null) => void }) {
   const [displayName, setDisplayName] = useState(p.displayName);
   const [bio, setBio] = useState(p.bio);
+  const [visibility, setVisibility] = useState<Visibility>(p.visibility ?? 'public');
+  const [pinned, setPinned] = useState<string[]>(p.pinned);
   const [busy, setBusy] = useState(false);
+  const togglePin = (id: string) => setPinned((x) => (x.includes(id) ? x.filter((y) => y !== id) : x.length < PIN_MAX ? [...x, id] : x));
   const [err, setErr] = useState<string | null>(null);
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
-      const u = await updateMe({ displayName, bio });
-      onDone({ ...p, displayName: u.displayName, bio: u.bio });
+      const u = await updateMe({ displayName, bio, visibility, pinned });
+      onDone({ ...p, displayName: u.displayName, bio: u.bio, visibility: u.visibility, pinned: u.pinned });
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
   return (
@@ -118,6 +137,28 @@ function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfil
       <label className="field"><span>Bio <span className="muted">({bio.length}/{BIO_MAX})</span></span>
         <textarea value={bio} maxLength={BIO_MAX} rows={2} placeholder="Favorite categories, team, school…" onChange={(e) => setBio(e.target.value)} />
       </label>
+      <div className="field">
+        <span>Who can see your stats, badges and games</span>
+        <div className="seg" role="radiogroup" aria-label="Profile visibility">
+          {VISIBILITIES.map((v) => (
+            <button key={v} type="button" role="radio" aria-checked={visibility === v} className={visibility === v ? 'on' : ''} onClick={() => setVisibility(v)}>{VISIBILITY_LABEL[v]}</button>
+          ))}
+        </div>
+        <span className="muted small">Your name and username always show, so friends can find you.</span>
+      </div>
+      <div className="field">
+        <span>Pinned stats <span className="muted">({pinned.length}/{PIN_MAX}, shown at the top in this order)</span></span>
+        <div className="pin-picker">
+          {PIN_STATS.map((s) => {
+            const i = pinned.indexOf(s.id);
+            return (
+              <button key={s.id} type="button" className={`pin-chip ${i >= 0 ? 'on' : ''}`} aria-pressed={i >= 0} disabled={i < 0 && pinned.length >= PIN_MAX} onClick={() => togglePin(s.id)}>
+                {i >= 0 && <span className="pin-num">{i + 1}</span>}{s.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       {err && <p className="error">{err}</p>}
       <div className="row gap"><button className="btn primary small" disabled={busy || !displayName.trim()}>Save</button><button type="button" className="btn ghost small" onClick={() => onDone(null)}>Cancel</button></div>
     </form>
@@ -291,6 +332,69 @@ function Recent({ games }: { games: GameRecord[] }) {
                 )}
               </div>
               <span className="muted small when">{when(g.at)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** Up to three stats the player chose to show off, above everything else. */
+function Pinned({ p, mine, onEdit }: { p: PublicProfile; mine: boolean; onEdit: () => void }) {
+  const stats = p.pinned.map((id) => PIN_STATS.find((s) => s.id === id)).filter((s) => !!s);
+  if (!stats.length) {
+    return mine ? (
+      <button className="pin-empty" onClick={onEdit}>📌 Pin up to {PIN_MAX} stats to the top of your profile</button>
+    ) : null;
+  }
+  return (
+    <section className={`pinned-row n${stats.length}`} aria-label="Pinned stats">
+      {stats.map((s) => {
+        const v = s.get(p);
+        return (
+          <div key={s.id} className="tile pinned">
+            <div className="tile-label">{s.label}</div>
+            <div className="tile-value">{v?.value ?? '–'}</div>
+            {v?.sub && <div className="tile-sub">{v.sub}</div>}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+/** Earned badges. On your own profile, the ones still to get show with progress. */
+function Badges({ p, mine }: { p: PublicProfile; mine: boolean }) {
+  const [all, setAll] = useState(false);
+  const earned = p.badges.filter((b) => b.earned);
+  const locked = p.badges.filter((b) => !b.earned).sort((a, b) => (b.have ?? 0) / (b.need ?? 1) - (a.have ?? 0) / (a.need ?? 1));
+  if (!earned.length && !mine) return null;
+  const shown = mine && all ? [...earned, ...locked] : earned;
+  return (
+    <section className="card">
+      <div className="row between badges-head">
+        <h2>Badges <span className="muted small">{earned.length} of {p.badges.length}</span></h2>
+        {mine && locked.length > 0 && <button className="btn ghost small" onClick={() => setAll(!all)}>{all ? 'Earned only' : 'Show all'}</button>}
+      </div>
+      {!shown.length && <p className="muted small">No badges yet. Finish a game to earn your first.{mine && ' Tap “Show all” to see what’s out there.'}</p>}
+      <ul className="badges">
+        {shown.map((b) => {
+          const d = BADGE_BY_ID.get(b.id);
+          if (!d) return null;
+          return (
+            <li key={b.id} className={`badge-item ${b.earned ? 'earned' : 'locked'}`} title={d.desc}>
+              <span className="badge-icon" aria-hidden="true">{d.icon}</span>
+              <div className="badge-text">
+                <div className="badge-name">{d.name}</div>
+                <div className="muted small">{d.desc}</div>
+                {!b.earned && b.need && b.need > 1 && (
+                  <div className="badge-progress" aria-label={`${b.have} of ${b.need}`}>
+                    <div className="track"><div className="fill" style={{ width: `${((b.have ?? 0) / b.need) * 100}%` }} /></div>
+                    <span className="small muted">{b.have}/{b.need}</span>
+                  </div>
+                )}
+              </div>
             </li>
           );
         })}
