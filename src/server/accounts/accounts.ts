@@ -119,6 +119,8 @@ export class Accounts {
 
   /** Extra profile sections from elsewhere (the daily challenge), added when a profile is shown. */
   profileExtras?: (user: { id: string }) => Promise<Partial<PublicProfile>>;
+  /** Finds the daily challenge a solo game saved before games carried `daily` belongs to (its number), if any. */
+  findDaily?: (accountId: string, at: number, points: number) => Promise<number | null>;
 
   get kind() { return this.store.kind; }
 
@@ -177,10 +179,18 @@ export class Accounts {
     const u = await this.store.userByName(username);
     if (!u) return null;
     const games = await this.store.games(u.id, PROFILE_GAMES);
+    const recent = games.slice(0, RECENT_GAMES);
+    if (this.findDaily) {
+      await Promise.all(recent.map(async (g, i) => {
+        if (g.daily || g.sides > 1 || g.mode !== 'ffa') return;
+        const n = await this.findDaily!(u.id, g.at, g.points).catch(() => null);
+        if (n) recent[i] = { ...g, daily: n };
+      }));
+    }
     return {
       username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u),
       ...summarize(games),
-      recent: games.slice(0, RECENT_GAMES),
+      recent,
       ...(await this.profileExtras?.(u).catch((e) => { console.error('Profile extras failed:', e); return {}; })),
     };
   }

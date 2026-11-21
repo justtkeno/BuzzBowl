@@ -34,6 +34,8 @@ export interface GameRecord {
   standings: { name: string; points: number; you: boolean }[];
   /** True when the game stopped because everyone left, not because the host ended it. */
   abandoned?: boolean;
+  /** The daily challenge's number when this game was that day's challenge. */
+  daily?: number;
   tossups: number;
   points: number;
   powers: number;

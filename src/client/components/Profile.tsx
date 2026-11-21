@@ -276,12 +276,13 @@ function Recent({ games }: { games: GameRecord[] }) {
       <ul className="recent">
         {games.map((g, i) => {
           const solo = g.sides < 2;
-          const result = solo ? 'Solo' : g.rank === 1 ? 'Won' : `${ordinal(g.rank)} of ${g.sides}`;
+          const result = g.daily ? 'Daily' : solo ? 'Solo' : g.rank === 1 ? 'Won' : `${ordinal(g.rank)} of ${g.sides}`;
+          const kind = g.daily ? `Daily Challenge #${g.daily}` : g.mode === 'teams' ? 'teams' : 'free-for-all';
           return (
             <li key={`${g.at}-${i}`}>
-              <span className={`result ${solo ? '' : g.rank === 1 ? 'win' : 'loss'}`}>{result}</span>
+              <span className={`result ${g.daily ? 'daily' : solo ? '' : g.rank === 1 ? 'win' : 'loss'}`}>{result}</span>
               <div className="grow">
-                <div><b>{g.points} pts</b> <span className="muted small">· {g.powers}/{g.tens}/{g.negs} · {plural(g.tossups, 'tossup')} · {g.mode === 'teams' ? 'teams' : 'free-for-all'}{g.abandoned ? ' · unfinished' : ''}</span></div>
+                <div><b>{g.points} pts</b> <span className="muted small">· {g.daily && <>{kind} · </>}{g.powers}/{g.tens}/{g.negs} · {plural(g.tossups, 'tossup')}{g.daily ? '' : ` · ${kind}`}{g.abandoned ? ' · unfinished' : ''}</span></div>
                 {!solo && (
                   <div className="standings small">
                     {g.standings.map((s, j) => <span key={j} className={s.you ? 'you' : ''}>{s.name} {s.points}</span>)}

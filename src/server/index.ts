@@ -10,7 +10,7 @@ import { MemoryRoomStore, newRoomCode, type RoomStore } from './rooms/store';
 import { SPECTATOR, type Settings } from '../shared/types';
 import { Accounts, type Presence } from './accounts/accounts';
 import { FileAccountStore, PgAccountStore } from './accounts/store';
-import { Daily, playerKeyFor } from './daily/daily';
+import { Daily, dailyNumber, dayKey, playerKeyFor } from './daily/daily';
 import { FileDailyStore, PgDailyStore } from './daily/store';
 import { QBReaderProvider } from './questions/providers';
 
@@ -43,6 +43,12 @@ const daily = new Daily(
 accounts.profileExtras = async (u) => {
   const d = await daily.profile(playerKeyFor(u.id, null)!);
   return d ? { daily: d } : {};
+};
+// Games saved before records carried their daily-challenge number: match them to that day's result.
+accounts.findDaily = async (accountId, at, points) => {
+  const day = dayKey(new Date(at));
+  const r = await daily.result(day, playerKeyFor(accountId, null)!);
+  return r && r.points === points ? dailyNumber(day) : null;
 };
 
 /** Hook a daily room up to the leaderboard (also after a restart). */

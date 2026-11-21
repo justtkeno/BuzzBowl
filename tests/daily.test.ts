@@ -107,6 +107,23 @@ describe('daily room', () => {
     expect(() => room.start(me)).toThrow('played today');
   });
 
+  it('marks the saved game with the challenge number', async () => {
+    const records: { game: { daily?: number; sides: number } }[] = [];
+    const room = new Room('DAY3', { ...io, gameOver: (r) => records.push(...r) }, {});
+    const me = room.join('Hao', undefined, { id: 'acct-hao', username: 'hao' }).playerId;
+    room.makeDaily({ day: '2026-11-21', number: 3, playerKey: 'a:acct-hao' }, [tu(1)]);
+    room.start(me);
+    await waitFor(room, 'reading');
+    while ((room.s.tossup?.revealed ?? 0) < 2) await vi.advanceTimersByTimeAsync(20);
+    room.buzz(me, 2);
+    await waitFor(room, 'buzz');
+    room.submitAnswer(me, 'answer1');
+    room.next(me);
+    expect(room.s.phase).toBe('gameOver');
+    expect(records).toHaveLength(1);
+    expect(records[0].game).toMatchObject({ daily: 3, sides: 1 });
+  });
+
   it('locks everything that could change a score', async () => {
     const { room, me } = await playDaily();
     expect(() => room.updateSettings(me, { wpm: 100 })).toThrow('same settings');
