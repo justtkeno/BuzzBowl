@@ -254,6 +254,10 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .seg button { border: 0; background: var(--surface); padding: .4rem .9rem; cursor: pointer; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .5; cursor: default; }
+.game-length { margin: .7rem 0 .2rem; }
+.game-length .chips { align-items: center; }
+.length-other { width: 5.5rem; cursor: text; text-align: center; font: inherit; font-size: .85rem; color: inherit; }
+.length-other::placeholder { color: var(--muted); }
 .source-seg { display: grid; grid-template-columns: repeat(4, auto); width: min(100%, 34rem); }
 .source-seg button { padding: .45rem .6rem; white-space: nowrap; }
 /* Four sources don't fit on one line on a phone: two rows of two. */

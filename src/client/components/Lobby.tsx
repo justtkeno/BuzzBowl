@@ -48,7 +48,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
             )}
             <li>{s.settings.powers ? `Powers ${s.settings.powerValue}` : 'No powers'} · {s.settings.tenValue} · {s.settings.negs ? `negs ${s.settings.negValue}` : 'no negs'}</li>
             <li>{s.settings.bonuses ? `Bonuses on (${s.settings.bonusSeconds}s per part)` : 'Tossups only'}</li>
-            <li>{s.settings.wpm} wpm · {s.settings.answerSeconds}s to answer</li>
+            <li>{s.settings.gameLength ? `${s.settings.gameLength} tossups` : 'No set length'} · {s.settings.wpm} wpm · {s.settings.answerSeconds}s to answer</li>
             <li>{sourceLabel}{f.categories.length ? ` · ${f.categories.join(', ')}` : ' · all categories'}</li>
           </ul>
           {r.isController && (
