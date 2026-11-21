@@ -38,6 +38,10 @@ export interface Settings {
   showTextToPlayers: boolean;
   /** When a reader is present, the reader rules on answers (auto-check is a suggestion). */
   readerRules: boolean;
+  /** No reader: each device reads the tossup aloud (text-to-speech) as the words appear. */
+  readAloud: boolean;
+  /** No reader: between tossups, players vote on the next tossup's category. */
+  topicVote: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -57,6 +61,8 @@ export const DEFAULT_SETTINGS: Settings = {
   filters: { categories: [], subcategories: [], difficulties: [] },
   showTextToPlayers: false,
   readerRules: true,
+  readAloud: false,
+  topicVote: false,
 };
 
 export type Phase =
@@ -274,6 +280,8 @@ export interface PublicState {
   highlights: Highlight[];
   /** Present in a daily-challenge room. */
   daily?: { day: string; number: number; total: number; done: boolean };
+  /** Open between tossups when players vote on the next topic. */
+  vote: PublicVote | null;
   /** Reader only: the next tossups in line, so they can skip any before they are read. */
   upcoming?: UpcomingTossup[];
   upcomingLoading?: boolean;
@@ -281,6 +289,23 @@ export interface PublicState {
   admin?: { peek: boolean; frozen: { id: string; always: boolean }[] };
   /** Admin only, while peeking: the answers of the question being read. */
   peek?: { tossup?: string; bonus?: string[] };
+}
+
+/** How long players have to vote on the next topic. */
+export const VOTE_SECONDS = 10;
+
+/** Players' vote on the next tossup's category. */
+export interface PublicVote {
+  options: string[];
+  /** Votes per option. */
+  counts: Record<string, number>;
+  /** This viewer's pick, if they voted. */
+  mine: string | null;
+  /** Server epoch ms when the vote closes. */
+  deadline: number;
+  /** Players who can vote, and how many have. */
+  voters: number;
+  voted: number;
 }
 
 /** One line of the daily-challenge leaderboard. */

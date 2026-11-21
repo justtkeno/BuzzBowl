@@ -1,9 +1,11 @@
 import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
-import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, type GameRecord, type PublicProfile } from '../../shared/accounts';
+import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, type DailyProfile, type GameRecord, type PublicProfile } from '../../shared/accounts';
 import { adminDeleteAccount, adminResetProfile, fetchProfile, updateMe, useAccount } from '../account';
 import { useTheme } from '../App';
 import { AccountBar, CreatorBadge } from './Account';
+import { FriendButton } from './Friends';
+import { Marks } from './Daily';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -55,6 +57,7 @@ export function Profile({ username }: { username: string }) {
               </div>
               <div className="row gap">
                 {mine && !editing && <button className="btn small" onClick={() => setEditing(true)}>Edit profile</button>}
+                {!mine && <FriendButton username={p.username} />}
                 <CopyLink />
               </div>
             </section>
@@ -65,9 +68,12 @@ export function Profile({ username }: { username: string }) {
                 <p className="muted">{mine ? 'Play a game while logged in and your stats will show up here once the game ends.' : `${p.displayName} hasn’t finished a game yet.`}</p>
                 {mine && <a className="btn primary" href="/">Play now</a>}
               </section>
-            ) : (
+            ) : null}
+            {p.totals.games === 0 && p.daily && <DailySection d={p.daily} />}
+            {p.totals.games === 0 ? null : (
               <>
                 <Tiles p={p} />
+                {p.daily && <DailySection d={p.daily} />}
                 <Subjects p={p} />
                 <Recent games={p.recent} />
               </>
@@ -219,6 +225,50 @@ function Subjects({ p }: { p: PublicProfile }) {
   );
 }
 
+/** Today's date in US Eastern, when the daily challenge rolls over. */
+const easternToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
+function DailySection({ d }: { d: DailyProfile }) {
+  const today = easternToday();
+  const tiles: { label: string; value: string; sub: string; tone?: string }[] = [
+    { label: '1st place', value: String(d.wins), sub: d.leadingToday ? 'and leading today' : plural(d.wins, 'daily win'), tone: 'accent' },
+    { label: 'Days played', value: String(d.played), sub: `${plural(d.podiums, 'top-3 finish').replace('finishs', 'finishes')}` },
+    { label: 'Best finish', value: `#${d.bestRank}`, sub: `best score ${d.bestScore}` },
+    { label: 'Avg score', value: fixed(d.avgPoints), sub: 'points per daily' },
+    { label: 'Streak', value: String(d.streak), sub: `${d.streak === 1 ? 'day' : 'days'} in a row · best ${d.longestStreak}` },
+  ];
+  return (
+    <section className="card">
+      <h2>Daily challenge</h2>
+      <div className="tiles">
+        {tiles.map((x) => (
+          <div key={x.label} className={`tile ${x.tone ?? ''}`}>
+            <div className="tile-label">{x.label}</div>
+            <div className="tile-value">{x.value}</div>
+            <div className="tile-sub">{x.sub}</div>
+          </div>
+        ))}
+      </div>
+      <ul className="recent daily-recent">
+        {d.recent.map((x) => {
+          const solo = x.players < 2;
+          return (
+            <li key={x.day}>
+              <span className={`result ${!solo && x.rank === 1 ? 'win' : solo ? '' : 'loss'}`}>{solo ? 'Solo' : `${ordinal(x.rank)} of ${x.players}`}</span>
+              <div className="grow">
+                <div><b>Daily #{x.number}</b> <span className="muted small">· {x.points} pts{x.day === today ? ' · so far today' : ''}</span></div>
+                <Marks marks={x.marks} size="sm" />
+              </div>
+              <span className="muted small when">{x.day === today ? 'Today' : new Date(`${x.day}T12:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="muted small">A 1st place counts once the day ends (midnight Eastern) and at least two people played. Ties go to whoever buzzed earlier on average.</p>
+    </section>
+  );
+}
+
 function Recent({ games }: { games: GameRecord[] }) {
   return (
     <section className="card">
@@ -226,12 +276,13 @@ function Recent({ games }: { games: GameRecord[] }) {
       <ul className="recent">
         {games.map((g, i) => {
           const solo = g.sides < 2;
-          const result = solo ? 'Solo' : g.rank === 1 ? 'Won' : `${ordinal(g.rank)} of ${g.sides}`;
+          const result = g.daily ? 'Daily' : solo ? 'Solo' : g.rank === 1 ? 'Won' : `${ordinal(g.rank)} of ${g.sides}`;
+          const kind = g.daily ? `Daily Challenge #${g.daily}` : g.mode === 'teams' ? 'teams' : 'free-for-all';
           return (
             <li key={`${g.at}-${i}`}>
-              <span className={`result ${solo ? '' : g.rank === 1 ? 'win' : 'loss'}`}>{result}</span>
+              <span className={`result ${g.daily ? 'daily' : solo ? '' : g.rank === 1 ? 'win' : 'loss'}`}>{result}</span>
               <div className="grow">
-                <div><b>{g.points} pts</b> <span className="muted small">· {g.powers}/{g.tens}/{g.negs} · {plural(g.tossups, 'tossup')} · {g.mode === 'teams' ? 'teams' : 'free-for-all'}{g.abandoned ? ' · unfinished' : ''}</span></div>
+                <div><b>{g.points} pts</b> <span className="muted small">· {g.daily && <>{kind} · </>}{g.powers}/{g.tens}/{g.negs} · {plural(g.tossups, 'tossup')}{g.daily ? '' : ` · ${kind}`}{g.abandoned ? ' · unfinished' : ''}</span></div>
                 {!solo && (
                   <div className="standings small">
                     {g.standings.map((s, j) => <span key={j} className={s.you ? 'you' : ''}>{s.name} {s.points}</span>)}

@@ -31,7 +31,11 @@ export interface DailyStore {
   count(day: string): Promise<number>;
   /** 1 + how many results for the day rank above this one. */
   rankOf(row: DailyRow): Promise<number>;
+  /** Every day this player played, newest first, with where they finished that day. */
+  history(playerKey: string): Promise<DailyPlace[]>;
 }
+
+export interface DailyPlace { row: DailyRow; rank: number; players: number }
 
 const better = (a: DailyRow, b: DailyRow) =>
   b.points - a.points || (a.depth ?? 2) - (b.depth ?? 2) || a.createdAt - b.createdAt;
@@ -72,6 +76,14 @@ export class FileDailyStore implements DailyStore {
   async top(day: string, limit: number) { return this.d.results.filter((r) => r.day === day).sort(better).slice(0, limit); }
   async count(day: string) { return this.d.results.filter((r) => r.day === day).length; }
   async rankOf(row: DailyRow) { return 1 + this.d.results.filter((r) => r.day === row.day && r.playerKey !== row.playerKey && better(r, row) < 0).length; }
+  async history(key: string) {
+    return this.d.results.filter((r) => r.playerKey === key)
+      .map((row) => {
+        const day = this.d.results.filter((r) => r.day === row.day);
+        return { row, rank: 1 + day.filter((r) => r.playerKey !== key && better(r, row) < 0).length, players: day.length };
+      })
+      .sort((a, b) => b.row.day.localeCompare(a.row.day));
+  }
 }
 
 const SCHEMA = `
@@ -141,11 +153,23 @@ export class PgDailyStore implements DailyStore {
   }
   async rankOf(x: DailyRow) {
     const r = await this.pool.query(
+      // $4 needs its type spelled out: inside COALESCE(..., 2) Postgres would read it as an integer
+      // and reject a fractional depth like 0.53, which made the daily status fail for anyone who had played.
       `SELECT count(*)::int AS n FROM daily_results WHERE day = $1 AND player_key <> $2 AND (
-         points > $3 OR (points = $3 AND COALESCE(depth, 2) < COALESCE($4, 2))
-         OR (points = $3 AND COALESCE(depth, 2) = COALESCE($4, 2) AND created_at < $5))`,
+         points > $3 OR (points = $3 AND COALESCE(depth, 2) < COALESCE($4::double precision, 2))
+         OR (points = $3 AND COALESCE(depth, 2) = COALESCE($4::double precision, 2) AND created_at < $5))`,
       [x.day, x.playerKey, x.points, x.depth, x.createdAt],
     );
     return 1 + (r.rows[0].n as number);
+  }
+  async history(key: string) {
+    const r = await this.pool.query(
+      `SELECT * FROM (
+         SELECT d.*, ROW_NUMBER() OVER (PARTITION BY day ORDER BY ${ORDER})::int AS place, COUNT(*) OVER (PARTITION BY day)::int AS players
+         FROM daily_results d WHERE day IN (SELECT day FROM daily_results WHERE player_key = $1)
+       ) t WHERE player_key = $1 ORDER BY day DESC`,
+      [key],
+    );
+    return r.rows.map((x) => ({ row: fromDb(x), rank: x.place as number, players: x.players as number }));
   }
 }

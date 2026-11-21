@@ -8,9 +8,9 @@ import { ActionError, Room, type RoomIO } from './rooms/room';
 import { botsFor } from './rooms/bots';
 import { MemoryRoomStore, newRoomCode, type RoomStore } from './rooms/store';
 import { SPECTATOR, type Settings } from '../shared/types';
-import { Accounts } from './accounts/accounts';
+import { Accounts, type Presence } from './accounts/accounts';
 import { FileAccountStore, PgAccountStore } from './accounts/store';
-import { Daily, playerKeyFor } from './daily/daily';
+import { Daily, dailyNumber, dayKey, playerKeyFor } from './daily/daily';
 import { FileDailyStore, PgDailyStore } from './daily/store';
 import { QBReaderProvider } from './questions/providers';
 
@@ -39,6 +39,18 @@ const daily = new Daily(
   new QBReaderProvider(),
 );
 
+// Profiles show each account's daily challenge record.
+accounts.profileExtras = async (u) => {
+  const d = await daily.profile(playerKeyFor(u.id, null)!);
+  return d ? { daily: d } : {};
+};
+// Games saved before records carried their daily-challenge number: match them to that day's result.
+accounts.findDaily = async (accountId, at, points) => {
+  const day = dayKey(new Date(at));
+  const r = await daily.result(day, playerKeyFor(accountId, null)!);
+  return r && r.points === points ? dailyNumber(day) : null;
+};
+
 /** Hook a daily room up to the leaderboard (also after a restart). */
 function attachDaily(room: Room) {
   const d = room.s.daily;
@@ -52,6 +64,34 @@ function attachDaily(room: Room) {
     daily.set(d.day).then((t) => room.useDailyQuestions(t)).catch(() => { /* the room shows an error when it asks for a question */ });
   }
 }
+/** Friends list: who is online, and which room they're in. Daily-challenge rooms stay hidden. */
+accounts.presence = (ids) => {
+  const want = new Set(ids);
+  const out = new Map<string, Presence>();
+  if (!want.size) return out;
+  for (const sock of io.sockets.sockets.values()) {
+    const a = accounts.of(sock);
+    if (a && want.has(a.id)) out.set(a.id, { status: 'online' });
+  }
+  // In several rooms at once (several tabs): show the most recently active one.
+  const seen = new Map<string, number>();
+  for (const room of store.all()) {
+    for (const p of room.s.players) {
+      if (!p.accountId || !p.online || p.bot || !want.has(p.accountId)) continue;
+      const rank = room.s.daily ? 0 : 1;
+      const prev = seen.get(p.accountId);
+      const score = rank * 1e15 + room.s.lastActive;
+      if (prev !== undefined && prev >= score) continue;
+      seen.set(p.accountId, score);
+      if (room.s.daily) { out.set(p.accountId, { status: 'daily' }); continue; }
+      const phase = room.s.phase === 'lobby' ? 'lobby' : room.s.phase === 'gameOver' ? 'over' : 'playing';
+      const players = room.s.players.filter((x) => x.online && !x.bot).length;
+      out.set(p.accountId, { status: 'room', room: { code: room.s.code, phase, mode: room.s.settings.mode, players } });
+    }
+  }
+  return out;
+};
+
 // Behind Render's / Fly's proxy: trust it for the client IP and https.
 app.set('trust proxy', 1);
 
@@ -311,6 +351,7 @@ io.on('connection', (socket) => {
   socket.on('ruling:override', handle(socket, (r, p, rulingId) => r.override(p, rulingId)));
   socket.on('score:adjust', handle(socket, (r, p, target, delta) => r.adjust(p, target, delta)));
   socket.on('packet:upload', handle(socket, (r, p, packet) => r.upload(p, packet)));
+  socket.on('vote', handle(socket, (r, p, category) => r.castVote(p, String(category ?? ''))));
 
   socket.on('disconnect', () => {
     const { code, playerId } = socket.data as SocketData;

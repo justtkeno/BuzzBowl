@@ -15,6 +15,9 @@ export interface User {
   createdAt: number;
 }
 
+/** A friend request from `from` to `to`; once accepted, the two are friends. */
+export interface FriendLink { from: string; to: string; accepted: boolean; at: number }
+
 export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings'>>;
 
 /** Where accounts live. Postgres in production, a JSON file for local development and tests. */
@@ -34,6 +37,15 @@ export interface AccountStore {
   addGames(entries: { userId: string; game: GameRecord }[]): Promise<void>;
   /** Newest first. */
   games(userId: string, limit: number): Promise<GameRecord[]>;
+  usersByIds(ids: string[]): Promise<User[]>;
+  /** Every friend link (either direction) that involves this user. */
+  friendLinks(userId: string): Promise<FriendLink[]>;
+  /** Adds a pending request unless there is already a link from `from` to `to`. */
+  requestFriend(from: string, to: string, at: number): Promise<void>;
+  /** Accepts a pending request from `from` to `to`. Returns false when there was none. */
+  acceptFriend(from: string, to: string): Promise<boolean>;
+  /** Removes any link between the two, in both directions. */
+  removeFriend(a: string, b: string): Promise<void>;
   readonly kind: string;
 }
 
@@ -43,11 +55,12 @@ interface FileData {
   users: User[];
   sessions: { hash: string; userId: string; expiresAt: number }[];
   games: { userId: string; game: GameRecord }[];
+  friends: FriendLink[];
 }
 
 export class FileAccountStore implements AccountStore {
   readonly kind = 'file';
-  private d: FileData = { users: [], sessions: [], games: [] };
+  private d: FileData = { users: [], sessions: [], games: [], friends: [] };
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private file: string | null) {}
@@ -55,7 +68,7 @@ export class FileAccountStore implements AccountStore {
   async init() {
     if (!this.file || !existsSync(this.file)) return;
     try {
-      this.d = { users: [], sessions: [], games: [], ...JSON.parse(readFileSync(this.file, 'utf8')) };
+      this.d = { users: [], sessions: [], games: [], friends: [], ...JSON.parse(readFileSync(this.file, 'utf8')) };
     } catch (e) {
       console.error(`Could not read ${this.file}:`, e);
     }
@@ -104,6 +117,7 @@ export class FileAccountStore implements AccountStore {
     this.d.users = this.d.users.filter((u) => u.id !== id);
     this.d.sessions = this.d.sessions.filter((s) => s.userId !== id);
     this.d.games = this.d.games.filter((g) => g.userId !== id);
+    this.d.friends = this.d.friends.filter((f) => f.from !== id && f.to !== id);
     this.save();
   }
   async createSession(hash: string, userId: string, expiresAt: number) {
@@ -128,6 +142,29 @@ export class FileAccountStore implements AccountStore {
       if (this.d.games[i].userId === userId) out.push(structuredClone(this.d.games[i].game));
     }
     return out;
+  }
+  async usersByIds(ids: string[]) {
+    const want = new Set(ids);
+    return structuredClone(this.d.users.filter((u) => want.has(u.id)));
+  }
+  async friendLinks(userId: string) {
+    return structuredClone(this.d.friends.filter((f) => f.from === userId || f.to === userId));
+  }
+  async requestFriend(from: string, to: string, at: number) {
+    if (this.d.friends.some((f) => f.from === from && f.to === to)) return;
+    this.d.friends.push({ from, to, accepted: false, at });
+    this.save();
+  }
+  async acceptFriend(from: string, to: string) {
+    const f = this.d.friends.find((x) => x.from === from && x.to === to && !x.accepted);
+    if (!f) return false;
+    f.accepted = true;
+    this.save();
+    return true;
+  }
+  async removeFriend(a: string, b: string) {
+    this.d.friends = this.d.friends.filter((f) => !((f.from === a && f.to === b) || (f.from === b && f.to === a)));
+    this.save();
   }
 }
 
@@ -156,6 +193,14 @@ CREATE TABLE IF NOT EXISTS games (
   data JSONB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS games_user_at ON games (user_id, at DESC);
+CREATE TABLE IF NOT EXISTS friends (
+  from_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  accepted BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (from_id, to_id)
+);
+CREATE INDEX IF NOT EXISTS friends_to ON friends (to_id);
 `;
 
 interface UserRow {
@@ -226,5 +271,25 @@ export class PgAccountStore implements AccountStore {
   async games(userId: string, limit: number) {
     const r = await this.pool.query<{ data: GameRecord }>('SELECT data FROM games WHERE user_id = $1 ORDER BY at DESC LIMIT $2', [userId, limit]);
     return r.rows.map((x) => x.data);
+  }
+  async usersByIds(ids: string[]) {
+    if (!ids.length) return [];
+    const r = await this.pool.query<UserRow>('SELECT * FROM users WHERE id = ANY($1)', [ids]);
+    return r.rows.map((x) => fromRow(x)!);
+  }
+  async friendLinks(userId: string) {
+    const r = await this.pool.query<{ from_id: string; to_id: string; accepted: boolean; created_at: string }>(
+      'SELECT from_id, to_id, accepted, created_at FROM friends WHERE from_id = $1 OR to_id = $1', [userId]);
+    return r.rows.map((x) => ({ from: x.from_id, to: x.to_id, accepted: x.accepted, at: Number(x.created_at) }));
+  }
+  async requestFriend(from: string, to: string, at: number) {
+    await this.pool.query('INSERT INTO friends (from_id, to_id, created_at) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [from, to, at]);
+  }
+  async acceptFriend(from: string, to: string) {
+    const r = await this.pool.query('UPDATE friends SET accepted = TRUE WHERE from_id = $1 AND to_id = $2 AND NOT accepted', [from, to]);
+    return !!r.rowCount;
+  }
+  async removeFriend(a: string, b: string) {
+    await this.pool.query('DELETE FROM friends WHERE (from_id = $1 AND to_id = $2) OR (from_id = $2 AND to_id = $1)', [a, b]);
   }
 }

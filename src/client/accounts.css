@@ -63,6 +63,7 @@ a.btn.primary { color: var(--accent-ink); }
 .recent .result { flex: none; width: 76px; text-align: center; font-size: .8rem; font-weight: 700; padding: .25rem .4rem; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
 .recent .result.win { background: var(--ok-soft); color: var(--ok); }
 .recent .result.loss { background: var(--surface-2); color: var(--text); }
+.recent .result.daily { background: var(--accent-soft); color: var(--accent); }
 .recent .when { flex: none; }
 .standings { display: flex; flex-wrap: wrap; gap: .2rem .7rem; color: var(--muted); }
 .standings .you { color: var(--text); font-weight: 600; }
@@ -89,3 +90,27 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .admin-card .confirm { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
 .btn.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(1.08); }
+
+/* ---------- friends ---------- */
+/* contain: the home page is a centered grid that would otherwise widen to fit long names. */
+.friends-card { contain: inline-size; border: 1px solid var(--border); border-radius: var(--radius); padding: .75rem .9rem; display: flex; flex-direction: column; gap: .55rem; background: var(--surface); }
+.friends-card .row.between { align-items: center; gap: .75rem; }
+.friends-card .error { margin: 0; }
+.friends-badge { display: inline-grid; place-items: center; min-width: 1.15rem; height: 1.15rem; padding: 0 .3rem; margin-left: .4rem; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: .7rem; font-weight: 700; vertical-align: 1px; }
+.friend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.friend { display: flex; align-items: center; gap: .6rem; padding: .4rem 0; border-top: 1px solid var(--border); min-width: 0; }
+.friend-list:first-of-type .friend:first-child { border-top: none; }
+.friend.offline .friend-avatar, .friend.offline .friend-name { opacity: .6; }
+.friend-text { min-width: 0; }
+.friend-text .small { overflow-wrap: anywhere; }
+.friend-name { color: var(--text); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-name:hover { text-decoration: underline; }
+.friend-actions { flex: none; }
+.friend-avatar { position: relative; width: 30px; height: 30px; }
+.friend-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); background: var(--ok); }
+.friend-dot.room { background: var(--accent); }
+.friend-dot.daily { background: var(--power); }
+.friend-list.sent .friend { opacity: .8; }
+.friends-more { align-self: flex-start; }
+.daily-recent { margin-top: .8rem; }
+.daily-recent .marks { margin-top: .2rem; }

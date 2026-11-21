@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BuzzMarker, PublicState, Verdict } from '../../shared/types';
-import { DIFFICULTIES, buzzWindowSeconds } from '../../shared/types';
+import { DIFFICULTIES, VOTE_SECONDS, buzzWindowSeconds } from '../../shared/types';
 import { socket } from '../socket';
 import { play } from '../sounds';
+import { readAloudActive, setSpeechOn, speechSupported, useSpeechOn } from '../speech';
 import { act, colorFor, isTouch, resultLabel, roles, useNow, vibrate } from './util';
 
 export function Stage({ s }: { s: PublicState }) {
@@ -16,7 +17,7 @@ export function Stage({ s }: { s: PublicState }) {
   // The site admin can move things along in any room.
   const isAdmin = !!s.players.find((p) => p.id === r.me)?.admin;
   const canSkip = r.isController || isAdmin;
-  const canNext = (r.canDirect || isAdmin) && (s.phase === 'tossupEnd' || !!bonusDone);
+  const canNext = (r.canDirect || isAdmin) && (s.phase === 'tossupEnd' || !!bonusDone) && !s.vote;
   const [buzzing, setBuzzing] = useState(false);
   // Phones only open the keyboard when focus happens inside a tap, but the answer box appears a moment
   // later (after the server awards the buzz). Focusing this hidden input during the tap opens the keyboard
@@ -53,7 +54,9 @@ export function Stage({ s }: { s: PublicState }) {
         if (r.isReader && s.phase === 'reading' && t) act('game:pause', !t.paused);
         else buzz();
       } else if (e.key === 'n' || e.key === 'N') {
-        if (canNext || (canSkip && (s.phase === 'reading' || s.phase === 'bonus'))) act('game:next');
+        if (canNext || s.vote || (canSkip && (s.phase === 'reading' || s.phase === 'bonus'))) act('game:next');
+      } else if (s.vote && /^[1-9]$/.test(e.key) && s.vote.options[Number(e.key) - 1]) {
+        act('vote', s.vote.options[Number(e.key) - 1]);
       } else if (e.key === 'ArrowRight' && r.isController && s.phase === 'reading' && t) {
         act('game:revealTo', t.revealed.length + 1);
       }
@@ -91,9 +94,45 @@ export function Stage({ s }: { s: PublicState }) {
             {s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : s.settings.source === 'lightning' ? 'Next question' : 'Next tossup'} <kbd>N</kbd>
           </button>
         )}
+        {s.vote && <VotePanel s={s} />}
         {!r.canDirect && (s.phase === 'tossupEnd' || bonusDone) && <p className="muted">Waiting for the reader to continue…</p>}
       </div>
     </div>
+  );
+}
+
+/** Between tossups in party mode: pick the next topic. Starts when everyone has voted, time runs out, or someone taps Start now. */
+function VotePanel({ s }: { s: PublicState }) {
+  const v = s.vote!;
+  const canVote = !!roles(s).myTeam;
+  return (
+    <div className="vote" role="group" aria-label="Vote on the next topic">
+      <div className="vote-head">
+        <span>Next topic <span className="muted small">· {v.voted}/{v.voters} voted</span></span>
+        <button className="btn ghost small" onClick={() => act('game:next')} disabled={s.paused}>Start now</button>
+      </div>
+      <div className="vote-options">
+        {v.options.map((o, i) => (
+          <button key={o} className={`vote-opt ${v.mine === o ? 'on' : ''}`} disabled={!canVote || s.paused} onClick={() => act('vote', o)} aria-pressed={v.mine === o}>
+            <span className="vote-name">{o}</span>
+            <span className="vote-count">{v.counts[o] ? v.counts[o] : ''}</span>
+            {!isTouch() && <kbd>{i + 1}</kbd>}
+          </button>
+        ))}
+      </div>
+      <Countdown deadline={v.deadline} total={VOTE_SECONDS} frozen={s.paused} />
+    </div>
+  );
+}
+
+/** This device only: turn the read-aloud voice on or off. */
+function SpeakerToggle() {
+  const on = useSpeechOn();
+  return (
+    <button className={`speaker ${on ? 'on' : ''}`} onClick={() => setSpeechOn(!on)} aria-pressed={on}
+      title={on ? 'Reading aloud on this device. Tap to mute.' : 'Muted on this device. Tap to read aloud.'}>
+      {on ? 'Read aloud' : 'Muted'}
+    </button>
   );
 }
 
@@ -168,6 +207,7 @@ export function TossupCard({ s }: { s: PublicState }) {
         <span>{t.category}{t.subcategory && t.subcategory !== t.category ? ` · ${t.subcategory}` : ''}</span>
         {t.difficulty ? <span className="muted">{DIFFICULTIES[t.difficulty] ?? `Level ${t.difficulty}`}</span> : null}
         {t.setName && <span className="muted hide-sm">{t.setName}{t.year ? ` (${t.year})` : ''}</span>}
+        {readAloudActive(s) && speechSupported() && <SpeakerToggle />}
       </div>
 
       {hidden ? (

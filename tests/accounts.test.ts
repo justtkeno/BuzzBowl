@@ -114,6 +114,30 @@ const provider = (): QuestionProvider => {
   return { nextTossup: async () => ({ ...TOSSUP, id: `t${++n}` }), nextBonus: async () => null };
 };
 
+describe('recent games', () => {
+  it('labels daily challenges, including games saved before they carried the number', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-recent-'));
+    const store = new FileAccountStore(join(dir, 'accounts.json'));
+    const accounts = new Accounts(store);
+    await accounts.init();
+    await store.createUser({ id: 'u1', username: 'hao', key: 'hao', passwordHash: 'x', displayName: 'Hao', bio: '', settings: null, createdAt: 0 });
+    const game = (at: number, points: number, extra: Partial<GameRecord> = {}): GameRecord => ({
+      at, room: 'R', mode: 'ffa', sides: 1, rank: 1, standings: [], tossups: 10, points, powers: 0, tens: 0, negs: 0,
+      buzzes: 0, heard: 10, correctDepthSum: 0, bestStreak: 0, bonusPoints: 0, bonusesHeard: 0, categories: {}, ...extra,
+    });
+    accounts.record([
+      { accountId: 'u1', game: game(1000, 145) }, // an old daily game, saved without the number
+      { accountId: 'u1', game: game(2000, 60) }, // plain solo practice
+      { accountId: 'u1', game: game(3000, 90, { daily: 4 }) },
+    ]);
+    await vi.waitFor(async () => expect(await store.games('u1', 10)).toHaveLength(3));
+    accounts.findDaily = async (id, at, points) => (id === 'u1' && at === 1000 && points === 145 ? 3 : null);
+    const recent = (await accounts.profile('hao'))!.recent;
+    expect(Object.fromEntries(recent.map((g) => [g.at, g.daily]))).toEqual({ 1000: 3, 2000: undefined, 3000: 4 });
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('game results', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -213,5 +237,87 @@ describe('admin moderation API', () => {
     expect((await fetch(`${base}/users/troll`)).status).toBe(404);
     // The deleted account's session is gone too.
     expect((await (await fetch(`${base}/me`, { headers: { cookie: troll.cookie } })).json()).user).toBeNull();
+  });
+});
+
+describe('friends API', () => {
+  let server: Server;
+  let base: string;
+  let dir: string;
+  let accounts: Accounts;
+  let where = new Map<string, import('../src/server/accounts/accounts').Presence>();
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-friends-'));
+    accounts = new Accounts(new FileAccountStore(join(dir, 'accounts.json')));
+    await accounts.init();
+    accounts.presence = (ids) => new Map([...where].filter(([id]) => ids.includes(id)));
+    const app = express();
+    app.use('/api', accounts.router());
+    server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+  });
+  afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  const req = (method: string, path: string, body?: unknown, cookie?: string) =>
+    fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const signup = async (username: string) => {
+    const res = await req('POST', '/signup', { username, password: 'long-enough-pw' });
+    return { cookie: res.headers.get('set-cookie')!.split(';')[0], user: (await res.json()).user };
+  };
+  const list = async (cookie: string) => (await req('GET', '/friends', undefined, cookie)).json();
+
+  it('needs a login and a real username that isn’t yours', async () => {
+    expect((await req('GET', '/friends')).status).toBe(401);
+    const me = await signup('solo_sam');
+    expect((await req('POST', '/friends', { username: 'nobody_here' }, me.cookie)).status).toBe(404);
+    expect((await req('POST', '/friends', { username: 'SOLO_SAM' }, me.cookie)).status).toBe(400);
+  });
+
+  it('sends a request, accepts it, shows where friends are, and unfriends', async () => {
+    const amy = await signup('amy');
+    const ben = await signup('ben');
+    // Amy asks (with an @ and different case); Ben sees it waiting.
+    const sent = await (await req('POST', '/friends', { username: '@BEN' }, amy.cookie)).json();
+    expect(sent.outgoing.map((r: any) => r.username)).toEqual(['ben']);
+    expect(sent.friends).toEqual([]);
+    expect((await list(ben.cookie)).incoming.map((r: any) => r.username)).toEqual(['amy']);
+    // Presence is hidden until they're friends.
+    where = new Map([[amy.user.id, { status: 'room', room: { code: 'ABCD', phase: 'lobby', mode: 'ffa', players: 2 } }]]);
+    expect((await list(ben.cookie)).friends).toEqual([]);
+    // Ben accepts by adding her back.
+    const accepted = await (await req('POST', '/friends', { username: 'amy' }, ben.cookie)).json();
+    expect(accepted.incoming).toEqual([]);
+    expect(accepted.friends).toEqual([{ username: 'amy', displayName: 'amy', admin: false, status: 'room', room: { code: 'ABCD', phase: 'lobby', mode: 'ffa', players: 2 } }]);
+    expect((await list(amy.cookie)).friends).toMatchObject([{ username: 'ben', status: 'offline' }]);
+    expect((await list(amy.cookie)).friends[0].room).toBeUndefined();
+    // Asking again changes nothing.
+    expect((await (await req('POST', '/friends', { username: 'ben' }, amy.cookie)).json()).friends).toHaveLength(1);
+    // Either side can unfriend.
+    expect((await (await req('DELETE', '/friends/AMY', undefined, ben.cookie)).json()).friends).toEqual([]);
+    expect((await list(amy.cookie)).friends).toEqual([]);
+    where = new Map();
+  });
+
+  it('lets the other side decline, and the sender cancel', async () => {
+    const cal = await signup('cal');
+    const dee = await signup('dee');
+    await req('POST', '/friends', { username: 'dee' }, cal.cookie);
+    expect((await (await req('DELETE', '/friends/cal', undefined, dee.cookie)).json()).incoming).toEqual([]);
+    expect((await list(cal.cookie)).outgoing).toEqual([]);
+    await req('POST', '/friends', { username: 'dee' }, cal.cookie);
+    expect((await (await req('DELETE', '/friends/dee', undefined, cal.cookie)).json()).outgoing).toEqual([]);
+    expect((await list(dee.cookie)).incoming).toEqual([]);
+  });
+
+  it('drops friend links when an account is deleted', async () => {
+    const store = new FileAccountStore(null);
+    await store.requestFriend('a', 'b', 1);
+    await store.acceptFriend('a', 'b');
+    await store.requestFriend('c', 'a', 2);
+    await store.deleteUser('a');
+    expect(await store.friendLinks('b')).toEqual([]);
+    expect(await store.friendLinks('c')).toEqual([]);
   });
 });

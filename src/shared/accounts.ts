@@ -34,6 +34,8 @@ export interface GameRecord {
   standings: { name: string; points: number; you: boolean }[];
   /** True when the game stopped because everyone left, not because the host ended it. */
   abandoned?: boolean;
+  /** The daily challenge's number when this game was that day's challenge. */
+  daily?: number;
   tossups: number;
   points: number;
   powers: number;
@@ -88,6 +90,28 @@ export interface PublicProfile {
   subjects: SubjectStats[];
   bestSubject: string | null;
   recent: GameRecord[];
+  /** Daily challenge record, once they've played one while logged in. */
+  daily?: DailyProfile;
+}
+
+/** One finished daily challenge on a profile. */
+export interface DailyDay { day: string; number: number; points: number; rank: number; players: number; marks: string }
+
+export interface DailyProfile {
+  played: number;
+  /** Finished #1 on a day that's over, with at least one other player. */
+  wins: number;
+  /** Finished in the top 3 on a day that's over, with at least three players. */
+  podiums: number;
+  bestRank: number;
+  bestScore: number;
+  avgPoints: number;
+  /** Days in a row played, up to today (or yesterday, if today isn't played yet). */
+  streak: number;
+  longestStreak: number;
+  /** Currently #1 on today's leaderboard (it can still change until midnight Eastern). */
+  leadingToday: boolean;
+  recent: DailyDay[];
 }
 
 /** Need this many tossups heard in a subject before it can be "best subject". */
@@ -130,4 +154,44 @@ export function summarize(games: GameRecord[]): Pick<PublicProfile, 'totals' | '
   const top = subjects[0];
   const bestSubject = top && top.heard >= BEST_SUBJECT_MIN_HEARD && top.points > 0 ? top.category : null;
   return { totals: t, subjects, bestSubject };
+}
+
+// ---------- friends ----------
+
+/** Friends plus pending requests (both ways) per account. */
+export const FRIENDS_MAX = 200;
+
+/** Where a friend is right now. Daily-challenge rooms are never shown, so nobody can join or watch one. */
+export type FriendStatus = 'offline' | 'online' | 'room' | 'daily';
+
+export interface FriendRoom {
+  code: string;
+  /** lobby: not started yet; playing: a game is running; over: on the results screen. */
+  phase: 'lobby' | 'playing' | 'over';
+  mode: Mode;
+  /** People connected in the room (bots not counted). */
+  players: number;
+}
+
+export interface Friend {
+  username: string;
+  displayName: string;
+  admin: boolean;
+  status: FriendStatus;
+  room?: FriendRoom;
+}
+
+export interface FriendRequest {
+  username: string;
+  displayName: string;
+  admin: boolean;
+  at: number;
+}
+
+export interface FriendsList {
+  friends: Friend[];
+  /** Requests waiting on you. */
+  incoming: FriendRequest[];
+  /** Requests you sent that haven't been accepted. */
+  outgoing: FriendRequest[];
 }

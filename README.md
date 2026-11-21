@@ -26,12 +26,21 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` + `
 ## How to play
 
 1. **Create room** → share the 4-letter code or invite link. **Solo practice** starts a private room immediately.
-2. The host opens **Settings** to pick free-for-all or teams, scoring, speed, and question filters.
+2. The host opens **Settings** to pick free-for-all or teams, scoring, speed, and question filters. Settings can also change mid-match (⋯ menu → ⚙️ Settings on phones): a longer or shorter answer, buzz-window or bonus time applies to a clock that is already running, and chat tells everyone what changed.
 3. **Start game.** Words appear as they are read. Press **Space** (or tap the big button) to buzz. Reading stops for everyone, you get 7 seconds to type, and others watch you type.
 4. Scoring (NAQT-style, all configurable): 15 for a correct buzz before the `(*)`, 10 after it, −5 for a wrong answer before the question ends, 0 after. One buzz per player (or per team) per tossup.
 5. In team mode, the team that converts the tossup gets a 3-part bonus. Teammates talk in **team chat**. The captain submits each part.
 6. Press **N** (or **Next tossup**) to continue. **Review** shows every finished question with full text, answer line, and where each player buzzed.
 7. **End game** shows the summary: points, powers/tens/negs, points per tossup heard, average buzz depth, PPB, and a per-category breakdown.
+
+### Party mode
+
+For a quick free-for-all with no reader. In the lobby, the host taps **Party mode** (or picks **Party** under Format in Settings):
+
+- **Read aloud**: every phone reads the tossup out loud with its built-in voice, in step with the words appearing on screen. Reading stops when someone buzzes and picks up again after a wrong answer. Each device can mute itself with the **Read aloud** chip on the question card, so in the same room one phone or the big-screen view can do the talking.
+- **Topic vote**: after each tossup, players pick the next one's category from three choices (only categories the room's filters allow). The next tossup starts when everyone has voted, after 10 seconds, or when anyone taps **Start now** (or presses **N**). Keys **1**–**3** vote. Ties are broken at random.
+
+Both are separate settings under **Without a reader**, so either can be used on its own. They switch off while someone holds the reader seat, and never apply to the daily challenge.
 
 ### Reader (moderator) seat
 
@@ -70,6 +79,7 @@ Anyone can still play as a guest. **Sign up** on the home screen (username + pas
 - a public profile at `/u/<username>` with games, wins, points per game and per tossup, powers/tens/negs, buzz accuracy and depth, best game, a per-subject breakdown with your **best subject**, and recent games
 - a green check next to your name in rooms (links to your profile), and your seat back if you rejoin from another device
 - your display name and room settings remembered on any device
+- **friends**: add someone by username from the **Friends** card on the home screen (or **Add friend** on their profile). Once they accept, you see who's online and who's in a room, with **Join** and **Watch** buttons. Friends only see your room after you've both said yes. Daily-challenge rooms are never shown.
 
 Results are saved when the host ends a game, or when everyone walks away from a game with at least 3 tossups heard. Solo games count toward stats but not wins. Passwords are hashed with scrypt, sessions are an HTTP-only cookie, and login/signup are rate-limited. There is no email password reset.
 
@@ -113,7 +123,7 @@ Pick **⚡ Lightning round** as the question source in Settings for fast one-lin
 
 ## How the timing stays fair
 
-The server owns the clock. It reveals each word (`tick` events) and records when it sent it. A buzz carries the number of words that client had shown. The server trusts that count only back to words sent within the last 1.2 s (plausible lag), and after the first buzz arrives it waits 120 ms for slower connections, then awards the buzz to whoever had seen the fewest words. Points (power vs. ten, neg vs. no penalty) use that word count. Clients never decide anything. Players never receive words before they're read, and players never receive answers before the tossup ends. Only the reader gets both early.
+The server owns the clock. It reveals each word (`tick` events) and records when it sent it. A buzz carries the number of words that client had shown. The server trusts that count only back to words sent within the last 1.2 s (plausible lag), and after the first buzz arrives it waits 120 ms for slower connections, then awards the buzz to whoever had seen the fewest words. Points (power vs. ten, neg vs. no penalty) use that word count. Clients never decide anything. Players never receive words before they're read, and players never receive answers before the tossup ends. Only the reader gets both early. Read aloud follows the same rule: a device only speaks words it has already been sent.
 
 ## Project layout
 
