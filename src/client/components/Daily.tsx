@@ -58,10 +58,23 @@ export function DailyBoard({ status }: { status: DailyStatus }) {
 
 /** Home page card: play today's challenge, or see how you did. */
 export function DailyCard({ busy, connected, onPlay, openOnLoad }: { busy: boolean; connected: boolean; onPlay: () => void; openOnLoad: boolean }) {
-  const { status, error } = useDailyStatus(connected);
+  const { status, error, refresh } = useDailyStatus(connected);
   const [open, setOpen] = useState(openOnLoad);
   useEffect(() => { if (openOnLoad) setOpen(true); }, [openOnLoad]);
-  if (error) return null;
+  // Keep the card on screen if the status can't load, so today's results are never just gone.
+  if (error && !status) {
+    return (
+      <section className="daily-card" aria-label="Daily challenge">
+        <div className="row between">
+          <div>
+            <div className="daily-title">Daily challenge</div>
+            <div className="muted small">{error}</div>
+          </div>
+          <button className="btn" disabled={!connected} onClick={refresh}>Try again</button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="daily-card" aria-label="Daily challenge">
       <div className="row between">
