@@ -162,7 +162,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .buzzer:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 3px 0 color-mix(in srgb, var(--accent) 60%, black); }
 .buzzer small { font-size: .75rem; font-weight: 500; letter-spacing: 0; opacity: .8; }
 .buzzer.disabled { background: var(--surface-2); color: var(--muted); box-shadow: none; cursor: default; font-size: 1.2rem; }
-.answerbox { flex: 1 1 100%; display: flex; flex-direction: column; gap: .5rem; background: var(--surface); border: 2px solid var(--accent); border-radius: var(--radius); padding: .8rem; }
+.answerbox { flex: 1 1 100%; min-width: 0; display: flex; flex-direction: column; gap: .5rem; background: var(--surface); border: 2px solid var(--accent); border-radius: var(--radius); padding: .8rem; }
 .answerbox input.big { font-size: 1.15rem; padding: .7rem .8rem; }
 .prompt-note { font-weight: 600; color: var(--accent); }
 .ruling-box { flex: 1 1 100%; display: flex; flex-direction: column; gap: .6rem; background: var(--power-soft); border: 1px solid var(--power); border-radius: var(--radius); padding: .8rem; }
@@ -274,6 +274,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
   input[type='text'], input:not([type]), input[type='number'], select, textarea { font-size: 16px; } /* stops iOS zooming in */
   .next-btn { position: fixed; left: 12px; right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); z-index: 10; min-height: 64px; font-size: 1.15rem; box-shadow: 0 6px 24px rgb(0 0 0 / 22%); }
   .answerbox .answer-row { flex-wrap: nowrap; }
+  .answerbox .answer-row input { min-width: 0; }
   .answerbox .answer-row .btn { padding-inline: .9rem; }
   .ruling-box .btn, .reader-controls .btn { min-height: 44px; }
   .status { font-size: .92rem; }

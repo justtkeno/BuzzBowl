@@ -273,6 +273,59 @@ describe('players', () => {
   });
 });
 
+describe('changing settings mid-match', () => {
+  it('stretches a running answer clock and tells everyone', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 3);
+    room.buzz(ids[1], 3);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    const deadline = room.s.buzz!.deadline!;
+    room.updateSettings(ids[0], { answerSeconds: 15 });
+    expect(room.s.buzz!.deadline!).toBe(deadline + 8_000);
+    expect(room.s.chat.at(-1)?.text).toBe('Ann changed answer time to 15 s.');
+    await vi.advanceTimersByTimeAsync(10_000); // past the old 7 s limit
+    expect(room.s.phase).toBe('buzz');
+    room.submitAnswer(ids[1], 'mitochondria');
+    expect(room.s.rulings[0]).toMatchObject({ kind: 'power' });
+  });
+
+  it('shortens a running clock but leaves at least a second', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 3);
+    room.buzz(ids[1], 3);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    await vi.advanceTimersByTimeAsync(4_000);
+    room.updateSettings(ids[0], { answerSeconds: 2 });
+    expect(room.s.buzz!.deadline! - Date.now()).toBe(1_000);
+    await vi.advanceTimersByTimeAsync(1_001);
+    expect(room.s.phase).not.toBe('buzz');
+  });
+
+  it('stretches the buzz window after the last word', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 10);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(room.s.tossup!.deadline).toBeTruthy();
+    room.updateSettings(ids[0], { deadSeconds: 10 });
+    await vi.advanceTimersByTimeAsync(6_000); // past the old 5 s window
+    expect(room.s.phase).toBe('reading');
+    room.buzz(ids[0], 10);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(room.s.phase).toBe('buzz');
+  });
+
+  it('lists several changes in one chat note and stays quiet in the lobby', async () => {
+    const room = new Room('TEST', io, { qbreader: fakeProvider() });
+    const host = room.join('Ann').playerId;
+    room.updateSettings(host, { answerSeconds: 10 });
+    expect(room.s.chat.filter((m) => m.system && m.text.includes('changed'))).toHaveLength(0);
+    room.start(host);
+    await flush();
+    room.updateSettings(host, { negs: false, powerValue: 20, wpm: 300 });
+    expect(room.s.chat.at(-1)?.text).toBe('Ann changed reading speed to 300 wpm, negs off, power value to 20.');
+  });
+});
+
 describe('game pause', () => {
   it('freezes the answer clock and shifts the deadline on resume', async () => {
     const { room, ids } = await setup();
@@ -288,6 +341,22 @@ describe('game pause', () => {
     expect(room.s.buzz!.deadline!).toBeGreaterThanOrEqual(deadline + 60_000);
     room.submitAnswer(ids[1], 'mitochondria');
     expect(room.s.phase).toBe('tossupEnd');
+  });
+
+  it('keeps a changed answer time when the game is paused', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 3);
+    room.buzz(ids[1], 3);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    room.pauseGame(ids[0], true);
+    const deadline = room.s.buzz!.deadline!;
+    room.updateSettings(ids[0], { answerSeconds: 20 });
+    expect(room.s.buzz!.deadline!).toBe(deadline + 13_000);
+    room.pauseGame(ids[0], false);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(room.s.phase).toBe('buzz');
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(room.s.phase).not.toBe('buzz');
   });
 
   it('only lets the host or reader pause', async () => {

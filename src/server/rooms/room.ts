@@ -28,6 +28,23 @@ export interface JoinAccount { id: string; username: string; admin?: boolean }
 export class ActionError extends Error {}
 const fail = (msg: string): never => { throw new ActionError(msg); };
 
+/** How each setting reads in the chat note when the host changes it mid-match. */
+const SETTING_LABELS: [keyof Settings, string, string][] = [
+  ['wpm', 'reading speed', ' wpm'],
+  ['answerSeconds', 'answer time', ' s'],
+  ['deadSeconds', 'buzz window after the question', ' s'],
+  ['bonusSeconds', 'bonus time', ' s per part'],
+  ['powers', 'powers', ''],
+  ['negs', 'negs', ''],
+  ['bonuses', 'bonuses', ''],
+  ['powerValue', 'power value', ''],
+  ['tenValue', 'tossup value', ''],
+  ['negValue', 'neg value', ''],
+  ['bonusPartValue', 'bonus part value', ''],
+  ['showTextToPlayers', 'question text for players', ''],
+  ['readerRules', 'reader rulings', ''],
+];
+
 export const TIMING = {
   /** A host or reader who drops gets their seat back if they reconnect within this long. */
   seatHoldMs: 3 * 60_000,
@@ -489,6 +506,7 @@ export class Room {
     if (this.s.daily) fail('The daily challenge uses the same settings for everyone.');
     const s = this.s.settings;
     const questionsKey = this.questionsKey();
+    const before = { ...s };
     if (patch.mode && patch.mode !== s.mode) {
       if (this.midGame()) fail('Change the mode between questions.');
       s.mode = patch.mode === 'teams' ? 'teams' : 'ffa';
@@ -520,15 +538,38 @@ export class Room {
         maxYear: f.maxYear ? clamp(f.maxYear, 1990, 2100, 0) || undefined : undefined,
       };
     }
-    if (patch.source || patch.filters) {
-      const before = questionsKey;
-      if (this.questionsKey() !== before) {
-        this.clearQueue();
-        void this.fillQueue();
-        if (this.s.phase !== 'lobby') this.system(`${this.mustPlayer(by).name} changed the questions to ${this.questionsLabel()}. ${this.midGame() ? 'They start with the next tossup.' : ''}`.trim());
+    const questionsChanged = this.questionsKey() !== questionsKey;
+    if (questionsChanged) {
+      this.clearQueue();
+      void this.fillQueue();
+    }
+    // Clocks already running pick up a new length right away.
+    const { tossup: t, buzz: b, bonus: bn } = this.s;
+    if (this.s.phase === 'reading' && t) this.retime('dead', (s.deadSeconds - before.deadSeconds) * 1000, t);
+    if (this.s.phase === 'buzz' && b && !b.prompts) this.retime('answer', (s.answerSeconds - before.answerSeconds) * 1000, b);
+    if (this.s.phase === 'bonus' && bn && !bn.prompts) this.retime('bonus', (s.bonusSeconds - before.bonusSeconds) * 1000, bn);
+    if (this.s.phase !== 'lobby') {
+      const changes = SETTING_LABELS.filter(([k]) => s[k] !== before[k]).map(([k, label, unit]) =>
+        typeof s[k] === 'boolean' ? `${label} ${s[k] ? 'on' : 'off'}` : `${label} to ${s[k]}${unit}`);
+      if (s.mode !== before.mode) changes.unshift(s.mode === 'teams' ? 'the format to teams' : 'the format to free-for-all');
+      if (questionsChanged) changes.push(`the questions to ${this.questionsLabel()}`);
+      if (changes.length) {
+        const tail = questionsChanged && this.midGame() ? ' They start with the next tossup.' : '';
+        this.system(`${this.mustPlayer(by).name} changed ${changes.join(', ')}.${tail}`);
       }
     }
     this.broadcast();
+  }
+
+  /** Stretch or shrink a running clock (and the deadline players see) by `deltaMs`, leaving at least a second. */
+  private retime(name: string, deltaMs: number, holder: { deadline?: number | null }) {
+    const timer = this.timers.get(name);
+    if (!timer || !deltaMs) return;
+    const now = this.s.paused ? this.s.pausedAt ?? Date.now() : Date.now();
+    const due = Math.max(now + 1000, timer.due + deltaMs);
+    if (holder.deadline) holder.deadline += due - timer.due;
+    timer.due = due;
+    if (timer.h) { clearTimeout(timer.h); this.arm(name, timer); }
   }
 
   createTeam(by: string, name: string) {
