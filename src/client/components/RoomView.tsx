@@ -9,6 +9,7 @@ import { Announcement } from './Announcement';
 import { PlayersPanel } from './PlayersPanel';
 import { Chat } from './Chat';
 import { DailyResults } from './Daily';
+import { FriendsTab } from './Friends';
 import { ReaderQueue } from './ReaderQueue';
 import { AchievementPop, BuzzFlash, FlashAnnouncer, ScreenFlash, useAchievements, useBuzzFlash, useFeedback } from './Feedback';
 import { InviteScreen, shareInvite } from './Invite';
@@ -25,12 +26,14 @@ import { useReadAloud } from '../speech';
 interface Props {
   state: PublicState; chat: ChatMessage[]; connected: boolean;
   fresh: boolean; onRename: (name: string) => Promise<void>; onLeave: () => void;
+  /** Move to a friend's room. */
+  onJoinRoom: (code: string) => void;
 }
 
 type Tab = 'board' | 'chat' | 'rulings';
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
 
-export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }: Props) {
+export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, onJoinRoom }: Props) {
   const r = roles(s);
   useReadAloud(s);
   const [showSettings, setShowSettings] = useState(false);
@@ -199,6 +202,8 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
       {showAdmin && isAdmin && <AdminPanel s={s} onClose={() => setShowAdmin(false)} onPlayers={() => { setShowAdmin(false); setShowPlayers(true); }} />}
       {showPlayers && canModerate && <PlayersPanel s={s} onClose={() => setShowPlayers(false)} />}
+      {/* Off screen while questions are being read, so it never gets in the way of buzzing. */}
+      <FriendsTab hidden={midGame || drawer} currentCode={s.code} onJoin={onJoinRoom} disabled={!connected} />
       <Announcement />
       {showInvite && <InviteScreen code={s.code} onClose={() => setShowInvite(false)} />}
       {toastMsg && <div className="toast" role="status">{toastMsg}</div>}

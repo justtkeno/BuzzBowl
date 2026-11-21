@@ -4,7 +4,7 @@ import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, type DailyProfile, type GameRecord, ty
 import { adminDeleteAccount, adminResetProfile, fetchProfile, updateMe, useAccount } from '../account';
 import { useTheme } from '../App';
 import { AccountBar, CreatorBadge } from './Account';
-import { FriendButton } from './Friends';
+import { FriendButton, FriendsTab } from './Friends';
 import { Marks } from './Daily';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -82,6 +82,7 @@ export function Profile({ username }: { username: string }) {
           </>
         )}
       </main>
+      <FriendsTab />
     </div>
   );
 }

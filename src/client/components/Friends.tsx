@@ -1,9 +1,12 @@
-import { useState } from 'react';
-import { USERNAME_RE, type Friend, type FriendRequest } from '../../shared/accounts';
+import { useEffect, useRef, useState } from 'react';
+import { USERNAME_RE, type Friend, type FriendRequest, type FriendsList } from '../../shared/accounts';
 import { removeFriend, sendFriendRequest, useFriends } from '../friends';
-import { CreatorBadge } from './Account';
+import { AccountDialog, CreatorBadge } from './Account';
 
-const OFFLINE_SHOWN = 3;
+/** How often the list refreshes while the panel is open, and (for the tab's counts) while it's closed. */
+const OPEN_POLL_MS = 15_000;
+const CLOSED_POLL_MS = 60_000;
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 function statusText(f: Friend) {
@@ -26,116 +29,192 @@ function Avatar({ name, status }: { name: string; status?: Friend['status'] }) {
   );
 }
 
-function Name({ who }: { who: { username: string; displayName: string; admin: boolean } }) {
-  return <a className="friend-name" href={`/u/${who.username}`}>{who.displayName}{who.admin && <CreatorBadge />}</a>;
+function Name({ who, newTab }: { who: { username: string; displayName: string; admin: boolean }; newTab?: boolean }) {
+  return (
+    <a className="friend-name" href={`/u/${who.username}`} {...(newTab ? { target: '_blank', rel: 'noreferrer' } : {})}>
+      {who.displayName}{who.admin && <CreatorBadge />}
+    </a>
+  );
 }
 
-/** Home page: your friends, who's playing where, and requests. Logged-in players only. */
-export function FriendsCard({ busy, connected, onJoin }: { busy: boolean; connected: boolean; onJoin: (code: string) => void }) {
-  const { me, list, change } = useFriends(true);
-  const [adding, setAdding] = useState(false);
+function PeopleIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+      <circle cx="7.5" cy="6.5" r="3" fill="currentColor" />
+      <path d="M1.5 16.5c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5z" fill="currentColor" />
+      <circle cx="14" cy="7" r="2.4" fill="currentColor" opacity=".6" />
+      <path d="M14.5 11c2.5.2 4.2 2.1 4.2 5.5h-3.6c0-2.2-.6-4-1.9-5.2.4-.2.8-.3 1.3-.3z" fill="currentColor" opacity=".6" />
+    </svg>
+  );
+}
+
+interface TabProps {
+  /** Join a friend's room. Defaults to opening its invite link. */
+  onJoin?: (code: string) => void;
+  /** The room you're in now, so a friend in it shows "In your room" instead of Join. */
+  currentCode?: string;
+  /** Keep the tab off screen (for example while a question is being read). */
+  hidden?: boolean;
+  /** Join buttons disabled (not connected, or busy). */
+  disabled?: boolean;
+}
+
+/** A small tab on the right edge that slides out a friends panel. Works for guests too (it offers to log in). */
+export function FriendsTab({ onJoin, currentCode, hidden, disabled }: TabProps) {
+  const [open, setOpen] = useState(false);
+  const [login, setLogin] = useState<null | 'login' | 'signup'>(null);
+  const f = useFriends(open ? OPEN_POLL_MS : CLOSED_POLL_MS);
+  const panel = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    // Fresh statuses the moment it opens.
+    void f.refresh();
+    panel.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+  useEffect(() => { if (hidden) setOpen(false); }, [hidden]);
+
+  const list = f.list;
+  const playing = list?.friends.filter((x) => x.status === 'room' || x.status === 'daily').length ?? 0;
+  const online = list?.friends.filter((x) => x.status === 'online').length ?? 0;
+  const requests = list?.incoming.length ?? 0;
+  const label = !f.me ? 'Friends' : `Friends: ${playing + online} online${requests ? `, ${plural(requests, 'friend request')}` : ''}`;
+  const join = (code: string) => {
+    setOpen(false);
+    if (onJoin) onJoin(code); else location.href = `/r/${code}`;
+  };
+
+  return (
+    <>
+      {!hidden && !open && (
+        <button className="friends-tab" onClick={() => setOpen(true)} aria-label={label} aria-expanded={false} title={label}>
+          <PeopleIcon />
+          {f.me && playing + online > 0 && <span className="friends-tab-count">{playing + online}</span>}
+          {requests > 0 && <span className="friends-tab-alert" />}
+        </button>
+      )}
+      {open && (
+        <>
+          <div className="friends-back" onClick={() => setOpen(false)} />
+          <aside className="friends-drawer" ref={panel} tabIndex={-1} aria-label="Friends">
+            <header className="friends-drawer-head">
+              <h2>Friends</h2>
+              <button className="btn ghost small" onClick={() => setOpen(false)} aria-label="Close friends">✕</button>
+            </header>
+            {f.me ? (
+              <FriendsPanel list={list} change={f.change} onJoin={join} currentCode={currentCode} disabled={disabled} newTab={!!currentCode} />
+            ) : (
+              <div className="friends-guest">
+                <p className="muted">Log in to add friends by username, see when they’re online, and jump into their games.</p>
+                <div className="row gap">
+                  <button className="btn primary" onClick={() => { setOpen(false); setLogin('signup'); }}>Sign up</button>
+                  <button className="btn" onClick={() => { setOpen(false); setLogin('login'); }}>Log in</button>
+                </div>
+              </div>
+            )}
+          </aside>
+        </>
+      )}
+      {login && <AccountDialog initial={login} onClose={() => setLogin(null)} />}
+    </>
+  );
+}
+
+interface PanelProps {
+  list: FriendsList | null;
+  change: (fn: () => Promise<FriendsList>) => Promise<void>;
+  onJoin: (code: string) => void;
+  currentCode?: string;
+  disabled?: boolean;
+  newTab?: boolean;
+}
+
+function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab }: PanelProps) {
   const [name, setName] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
-  const [showAll, setShowAll] = useState(false);
-  if (!me) return null;
 
-  const act = async (fn: () => ReturnType<typeof sendFriendRequest>) => {
-    setWorking(true); setErr(null);
+  const act = async (fn: () => Promise<FriendsList>) => {
+    setWorking(true); setErr(null); setNote(null);
     try { await change(fn); return true; } catch (e: any) { setErr(e.message); return false; } finally { setWorking(false); }
   };
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     const u = name.trim().replace(/^@/, '');
     if (!USERNAME_RE.test(u)) return setErr('Usernames are 3–20 letters, numbers or underscores.');
-    if (await act(() => sendFriendRequest(u))) { setName(''); setAdding(false); }
+    if (await act(() => sendFriendRequest(u))) { setName(''); setNote(`Request sent to @${u}.`); }
   };
 
   const friends = list?.friends ?? [];
-  const here = friends.filter((f) => f.status !== 'offline');
-  const away = friends.filter((f) => f.status === 'offline');
-  const shownAway = showAll ? away : away.slice(0, OFFLINE_SHOWN);
-  const inRooms = friends.filter((f) => f.status === 'room' || f.status === 'daily').length;
-  const online = here.length - inRooms;
-  const summary = !list ? 'Loading…'
-    : !friends.length ? (list.incoming.length ? plural(list.incoming.length, 'friend request') : 'Add friends by username to join their games')
-    : inRooms || online ? [inRooms && `${inRooms} playing`, online && `${online} online`].filter(Boolean).join(' · ')
-    : 'Nobody online right now';
+  const playing = friends.filter((x) => x.status === 'room' || x.status === 'daily');
+  const online = friends.filter((x) => x.status === 'online');
+  const offline = friends.filter((x) => x.status === 'offline');
+
+  const row = (x: Friend) => (
+    <li key={x.username} className={`friend ${x.status}`}>
+      <Avatar name={x.displayName} status={x.status} />
+      <div className="grow friend-text">
+        <Name who={x} newTab={newTab} />
+        <div className="muted small">{x.room && x.room.code === currentCode ? 'In your room' : statusText(x)}</div>
+      </div>
+      {x.room && x.room.code !== currentCode && (
+        <div className="row gap friend-actions">
+          <a className="btn ghost small" href={`/watch/${x.room.code}`} target={newTab ? '_blank' : undefined} rel="noreferrer" aria-label={`Watch ${x.displayName}’s room`}>Watch</a>
+          <button className="btn primary small" disabled={disabled} onClick={() => onJoin(x.room!.code)} aria-label={`Join ${x.displayName}’s room`}>Join</button>
+        </div>
+      )}
+    </li>
+  );
+  const section = (title: string, items: React.ReactNode[]) => items.length > 0 && (
+    <section className="friends-section">
+      <h3>{title} <span className="muted">{items.length}</span></h3>
+      <ul className="friend-list">{items}</ul>
+    </section>
+  );
 
   return (
-    <section className="friends-card" aria-label="Friends">
-      <div className="row between">
-        <div>
-          <div className="daily-title">Friends{list?.incoming.length ? <span className="friends-badge">{list.incoming.length}</span> : null}</div>
-          <div className="muted small">{summary}</div>
-        </div>
-        <button className="btn" onClick={() => { setAdding(!adding); setErr(null); }} aria-expanded={adding}>{adding ? 'Cancel' : 'Add'}</button>
-      </div>
-
-      {adding && (
-        <form className="row gap" onSubmit={add}>
-          <input className="grow" autoFocus value={name} maxLength={21} placeholder="Their username" autoCapitalize="off" autoCorrect="off" spellCheck={false} onChange={(e) => setName(e.target.value)} aria-label="Friend's username" />
-          <button className="btn primary" disabled={working || !name.trim()}>Send</button>
-        </form>
-      )}
+    <div className="friends-body">
+      <form className="row gap" onSubmit={add}>
+        <input className="grow" value={name} maxLength={21} placeholder="Add by username" autoCapitalize="off" autoCorrect="off" spellCheck={false} onChange={(e) => setName(e.target.value)} aria-label="Friend's username" />
+        <button className="btn primary" disabled={working || !name.trim()}>Add</button>
+      </form>
       {err && <p className="error small">{err}</p>}
+      {note && <p className="muted small">{note}</p>}
 
-      {!!list?.incoming.length && (
-        <ul className="friend-list">
-          {list.incoming.map((r) => (
-            <RequestRow key={r.username} r={r} note="">
-              <button className="btn ghost small" disabled={working} onClick={() => void act(() => removeFriend(r.username))}>Decline</button>
-              <button className="btn primary small" disabled={working} onClick={() => void act(() => sendFriendRequest(r.username))}>Accept</button>
-            </RequestRow>
-          ))}
-        </ul>
+      {!list && <p className="muted small">Loading…</p>}
+      {list && !friends.length && !list.incoming.length && !list.outgoing.length && (
+        <p className="muted small">No friends yet. Add someone by their username. Once they accept, you’ll see when they’re online and can join their games.</p>
       )}
 
-      {friends.length > 0 && (
-        <ul className="friend-list">
-          {[...here, ...shownAway].map((f) => (
-            <li key={f.username} className={`friend ${f.status}`}>
-              <Avatar name={f.displayName} status={f.status} />
-              <div className="grow friend-text">
-                <Name who={f} />
-                <div className="muted small">{statusText(f)}</div>
-              </div>
-              {f.room && (
-                <div className="row gap friend-actions">
-                  <a className="btn ghost small" href={`/watch/${f.room.code}`} aria-label={`Watch ${f.displayName}’s room`}>Watch</a>
-                  <button className="btn primary small" disabled={busy || !connected} onClick={() => onJoin(f.room!.code)} aria-label={`Join ${f.displayName}’s room`}>Join</button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {away.length > OFFLINE_SHOWN && (
-        <button className="btn ghost small friends-more" onClick={() => setShowAll(!showAll)}>
-          {showAll ? 'Show fewer' : `Show ${away.length - OFFLINE_SHOWN} more offline`}
-        </button>
-      )}
-
-      {!!list?.outgoing.length && (
-        <ul className="friend-list sent">
-          {list.outgoing.map((r) => (
-            <RequestRow key={r.username} r={r} note="sent">
-              <button className="btn ghost small" disabled={working} onClick={() => void act(() => removeFriend(r.username))}>Cancel</button>
-            </RequestRow>
-          ))}
-        </ul>
-      )}
-    </section>
+      {section('Requests', (list?.incoming ?? []).map((r) => (
+        <RequestRow key={r.username} r={r} newTab={newTab}>
+          <button className="btn ghost small" disabled={working} onClick={() => void act(() => removeFriend(r.username))}>Decline</button>
+          <button className="btn primary small" disabled={working} onClick={() => void act(() => sendFriendRequest(r.username))}>Accept</button>
+        </RequestRow>
+      )))}
+      {section('Playing', playing.map(row))}
+      {section('Online', online.map(row))}
+      {section('Offline', offline.map(row))}
+      {section('Sent', (list?.outgoing ?? []).map((r) => (
+        <RequestRow key={r.username} r={r} newTab={newTab}>
+          <button className="btn ghost small" disabled={working} onClick={() => void act(() => removeFriend(r.username))}>Cancel</button>
+        </RequestRow>
+      )))}
+    </div>
   );
 }
 
-function RequestRow({ r, note, children }: { r: FriendRequest; note: string; children: React.ReactNode }) {
+function RequestRow({ r, newTab, children }: { r: FriendRequest; newTab?: boolean; children: React.ReactNode }) {
   return (
     <li className="friend">
       <Avatar name={r.displayName} />
       <div className="grow friend-text">
-        <Name who={r} />
-        <div className="muted small">@{r.username}{note && ` · ${note}`}</div>
+        <Name who={r} newTab={newTab} />
+        <div className="muted small">@{r.username}</div>
       </div>
       <div className="row gap friend-actions">{children}</div>
     </li>
@@ -144,7 +223,7 @@ function RequestRow({ r, note, children }: { r: FriendRequest; note: string; chi
 
 /** Profile page: add, accept, or remove this player as a friend. */
 export function FriendButton({ username }: { username: string }) {
-  const { me, list, change } = useFriends(false);
+  const { me, list, change } = useFriends(null);
   const [working, setWorking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   if (!me || !list || me.username.toLowerCase() === username.toLowerCase()) return null;
@@ -155,7 +234,7 @@ export function FriendButton({ username }: { username: string }) {
   const incoming = list.incoming.some(match);
   const outgoing = list.outgoing.some(match);
 
-  const act = async (fn: () => ReturnType<typeof sendFriendRequest>) => {
+  const act = async (fn: () => Promise<FriendsList>) => {
     setWorking(true); setErr(null);
     try { await change(fn); } catch (e: any) { setErr(e.message); } finally { setWorking(false); }
   };

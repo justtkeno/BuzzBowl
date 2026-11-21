@@ -8,6 +8,7 @@ import { randomName } from './names';
 import { dailyKey } from './daily';
 import { call, prefs, socket } from './socket';
 import { play } from './sounds';
+import { toast } from './components/util';
 
 const codeFromPath = () => location.pathname.match(/^\/r\/([A-Za-z]{4,8})/)?.[1]?.toUpperCase() ?? null;
 const watchCode = () => location.pathname.match(/^\/watch\/([A-Za-z]{4,8})/)?.[1]?.toUpperCase() ?? null;
@@ -143,7 +144,12 @@ function Player() {
   if (!state) {
     return <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} onDaily={startDaily} dailyOpen={location.pathname === '/daily'} />;
   }
-  return <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} />;
+  // From the friends panel: hop straight into a friend's room.
+  const joinFriend = (code: string) => {
+    const name = joined.current?.name || prefs.name() || randomName();
+    enter(code, name).then(() => setFresh(false), (e) => toast(e.message));
+  };
+  return <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} onJoinRoom={joinFriend} />;
 }
 
 export function useTheme() {
