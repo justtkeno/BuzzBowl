@@ -1,3 +1,4 @@
+import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
 import type { PublicState } from '../../shared/types';
 import { useTheme } from '../App';
@@ -41,7 +42,7 @@ export function Spectate({ code }: { code: string }) {
   }, [code]);
 
   if (!s) {
-    return <div className="home"><div className="home-card"><div className="brand"><span className="logo">QB</span> BuzzBowl</div><p>{error ?? 'Connecting…'}</p><a href="/">Back home</a></div></div>;
+    return <div className="home"><div className="home-card"><div className="brand"><Logo /> Trivio</div><p>{error ?? 'Connecting…'}</p><a href="/">Back home</a></div></div>;
   }
 
   const order = s.players.map((p) => p.id);
@@ -54,7 +55,7 @@ export function Spectate({ code }: { code: string }) {
   return (
     <div className="watch">
       <header className="watch-top">
-        <div className="brand"><span className="logo">QB</span> BuzzBowl</div>
+        <div className="brand"><Logo /> Trivio</div>
         <div className="watch-join">Join at <b>{inviteUrl(s.code).replace(/^https?:\/\//, '').replace(/\/r\/.*/, '')}</b> · code <b className="watch-code">{s.code}</b></div>
         {!connected && <span className="badge warn">Reconnecting…</span>}
       </header>

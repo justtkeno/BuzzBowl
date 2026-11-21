@@ -94,7 +94,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .home-card { width: min(440px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.75rem; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: .9rem; }
 .brand { display: flex; align-items: center; gap: .6rem; font-weight: 700; font-size: 1.35rem; }
 .brand.small { font-size: 1rem; }
-.logo { display: inline-grid; place-items: center; width: 2em; height: 2em; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .8em; font-weight: 800; }
+.logo { display: block; flex: none; width: 2em; height: 2em; }
 .field { display: flex; flex-direction: column; gap: .3rem; }
 .field > span { font-size: .85rem; color: var(--muted); }
 .field.inline { gap: .2rem; }

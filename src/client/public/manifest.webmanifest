@@ -1,6 +1,6 @@
 {
-  "name": "BuzzBowl",
-  "short_name": "BuzzBowl",
+  "name": "Trivio",
+  "short_name": "Trivio",
   "description": "Real-time quiz bowl practice: buzz in, powers, negs, bonuses, and a daily challenge.",
   "id": "/",
   "start_url": "/?source=app",

@@ -1,3 +1,4 @@
+import { Logo } from './Logo';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../../shared/types';
 import { cycleTheme } from '../App';
@@ -89,7 +90,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }
     <div className={`room ${s.phase === 'reading' ? 'is-reading' : ''}`}>
       {!connected && <div className="conn-banner" role="status"><span className="spinner" /> Connection lost — reconnecting…</div>}
       <header className="topbar">
-        <div className="brand small"><span className="logo">QB</span><span className="hide-sm">BuzzBowl</span></div>
+        <div className="brand small"><Logo /><span className="hide-sm">Trivio</span></div>
         {s.daily ? (
           <span className="chip daily-chip">Daily <b>#{s.daily.number}</b>{s.tossup && s.phase !== 'gameOver' ? ` · ${s.tossup.num}/${s.daily.total}` : ''}</span>
         ) : (

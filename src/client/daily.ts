@@ -38,7 +38,7 @@ export const marksEmoji = (marks: string) => [...marks].map((m) => EMOJI[m] ?? '
 export const MARK_LABEL: Record<string, string> = { P: 'power', T: 'ten', N: 'neg', Z: 'wrong, no penalty', '-': 'no buzz' };
 
 export function shareText(number: number, me: DailyEntry) {
-  return `BuzzBowl Daily #${number} · ${me.points} pts\n${marksEmoji(me.marks)}\n${location.origin}/daily`;
+  return `Trivio Daily #${number} · ${me.points} pts\n${marksEmoji(me.marks)}\n${location.origin}/daily`;
 }
 
 export function untilText(seconds: number) {

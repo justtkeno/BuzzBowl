@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: buzzbowl
+    name: trivio
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build

@@ -9,7 +9,7 @@ export async function shareInvite(code: string) {
   const url = inviteUrl(code);
   const touch = matchMedia('(pointer: coarse)').matches;
   if (touch && navigator.share) {
-    try { await navigator.share({ title: 'Join my BuzzBowl room', url }); return; }
+    try { await navigator.share({ title: 'Join my Trivio room', url }); return; }
     catch (e) { if ((e as Error).name === 'AbortError') return; }
   }
   try { await navigator.clipboard.writeText(url); toast('Invite link copied.'); }

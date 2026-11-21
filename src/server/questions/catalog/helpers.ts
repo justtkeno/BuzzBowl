@@ -1,6 +1,6 @@
 import type { Bonus, Tossup } from '../types';
 
-const SET = 'BuzzBowl Catalog';
+const SET = 'Trivio Catalog';
 
 /** One tossup. `question` must contain a single (*) power mark; `answer` uses <b><u>required</u></b> markup. */
 export const tu = (id: string, category: string, subcategory: string, question: string, answer: string, difficulty = 3): Tossup =>
