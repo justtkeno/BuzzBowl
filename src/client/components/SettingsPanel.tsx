@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CATEGORIES, DIFFICULTIES, type PublicState, type Settings } from '../../shared/types';
+import { CATEGORIES, DIFFICULTIES, VOTE_SECONDS, type PublicState, type Settings } from '../../shared/types';
 import { call } from '../socket';
 import { act, toast } from './util';
 
@@ -56,12 +56,16 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
         <section>
           <h3>Format</h3>
           <div className="seg">
-            {(['ffa', 'teams'] as const).map((m) => (
-              <button key={m} className={f.mode === m ? 'on' : ''} disabled={midGame} onClick={() => setF((x) => ({ ...x, mode: m, bonuses: m === 'teams' }))}>
-                {m === 'ffa' ? 'Free-for-all' : 'Teams'}
-              </button>
-            ))}
+            {(['ffa', 'teams', 'party'] as const).map((m) => {
+              const on = m === 'teams' ? f.mode === 'teams' : f.mode === 'ffa' && (m === 'party') === partyOn(f);
+              return (
+                <button key={m} className={on ? 'on' : ''} disabled={midGame && (m === 'teams' ? f.mode !== 'teams' : f.mode !== 'ffa')} onClick={() => setF((x) => pickFormat(x, m))}>
+                  {m === 'ffa' ? 'Free-for-all' : m === 'teams' ? 'Teams' : 'Party'}
+                </button>
+              );
+            })}
           </div>
+          {f.mode === 'ffa' && partyOn(f) && <p className="muted small">Party: everyone for themselves, the app reads each question out loud, and players vote on the next topic.</p>}
           {midGame && <p className="muted small">Mode can change between questions.</p>}
           <div className="grid2">
             <label className="field">
@@ -85,6 +89,12 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
             {num('negValue', 'Neg', -50, 0)}
             {num('bonusPartValue', 'Bonus part', 0, 50)}
           </div>
+        </section>
+
+        <section>
+          <h3>Without a reader</h3>
+          {check('readAloud', 'Read questions aloud', 'each device speaks the words as they appear; anyone can mute their own')}
+          {check('topicVote', 'Vote on the next topic', `players pick from 3 categories after each tossup (${VOTE_SECONDS}s)`)}
         </section>
 
         <section>
@@ -158,6 +168,14 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
       </div>
     </div>
   );
+}
+
+/** Party = free-for-all with the app reading aloud and topic votes. */
+export const partyOn = (f: Settings) => f.mode === 'ffa' && (f.readAloud || f.topicVote);
+function pickFormat(x: Settings, m: 'ffa' | 'teams' | 'party'): Settings {
+  if (m === 'party') return { ...x, mode: 'ffa', bonuses: x.mode === 'ffa' ? x.bonuses : false, readAloud: true, topicVote: true };
+  if (m === 'ffa') return { ...x, mode: 'ffa', bonuses: x.mode === 'ffa' ? x.bonuses : false, readAloud: false, topicVote: false };
+  return { ...x, mode: 'teams', bonuses: true };
 }
 
 /** The packet format, shown under "File format" and offered as a starter file. */

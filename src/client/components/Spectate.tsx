@@ -8,6 +8,7 @@ import { ScoreGraph } from './ScoreGraph';
 import { AnimatedScore } from './Scoreboard';
 import { BonusCard, TossupCard } from './Stage';
 import { colorFor } from './util';
+import { useReadAloud } from '../speech';
 
 /**
  * Big-screen view for a projector or TV at club practice: large question text and scoreboard,
@@ -18,6 +19,7 @@ export function Spectate({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(socket.connected);
   useTheme();
+  useReadAloud(s);
 
   useEffect(() => {
     const watch = () => call<{ state: PublicState }>('room:watch', { code }).then((r) => { setS(r.state); setError(null); }, (e) => setError(e.message));

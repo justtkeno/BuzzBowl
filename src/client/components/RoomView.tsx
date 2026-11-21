@@ -18,6 +18,7 @@ import { SettingsPanel } from './SettingsPanel';
 import { Stage } from './Stage';
 import { Summary } from './Summary';
 import { act, roles, toast } from './util';
+import { useReadAloud } from '../speech';
 
 interface Props {
   state: PublicState; chat: ChatMessage[]; connected: boolean;
@@ -29,6 +30,7 @@ const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n 
 
 export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave }: Props) {
   const r = roles(s);
+  useReadAloud(s);
   const [showSettings, setShowSettings] = useState(false);
   const [showQuestions, setShowQuestions] = useState(false);
   const [showReview, setShowReview] = useState(false);

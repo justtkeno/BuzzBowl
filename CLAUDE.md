@@ -24,6 +24,7 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - `server/accounts/`: sign-up, sessions, profiles, game history, admin (`ADMIN_ACCOUNT_IDS`)
 - `server/daily/`: daily challenge: one 10-tossup set per day (US Eastern), stored once, leaderboard
 - `client/components/`: `Stage.tsx` (main play view), `RoomView`, `Lobby`, `SettingsPanel`, `Scoreboard`, `Review`, `Rulings`, `Summary`, `Chat`, `ReaderQueue` (reader's Up next), `Daily`, `Account`/`Profile`, `AdminPanel`, `Spectate` (big-screen view at `/watch/CODE`, server viewer id `SPECTATOR`), `ScoreGraph`, `Feedback` (result/buzz flashes and sounds)
+- `client/speech.ts`: read-aloud (text-to-speech) for rooms with no reader; speaks only words already revealed. Topic voting lives in `Room` (`openVote` / `castVote` / `closeVote`) and `Stage.tsx` (`VotePanel`).
 - `client/install.ts` + `public/manifest.webmanifest` + `public/sw.js`: install as an app. The service worker must never intercept `/socket.io`, `/api` or `/healthz`.
 - `tests/`: one file per area. `room.test.ts` drives `Room` through the `RoomIO` interface with fake timers.
 
