@@ -235,6 +235,18 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .seg button { border: 0; background: var(--surface); padding: .4rem .9rem; cursor: pointer; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .5; cursor: default; }
+.source-seg { display: flex; flex-wrap: nowrap; width: min(100%, 26rem); }
+.source-seg button { flex: 1; padding: .45rem .5rem; white-space: nowrap; }
+.upload { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: .6rem 0 .3rem; }
+.upload-btn { position: relative; overflow: hidden; }
+.upload-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
+.upload-btn.busy { opacity: .6; }
+.upload-btn:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.upload-help { font-size: .85rem; margin-bottom: .4rem; }
+.upload-help summary { cursor: pointer; color: var(--muted); width: fit-content; }
+.upload-help pre { margin: .4rem 0; padding: .6rem .7rem; background: var(--surface-2); border-radius: 8px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 14rem; overflow: auto; }
+.upload-help p { margin: .2rem 0 .3rem; }
+.upload-help code { font: 12px ui-monospace, monospace; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem 1rem; margin-top: .6rem; }
 .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin-top: .5rem; }
 .check { display: flex; gap: .5rem; align-items: flex-start; margin: .35rem 0; cursor: pointer; }

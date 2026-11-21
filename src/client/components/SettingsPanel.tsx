@@ -18,15 +18,19 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
     } catch (e: any) { toast(e.message); }
   };
 
+  const [uploading, setUploading] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
   const upload = async (file: File) => {
+    setUploading(true);
     try {
       const json = JSON.parse(await file.text());
       const res = await call<{ tossups: number; bonuses: number }>('packet:upload', json);
       toast(`Loaded ${res.tossups} tossups and ${res.bonuses} bonuses.`);
+      setFileName(file.name);
       set('source', 'upload');
     } catch (e: any) {
       toast(e instanceof SyntaxError ? 'That file is not valid JSON.' : e.message);
-    }
+    } finally { setUploading(false); }
   };
 
   const num = (k: keyof Settings, label: string, min: number, max: number, step = 1) => (
@@ -92,21 +96,31 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
 
         <section>
           {!only && <h3>Questions</h3>}
-          <div className="seg">
+          <div className="seg source-seg">
             <button className={f.source === 'qbreader' ? 'on' : ''} onClick={() => set('source', 'qbreader')}>QBReader</button>
-            <button className={f.source === 'sample' ? 'on' : ''} onClick={() => set('source', 'sample')}>Built-in questions</button>
+            <button className={f.source === 'sample' ? 'on' : ''} title="Built-in questions: always available, even offline" onClick={() => set('source', 'sample')}>Built-in</button>
             <button className={f.source === 'upload' ? 'on' : ''} disabled={!s.uploadedCount} onClick={() => set('source', 'upload')}>
               Uploaded{s.uploadedCount ? ` (${s.uploadedCount.tossups})` : ''}
             </button>
           </div>
-          <label className="field">
-            <span>Upload a packet (.json)</span>
-            <input type="file" accept=".json,application/json" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
-            <small className="muted">
-              {'{"tossups":[{"question":"… (*) …","answer":"<b><u>X</u></b> [accept Y; prompt on Z]","category":"Science"}],"bonuses":[{"leadin":"…","parts":["…"],"answers":["…"]}]}'}
-              {' '}QBReader exports work too.
-            </small>
-          </label>
+          <div className="upload">
+            <label className={`btn small upload-btn ${uploading ? 'busy' : ''}`}>
+              <input type="file" accept=".json,application/json" disabled={uploading}
+                onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ''; if (file) void upload(file); }} />
+              {uploading ? 'Uploading…' : s.uploadedCount ? 'Upload another packet' : 'Upload a packet'}
+            </label>
+            <span className="muted small">
+              {s.uploadedCount
+                ? `${fileName ? `${fileName} · ` : ''}${s.uploadedCount.tossups} tossups, ${s.uploadedCount.bonuses} bonuses`
+                : '.json file · QBReader exports work too'}
+            </span>
+          </div>
+          <details className="upload-help">
+            <summary>File format</summary>
+            <pre>{EXAMPLE_TEXT}</pre>
+            <p className="small muted">Bold and underline the required part of the answer. <code>(*)</code> marks where power ends.</p>
+            <button type="button" className="link" onClick={downloadExample}>Download this example</button>
+          </details>
 
           <h4>Categories <small className="muted">(none = all)</small></h4>
           <div className="chips">
@@ -144,4 +158,28 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
       </div>
     </div>
   );
+}
+
+/** The packet format, shown under "File format" and offered as a starter file. */
+const EXAMPLE = {
+  tossups: [{
+    question: 'This planet has the Great Red Spot, a storm larger than Earth. Its moons include Io and (*) Europa. For 10 points, name this largest planet in the solar system.',
+    answer: '<b><u>Jupiter</u></b> [accept Iuppiter]',
+    category: 'Science',
+    subcategory: 'Other Science',
+  }],
+  bonuses: [{
+    leadin: 'For 10 points each, answer these questions about Shakespeare.',
+    parts: ['Name this play about a Danish prince.', 'Hamlet says “Alas, poor” this jester while holding his skull.', 'This play features three witches and Banquo.'],
+    answers: ['<b><u>Hamlet</u></b>', '<b><u>Yorick</u></b>', '<b><u>Macbeth</u></b>'],
+    category: 'Literature',
+  }],
+};
+const EXAMPLE_TEXT = JSON.stringify(EXAMPLE, null, 2);
+
+function downloadExample() {
+  const url = URL.createObjectURL(new Blob([EXAMPLE_TEXT + '\n'], { type: 'application/json' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: 'example-packet.json' });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
