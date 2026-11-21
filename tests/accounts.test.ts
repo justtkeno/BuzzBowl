@@ -114,6 +114,30 @@ const provider = (): QuestionProvider => {
   return { nextTossup: async () => ({ ...TOSSUP, id: `t${++n}` }), nextBonus: async () => null };
 };
 
+describe('recent games', () => {
+  it('labels daily challenges, including games saved before they carried the number', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-recent-'));
+    const store = new FileAccountStore(join(dir, 'accounts.json'));
+    const accounts = new Accounts(store);
+    await accounts.init();
+    await store.createUser({ id: 'u1', username: 'hao', key: 'hao', passwordHash: 'x', displayName: 'Hao', bio: '', settings: null, createdAt: 0 });
+    const game = (at: number, points: number, extra: Partial<GameRecord> = {}): GameRecord => ({
+      at, room: 'R', mode: 'ffa', sides: 1, rank: 1, standings: [], tossups: 10, points, powers: 0, tens: 0, negs: 0,
+      buzzes: 0, heard: 10, correctDepthSum: 0, bestStreak: 0, bonusPoints: 0, bonusesHeard: 0, categories: {}, ...extra,
+    });
+    accounts.record([
+      { accountId: 'u1', game: game(1000, 145) }, // an old daily game, saved without the number
+      { accountId: 'u1', game: game(2000, 60) }, // plain solo practice
+      { accountId: 'u1', game: game(3000, 90, { daily: 4 }) },
+    ]);
+    await vi.waitFor(async () => expect(await store.games('u1', 10)).toHaveLength(3));
+    accounts.findDaily = async (id, at, points) => (id === 'u1' && at === 1000 && points === 145 ? 3 : null);
+    const recent = (await accounts.profile('hao'))!.recent;
+    expect(Object.fromEntries(recent.map((g) => [g.at, g.daily]))).toEqual({ 1000: 3, 2000: undefined, 3000: 4 });
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('game results', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

@@ -900,6 +900,7 @@ export class Room {
           rank: side ? 1 + sides.filter((t) => t.points > side.points).length : sides.length,
           standings: ranked.slice(0, 8).map((t) => ({ name: t.name, points: t.points, you: t.id === side?.id })),
           ...(abandoned ? { abandoned: true } : {}),
+          ...(this.s.daily ? { daily: this.s.daily.number } : {}),
           tossups: this.s.heard.length,
           points: st.points, powers: st.powers, tens: st.tens, negs: st.negs, buzzes: st.buzzes, heard: st.heard,
           correctDepthSum: st.avgCorrectDepth != null ? st.avgCorrectDepth * correct : 0,
