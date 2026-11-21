@@ -78,7 +78,7 @@ export function Profile({ username }: { username: string }) {
             {isLocked(p) ? (
               <section className="card locked-card">
                 <h2>🔒 {p.locked === 'private' ? 'This profile is private' : 'Friends only'}</h2>
-                <p className="muted">{p.locked === 'private' ? `${p.displayName} keeps their stats, badges and games to themselves.` : `Only ${p.displayName}’s friends can see their stats, badges and games. Add them as a friend to see more.`}</p>
+                <p className="muted">{p.locked === 'private' ? `${p.displayName} keeps their stats, badges and games to themselves.` : `Only ${p.displayName}’s friends can see their stats, badges and games. ${me ? 'Add them as a friend to see more.' : 'Log in and add them as a friend to see more.'}`}</p>
               </section>
             ) : (
             <>

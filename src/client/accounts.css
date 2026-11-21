@@ -261,3 +261,5 @@ a.creator-badge:hover { filter: brightness(1.1); }
   .profile-top .account-me .muted, .profile-top .account-me .creator-badge { display: none; }
   .account-me .creator-badge + .muted { display: none; }
 }
+
+@media (max-width: 420px) { .profile-top .account-bar > .muted.grow { display: none; } }

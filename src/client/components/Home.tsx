@@ -30,7 +30,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
   const [err, setErr] = useState<string | null>(null);
   const { me } = useAccount();
   // Logging in fills in the account's display name.
-  useEffect(() => { if (me) setName(me.displayName); }, [me?.id]);
+  useEffect(() => { if (me) setName(me.displayName); setErr(null); }, [me?.id]);
 
   const run = async (fn: () => Promise<void>) => {
     if (!name.trim()) return setErr('Pick a display name first.');

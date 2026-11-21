@@ -1548,6 +1548,7 @@ export class Room {
 
   protest(by: string, rulingId: string, note: string) {
     const p = this.mustPlayer(by);
+    if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
     if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     const r = this.s.rulings.find((x) => x.id === rulingId) ?? fail('No such ruling.');
     if (this.s.protests.some((x) => x.rulingId === rulingId && !x.resolved)) fail('That ruling is already protested.');
@@ -1579,22 +1580,53 @@ export class Room {
 
   private flipRuling(rulingId: string) {
     const r = this.s.rulings.find((x) => x.id === rulingId) ?? fail('No such ruling.');
-    r!.correct = !r!.correct;
-    r!.overridden = !r!.overridden;
-    if (r!.type === 'tossup') {
-      const { points, kind } = scoreTossup(r!.correct, r!.wordIndex ?? 0, r!.totalWords ?? 0, r!.powerIndex ?? null, this.s.settings);
-      r!.points = points;
-      r!.kind = kind;
-      const lists = [this.s.tossup?.num === r!.num ? this.s.tossup.markers : [], ...this.s.review.filter((x) => x.num === r!.num).map((x) => x.buzzes)];
-      for (const list of new Set(lists)) for (const m of list) if (m.playerId === r!.playerId && m.given === r!.given) m.result = kind;
-      // Reversing a ruling on the tossup that just ended also decides who gets its bonus.
-      const t = this.s.tossup;
-      if (t && t.num === r!.num && t.ended && this.s.phase === 'tossupEnd' && this.s.settings.bonuses) {
-        if (r!.correct && !t.bonusTeam) t.bonusTeam = r!.teamId;
-        else if (!r!.correct && t.bonusTeam === r!.teamId) t.bonusTeam = null;
-      }
-    } else {
+    if (r!.type !== 'tossup') {
+      r!.correct = !r!.correct;
+      r!.overridden = !r!.overridden;
       r!.points = r!.correct ? this.s.settings.bonusPartValue : 0;
+      return;
+    }
+    // A cancelled answer was correct; flipping it means ruling it wrong.
+    r!.correct = r!.voidedBy ? false : !r!.correct;
+    r!.voidedBy = undefined;
+    r!.overridden = !r!.overridden;
+    this.rescoreTossupRuling(r!);
+    this.settleTossup(r!.num);
+  }
+
+  private rescoreTossupRuling(r: Ruling) {
+    const scored = scoreTossup(r.correct, r.wordIndex ?? 0, r.totalWords ?? 0, r.powerIndex ?? null, this.s.settings);
+    // A cancelled correct answer scores nothing (it isn't a neg).
+    const { points, kind } = r.voidedBy ? { points: 0, kind: 'zero' as const } : scored;
+    r.points = points;
+    r.kind = kind;
+    const lists = [this.s.tossup?.num === r.num ? this.s.tossup.markers : [], ...this.s.review.filter((x) => x.num === r.num).map((x) => x.buzzes)];
+    for (const list of new Set(lists)) for (const m of list) if (m.playerId === r.playerId && m.given === r.given) m.result = kind;
+  }
+
+  /**
+   * Only one answer scores on a tossup: the earliest correct one. After a ruling is reversed, later correct
+   * answers on the same tossup are cancelled (and get their points back if the earlier one is reversed again).
+   */
+  private settleTossup(num: number) {
+    let winner: Ruling | null = null;
+    for (const r of this.s.rulings) {
+      if (r.type !== 'tossup' || r.num !== num) continue;
+      const right = r.correct || !!r.voidedBy;
+      if (!right) continue;
+      if (!winner) {
+        winner = r;
+        if (r.voidedBy) { r.voidedBy = undefined; r.correct = true; this.rescoreTossupRuling(r); }
+      } else if (r.voidedBy !== winner.id) {
+        r.voidedBy = winner.id;
+        r.correct = false;
+        this.rescoreTossupRuling(r);
+      }
+    }
+    // Reversing a ruling on the tossup that just ended also decides who gets its bonus.
+    const t = this.s.tossup;
+    if (t && t.num === num && t.ended && this.s.phase === 'tossupEnd' && this.s.settings.bonuses && this.s.settings.source !== 'lightning') {
+      t.bonusTeam = winner ? winner.teamId : null;
     }
   }
 

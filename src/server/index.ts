@@ -305,6 +305,11 @@ io.on('connection', (socket) => {
     if (typeof ack !== 'function') return;
     const room = store.get(String(code ?? '').trim());
     if (!room) return ack({ ok: false, error: `No room with code ${String(code).toUpperCase()}.` });
+    // Watching someone's daily or survival run would show its questions and answers to people who haven't played yet.
+    const running = (room.s.daily && !room.s.daily.done) || (room.s.survival && !room.s.survival.done);
+    if (running && !accounts.of(socket)?.admin) {
+      return ack({ ok: false, error: room.s.daily ? 'A daily challenge can’t be watched while it’s being played.' : 'A survival run can’t be watched while it’s being played.' });
+    }
     const prev = socket.data as SocketData;
     if (prev.code && prev.playerId) leaveSeat(prev.code, prev.playerId);
     socket.data = { code: room.s.code, watching: true } satisfies SocketData;
