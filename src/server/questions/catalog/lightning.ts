@@ -1,4 +1,5 @@
 import type { Tossup } from '../types';
+import { TOPIC_LIGHTNING } from './index';
 
 const SET = 'Trivio Lightning';
 
@@ -324,4 +325,4 @@ const TOPIC_TAGS: Record<string, string[]> = {
   'lt-soc-1': ['psychology'], 'lt-soc-3': ['psychology'], 'lt-soc-6': ['psychology'], 'lt-soc-7': ['psychology'], 'lt-soc-9': ['psychology'],
 };
 
-export const LIGHTNING: Tossup[] = ALL.map((q) => (TOPIC_TAGS[q.id] ? { ...q, topics: [...(q.topics ?? []), ...TOPIC_TAGS[q.id]] } : q));
+export const LIGHTNING: Tossup[] = [...ALL, ...TOPIC_LIGHTNING].map((q) => (TOPIC_TAGS[q.id] ? { ...q, topics: [...(q.topics ?? []), ...TOPIC_TAGS[q.id]] } : q));
