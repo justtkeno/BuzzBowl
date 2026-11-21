@@ -1,7 +1,14 @@
 // Types shared by the server and the client. Everything here is plain JSON.
 
 export type Mode = 'ffa' | 'teams';
-export type SourceKind = 'qbreader' | 'sample' | 'upload';
+export type SourceKind = 'qbreader' | 'sample' | 'upload' | 'lightning';
+
+/** Lightning round: with no reader, the whole prompt appears at once and players get at least this long to buzz. */
+export const LIGHTNING_BUZZ_SECONDS = 8;
+
+/** How long players can still buzz once a question is fully shown. */
+export const buzzWindowSeconds = (s: { source: SourceKind; deadSeconds: number }) =>
+  s.source === 'lightning' ? Math.max(LIGHTNING_BUZZ_SECONDS, s.deadSeconds) : s.deadSeconds;
 
 export interface Filters {
   categories: string[];

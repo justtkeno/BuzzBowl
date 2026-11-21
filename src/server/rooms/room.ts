@@ -1,5 +1,5 @@
 import {
-  DEFAULT_SETTINGS, SPECTATOR,
+  DEFAULT_SETTINGS, SPECTATOR, buzzWindowSeconds,
   type BotSkill, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
   type Ruling, type ScorePoint, type Settings, type Verdict,
 } from '../../shared/types';
@@ -8,6 +8,7 @@ import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, ty
 import { stripHtml, safeAnswerHtml } from '../game/text';
 import { LocalProvider, parseUpload, QBReaderProvider } from '../questions/providers';
 import { CATALOG_BONUSES, CATALOG_TOSSUPS } from '../questions/catalog';
+import { LIGHTNING } from '../questions/catalog/lightning';
 import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
 import type { Bonus, QuestionProvider, Tossup } from '../questions/types';
 import type { GameRecord } from '../../shared/accounts';
@@ -145,6 +146,8 @@ const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
 
 /** Built-in questions: the original sample packet plus the Trivio catalog. Works offline. */
 const sampleProvider = new LocalProvider([...SAMPLE_TOSSUPS, ...CATALOG_TOSSUPS], [...SAMPLE_BONUSES, ...CATALOG_BONUSES]);
+/** Lightning round: short one-line prompts, no bonuses. */
+const lightningProvider = new LocalProvider(LIGHTNING, []);
 
 export interface RoomDeps {
   qbreader?: QuestionProvider;
@@ -205,6 +208,8 @@ export class Room {
     return id === this.s.hostId || id === this.s.readerId;
   }
   private readerOnline() { return !!this.s.readerId && !!this.player(this.s.readerId)?.online; }
+  /** Lightning round with no reader: each prompt is shown all at once instead of word by word. */
+  private instantReveal() { return this.s.settings.source === 'lightning' && !this.readerOnline(); }
 
   /** Who may advance / start / pause: the reader (and host) when there is a reader, otherwise anyone. */
   private canDirect(id: string) { return this.readerOnline() ? this.isController(id) : true; }
@@ -247,6 +252,7 @@ export class Room {
 
   private provider(): QuestionProvider {
     if (this.s.settings.source === 'sample') return sampleProvider;
+    if (this.s.settings.source === 'lightning') return lightningProvider;
     if (this.s.settings.source === 'upload') return this.uploadProvider ?? sampleProvider;
     return this.qbreader;
   }
@@ -598,8 +604,9 @@ export class Room {
   /** "QBReader: Science, History · difficulty 3, 4" for chat announcements. */
   private questionsLabel() {
     const s = this.s.settings, f = s.filters;
-    const source = { qbreader: 'QBReader', sample: 'the built-in questions', upload: 'the uploaded packet' }[s.source] ?? s.source;
+    const source = { qbreader: 'QBReader', sample: 'the built-in questions', upload: 'the uploaded packet', lightning: 'the lightning round' }[s.source] ?? s.source;
     const parts = [f.subcategories.length ? f.subcategories.join(', ') : f.categories.length ? f.categories.join(', ') : 'all categories'];
+    if (s.source === 'lightning' && f.difficulties.length) parts.push(`difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}`);
     if (s.source === 'qbreader') {
       if (f.difficulties.length) parts.push(`difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}`);
       if (f.minYear || f.maxYear) parts.push(f.minYear && f.maxYear ? `${f.minYear}–${f.maxYear}` : f.minYear ? `${f.minYear} on` : `up to ${f.maxYear}`);
@@ -631,7 +638,7 @@ export class Room {
     if (patch.tenValue !== undefined) s.tenValue = clamp(patch.tenValue, 0, 50, s.tenValue);
     if (patch.negValue !== undefined) s.negValue = clamp(patch.negValue, -50, 0, s.negValue);
     if (patch.bonusPartValue !== undefined) s.bonusPartValue = clamp(patch.bonusPartValue, 0, 50, s.bonusPartValue);
-    if (patch.source && ['qbreader', 'sample', 'upload'].includes(patch.source)) {
+    if (patch.source && ['qbreader', 'sample', 'upload', 'lightning'].includes(patch.source)) {
       if (patch.source === 'upload' && !this.uploadProvider) fail('Upload a packet first.');
       s.source = patch.source;
     }
@@ -968,6 +975,10 @@ export class Room {
     const t = this.s.tossup;
     if (!t || t.ended || this.s.phase !== 'reading' || t.paused) return;
     if (t.revealed >= t.words.length) return this.openDeadWindow();
+    if (this.instantReveal()) {
+      while (t.revealed < t.words.length) this.revealWord();
+      return this.openDeadWindow();
+    }
     this.revealWord();
     if (t.revealed >= t.words.length) this.openDeadWindow();
     else this.setTimer('read', this.wordMs(t.words[t.revealed - 1]), () => this.readNext());
@@ -983,8 +994,9 @@ export class Room {
 
   private openDeadWindow() {
     const t = this.s.tossup!;
-    t.deadline = Date.now() + this.s.settings.deadSeconds * 1000;
-    this.setTimer('dead', this.s.settings.deadSeconds * 1000, () => this.endTossup(null));
+    const ms = buzzWindowSeconds(this.s.settings) * 1000;
+    t.deadline = Date.now() + ms;
+    this.setTimer('dead', ms, () => this.endTossup(null));
     this.broadcast();
   }
 
@@ -1152,7 +1164,7 @@ export class Room {
       words: t.words, powerIndex: t.powerIndex, answerHtml: safeAnswerHtml(t.q.answer), buzzes: t.markers,
     });
     if (this.s.review.length > 100) this.s.review.pop();
-    t.bonusTeam = winnerTeam && this.s.settings.bonuses ? winnerTeam : null;
+    t.bonusTeam = winnerTeam && this.s.settings.bonuses && this.s.settings.source !== 'lightning' ? winnerTeam : null;
     this.s.phase = 'tossupEnd';
     this.broadcast();
   }
@@ -1463,7 +1475,7 @@ export class Room {
     s.pausedAt = now;
     const t = s.tossup;
     if (s.phase === 'reading' && t && !t.paused) {
-      if (t.revealed >= t.words.length) { t.deadline = now + s.settings.deadSeconds * 1000; this.setTimer('dead', s.settings.deadSeconds * 1000, () => this.endTossup(null)); }
+      if (t.revealed >= t.words.length) { const ms = buzzWindowSeconds(s.settings) * 1000; t.deadline = now + ms; this.setTimer('dead', ms, () => this.endTossup(null)); }
       else this.setTimer('read', 500, () => this.readNext());
     } else if (s.phase === 'buzz' && s.buzz && !s.buzz.awaiting) {
       const b = s.buzz;

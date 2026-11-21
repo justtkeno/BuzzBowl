@@ -103,6 +103,10 @@ Every ruling appears in the **Rulings** tab. Any player can protest one, and the
 
 No question repeats within a room's session.
 
+### Lightning round
+
+Pick **⚡ Lightning round** as the question source in Settings for fast one-line prompts ("What element has the symbol Fe?"). There are about 200 original questions across every category, from Middle School to Medium College difficulty, and the category and difficulty filters work as usual. With no reader, each prompt appears all at once and everyone has at least 8 seconds to buzz. A right answer is 10 points, a wrong one is 0, and there are no bonuses. With a reader, they read each prompt aloud as normal.
+
 ### Answer checking
 
 `src/server/game/answerCheck.ts` normalizes case, accents, punctuation and articles, tolerates small typos (Levenshtein, word by word, exact numbers), and reads answer lines: bold/underlined text is the required part, `[or …]`/`accept …` add alternatives, `prompt on …` triggers a prompt (up to 2, 5 seconds each), and `do not accept …` rejects.

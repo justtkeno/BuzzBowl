@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BuzzMarker, PublicState, Verdict } from '../../shared/types';
-import { DIFFICULTIES } from '../../shared/types';
+import { DIFFICULTIES, buzzWindowSeconds } from '../../shared/types';
 import { socket } from '../socket';
 import { play } from '../sounds';
 import { act, colorFor, isTouch, resultLabel, roles, useNow, vibrate } from './util';
@@ -88,7 +88,7 @@ export function Stage({ s }: { s: PublicState }) {
         )}
         {canNext && (
           <button className="btn primary big next-btn" onClick={() => act('game:next')} disabled={s.paused}>
-            {s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : 'Next tossup'} <kbd>N</kbd>
+            {s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : s.settings.source === 'lightning' ? 'Next question' : 'Next tossup'} <kbd>N</kbd>
           </button>
         )}
         {!r.canDirect && (s.phase === 'tossupEnd' || bonusDone) && <p className="muted">Waiting for the reader to continue…</p>}
@@ -164,7 +164,7 @@ export function TossupCard({ s }: { s: PublicState }) {
   return (
     <div className="card tossup">
       <div className="meta">
-        <span className="tag">Tossup {t.num}</span>
+        <span className="tag">{s.settings.source === 'lightning' ? `⚡ Lightning ${t.num}` : `Tossup ${t.num}`}</span>
         <span>{t.category}{t.subcategory && t.subcategory !== t.category ? ` · ${t.subcategory}` : ''}</span>
         {t.difficulty ? <span className="muted">{DIFFICULTIES[t.difficulty] ?? `Level ${t.difficulty}`}</span> : null}
         {t.setName && <span className="muted hide-sm">{t.setName}{t.year ? ` (${t.year})` : ''}</span>}
@@ -206,7 +206,7 @@ export function TossupCard({ s }: { s: PublicState }) {
       {ended && t.buzzes.length > 0 && <BuzzMap buzzes={t.buzzes} totalWords={t.totalWords} powerIndex={t.powerIndex} order={s.players.map((p) => p.id)} />}
 
       {s.phase === 'reading' && t.deadline && !t.paused && (
-        <div className="status"><span>Last chance to buzz</span><Countdown deadline={t.deadline} total={s.settings.deadSeconds} frozen={s.paused} /></div>
+        <div className="status"><span>Last chance to buzz</span><Countdown deadline={t.deadline} total={buzzWindowSeconds(s.settings)} frozen={s.paused} /></div>
       )}
       {s.phase === 'reading' && t.paused && <div className="status muted">Paused{r.isReader ? ' — press Space to resume' : ' by the reader'}</div>}
       {s.buzz && <BuzzStatus s={s} />}
@@ -309,16 +309,22 @@ function RulingBox({ given, suggestion }: { given: string; suggestion: Verdict }
 function ReaderControls({ s }: { s: PublicState }) {
   const t = s.tossup!;
   const [wpm, setWpm] = useState(s.settings.wpm);
+  // Lightning round with no reader shows each prompt all at once, so word-by-word controls don't apply.
+  const instant = s.settings.source === 'lightning' && !roles(s).readerOnline;
   useEffect(() => setWpm(s.settings.wpm), [s.settings.wpm]);
   return (
     <div className="reader-controls">
       <button className="btn" onClick={() => act('game:pause', !t.paused)}>{t.paused ? '▶ Resume' : '❚❚ Pause'} <kbd>Space</kbd></button>
-      <button className="btn" onClick={() => act('game:revealTo', t.revealed.length + 1)} disabled={t.revealed.length >= t.totalWords}>Next word <kbd>→</kbd></button>
-      <label className="wpm">
-        <span>{wpm} wpm</span>
-        <input type="range" min={100} max={600} step={10} value={wpm} onChange={(e) => setWpm(Number(e.target.value))}
-          onPointerUp={() => act('settings:update', { wpm })} onKeyUp={() => act('settings:update', { wpm })} />
-      </label>
+      {!instant && (
+        <>
+          <button className="btn" onClick={() => act('game:revealTo', t.revealed.length + 1)} disabled={t.revealed.length >= t.totalWords}>Next word <kbd>→</kbd></button>
+          <label className="wpm">
+            <span>{wpm} wpm</span>
+            <input type="range" min={100} max={600} step={10} value={wpm} onChange={(e) => setWpm(Number(e.target.value))}
+              onPointerUp={() => act('settings:update', { wpm })} onKeyUp={() => act('settings:update', { wpm })} />
+          </label>
+        </>
+      )}
       <button className="btn ghost" onClick={() => act('game:next')}>Skip <kbd>N</kbd></button>
     </div>
   );
