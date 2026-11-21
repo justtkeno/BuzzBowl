@@ -7,8 +7,14 @@ export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 export const PASSWORD_MIN = 8;
 export const BIO_MAX = 200;
 
+/** Badge rewards a player picked: ids from PROFILE_COLORS and AVATAR_FRAMES (the defaults when not picked or no longer unlocked). */
+export interface Look {
+  color: string;
+  frame: string;
+}
+
 /** The logged-in user, as they see themselves. */
-export interface Me {
+export interface Me extends Look {
   id: string;
   username: string;
   displayName: string;
@@ -83,7 +89,7 @@ export interface ProfileTotals {
   bestStreak: number;
 }
 
-export interface PublicProfile {
+export interface PublicProfile extends Look {
   username: string;
   displayName: string;
   bio: string;
@@ -106,8 +112,8 @@ export interface PublicProfile {
   badgesUnlocked?: boolean;
 }
 
-/** What others see of a profile that isn't open to them. */
-export interface LockedProfile {
+/** What others see of a profile that isn't open to them (the color and frame are cosmetic, so they still show). */
+export interface LockedProfile extends Look {
   username: string;
   displayName: string;
   createdAt: number;
@@ -199,7 +205,7 @@ export interface FriendRoom {
   players: number;
 }
 
-export interface Friend {
+export interface Friend extends Look {
   username: string;
   displayName: string;
   admin: boolean;
@@ -207,7 +213,7 @@ export interface Friend {
   room?: FriendRoom;
 }
 
-export interface FriendRequest {
+export interface FriendRequest extends Look {
   username: string;
   displayName: string;
   admin: boolean;

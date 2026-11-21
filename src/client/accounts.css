@@ -18,8 +18,68 @@ a.btn.primary { color: var(--accent-ink); }
 .account-me { display: flex; align-items: center; gap: .45rem; flex: 1; min-width: 0; color: var(--text); text-decoration: none; font-weight: 600; border-radius: 8px; padding: .2rem .35rem; }
 .account-me:hover { background: var(--surface-2); }
 .account-me .muted { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.avatar { display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: .85rem; }
-.avatar.big { width: 64px; height: 64px; font-size: 1.8rem; }
+.avatar {
+  position: relative; display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: .85rem;
+  /* frame sizes: ring width, gap between avatar and ring, corner mark */
+  --ring: 1.5px; --gap: 1.5px; --mark: 12px;
+}
+.avatar.big { width: 64px; height: 64px; font-size: 1.8rem; --ring: 2.5px; --gap: 3px; --mark: 22px; }
+
+/* ---------- badge rewards: profile colors and avatar frames ---------- */
+/* A profile color: --c-light / --c-dark come from PROFILE_COLORS, set inline by tint(). */
+.tinted { --accent: var(--c-light); --accent-soft: color-mix(in srgb, var(--c-light) 13%, var(--surface)); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .tinted { --accent: var(--c-dark); --accent-soft: color-mix(in srgb, var(--c-dark) 17%, var(--surface)); }
+}
+:root[data-theme='dark'] .tinted { --accent: var(--c-dark); --accent-soft: color-mix(in srgb, var(--c-dark) 17%, var(--surface)); }
+
+.avatar.frame-ring { box-shadow: 0 0 0 var(--gap) var(--surface), 0 0 0 calc(var(--gap) + var(--ring)) var(--accent); }
+.avatar.frame-double {
+  box-shadow: 0 0 0 var(--gap) var(--surface), 0 0 0 calc(var(--gap) + var(--ring)) var(--accent),
+    0 0 0 calc(2 * var(--gap) + var(--ring)) var(--surface), 0 0 0 calc(2 * var(--gap) + 2 * var(--ring)) color-mix(in srgb, var(--accent) 50%, var(--surface));
+}
+.avatar.frame-dashed::before, .avatar.frame-halo::before {
+  content: ''; position: absolute; inset: calc(-1 * (var(--gap) + var(--ring))); border-radius: 50%; pointer-events: none;
+}
+.avatar.frame-dashed::before { border: var(--ring) dashed var(--accent); }
+/* The top frame: a ring with two soft glints that turn very slowly. */
+.avatar.frame-halo::before {
+  inset: calc(-1 * (var(--gap) + var(--ring) + .5px)); padding: calc(var(--ring) + .5px);
+  background: conic-gradient(var(--accent), color-mix(in srgb, var(--accent) 35%, #fff) 25%, var(--accent) 50%, color-mix(in srgb, var(--accent) 35%, #fff) 75%, var(--accent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: halo-turn 14s linear infinite;
+}
+@keyframes halo-turn { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .avatar.frame-halo::before { animation: none; } }
+/* Corner marks: a small glyph on a surface-colored disc, top right (friends' status dots sit bottom right). */
+.avatar.frame-flame, .avatar.frame-star { box-shadow: 0 0 0 var(--gap) var(--surface), 0 0 0 calc(var(--gap) + 1px) color-mix(in srgb, var(--accent) 45%, var(--surface)); }
+.avatar.frame-flame::before, .avatar.frame-star::before, .avatar.frame-flame::after, .avatar.frame-star::after {
+  content: ''; position: absolute; top: calc(var(--mark) * -.32); right: calc(var(--mark) * -.32); width: var(--mark); height: var(--mark); pointer-events: none;
+}
+.avatar.frame-flame::before, .avatar.frame-star::before { border-radius: 50%; background: var(--surface); }
+.avatar.frame-flame::after, .avatar.frame-star::after { background: var(--accent); -webkit-mask: var(--glyph) center / 76% no-repeat; mask: var(--glyph) center / 76% no-repeat; }
+.avatar.frame-star { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 .8l2.2 4.6 5 .7-3.6 3.5.9 5L8 12.2l-4.5 2.4.9-5L.8 6.1l5-.7z'/%3E%3C/svg%3E"); }
+.avatar.frame-flame { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8.8.4c.6 2.6-.6 4-1.9 5.4C5.6 7.2 4.2 8.6 4.2 10.8c0 2.7 1.7 4.8 3.9 4.8s4.1-2 4.1-4.8c0-1.8-.8-3.2-1.8-4.2.1 1.3-.4 2.2-1.3 2.7C9.9 6.4 9.8 3 8.8.4zM8.1 14.2c-1 0-1.8-.8-1.8-1.9 0-1.2.8-1.9 1.7-2.9.2 1 .8 1.4 1.4 1.8.4.3.6.7.6 1.2 0 1-.9 1.8-1.9 1.8z'/%3E%3C/svg%3E"); }
+
+/* Pickers in the Edit form */
+.reward-picker { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 2px; }
+.reward-picker button { position: relative; display: grid; place-items: center; cursor: pointer; font: inherit; padding: 0; }
+.swatch { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); }
+.swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.frame-opt { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.frame-opt .avatar { width: 24px; height: 24px; font-size: .72rem; --mark: 11px; }
+.frame-opt.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.reward-picker .locked { opacity: .4; }
+.reward-picker .locked .avatar { filter: grayscale(1); }
+.swatch.locked { filter: saturate(.35); }
+.reward-picker .lock { position: absolute; }
+.frame-opt .lock { right: 2px; bottom: 2px; color: var(--muted); }
+.reward-hint { color: var(--muted); }
+
+/* The profile color, quietly, on the head card */
+.profile-head { background: linear-gradient(color-mix(in srgb, var(--accent) 6%, var(--surface)), var(--surface) 110px); border-color: color-mix(in srgb, var(--accent) 22%, var(--border)); }
 
 .account-dialog { width: min(420px, 100%); display: flex; flex-direction: column; gap: .85rem; }
 .account-dialog .tabs { margin: -.25rem -.4rem .1rem; }
