@@ -1,7 +1,7 @@
 // Trivio service worker: makes the app installable and quick to open.
 // Pages load network-first (so updates show up right away) with a cached copy as fallback.
 // Built assets are content-hashed, so they are cached forever. Live game traffic is never touched.
-const VERSION = 'trivio-v1';
+const VERSION = 'trivio-v2';
 const SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
