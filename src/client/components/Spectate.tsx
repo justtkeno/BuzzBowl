@@ -1,3 +1,4 @@
+import { Announcement } from './Announcement';
 import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
 import type { PublicState } from '../../shared/types';
@@ -54,6 +55,7 @@ export function Spectate({ code }: { code: string }) {
 
   return (
     <div className="watch">
+      <Announcement />
       <header className="watch-top">
         <div className="brand"><Logo /> Trivio</div>
         <div className="watch-join">Join at <b>{inviteUrl(s.code).replace(/^https?:\/\//, '').replace(/\/r\/.*/, '')}</b> · code <b className="watch-code">{s.code}</b></div>

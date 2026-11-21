@@ -30,9 +30,9 @@ export function ReaderQueue({ s, onChangeQuestions }: { s: PublicState; onChange
 
 function questionsSummary(s: PublicState) {
   const { source, filters: f } = s.settings;
-  const src = { qbreader: 'QBReader', sample: 'Built-in questions', upload: 'Uploaded packet' }[source] ?? source;
+  const src = { qbreader: 'QBReader', sample: 'Built-in questions', upload: 'Uploaded packet', lightning: '⚡ Lightning round' }[source] ?? source;
   const cats = f.subcategories.length ? f.subcategories.join(', ') : f.categories.length ? f.categories.join(', ') : 'all categories';
-  const diff = source === 'qbreader' && f.difficulties.length ? ` · difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}` : '';
+  const diff = (source === 'qbreader' || source === 'lightning') && f.difficulties.length ? ` · difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}` : '';
   return `${src} · ${cats}${diff}`;
 }
 

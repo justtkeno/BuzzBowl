@@ -7,10 +7,11 @@ import { act, toast, useNow } from './util';
  * Site-admin controls for the current room. Shown only to an admin who is logged in.
  * Works at any point in a match, unlike the normal lobby-only seat changes.
  */
-export function AdminPanel({ s, onClose }: { s: PublicState; onClose: () => void }) {
+export function AdminPanel({ s, onClose, onPlayers }: { s: PublicState; onClose: () => void; onPlayers?: () => void }) {
   const now = useNow(!!s.heldReader, 1000);
   const { me } = useAccount();
   const [showId, setShowId] = useState(false);
+  const [shout, setShout] = useState('');
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -29,7 +30,7 @@ export function AdminPanel({ s, onClose }: { s: PublicState; onClose: () => void
           <h2>🛡 Admin</h2>
           <button className="btn ghost icon" onClick={onClose} aria-label="Close">✕</button>
         </div>
-        <p className="muted small">Only you see this. These changes work any time, even mid-match, and everyone sees a note in chat.</p>
+        <p className="muted small">Only you see this panel. Seat changes and renames show a note in chat. Peeking and freezing are secret.</p>
 
         <div className="admin-seats">
           <div>
@@ -47,7 +48,22 @@ export function AdminPanel({ s, onClose }: { s: PublicState; onClose: () => void
           </div>
         </div>
 
-        <h3>People in this room</h3>
+        <h3>Troll tools</h3>
+        <div className="troll">
+          <label className="check">
+            <input type="checkbox" checked={!!s.admin?.peek} onChange={(e) => act('admin:peek', e.target.checked)} />
+            <span><b>Peek at answers</b> <span className="muted small">The answer shows under the question while it’s read. Nobody else can tell.</span></span>
+          </label>
+          <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (shout.trim()) { act('admin:announce', shout); setShout(''); } }}>
+            <input className="grow" value={shout} maxLength={140} placeholder="Big message on everyone’s screen…" aria-label="Announcement" onChange={(e) => setShout(e.target.value)} />
+            <button className="btn" disabled={!shout.trim()}>Announce</button>
+          </form>
+        </div>
+
+        <div className="row between">
+          <h3>People in this room</h3>
+          {onPlayers && !s.daily && <button className="btn small ghost" onClick={onPlayers}>Kick, ban, mute →</button>}
+        </div>
         <table className="admin-people">
           <tbody>
             {people.map((p) => (
@@ -58,10 +74,21 @@ export function AdminPanel({ s, onClose }: { s: PublicState; onClose: () => void
                   {p.id === s.hostId && <span className="badge">host</span>}
                   {p.id === s.readerId && <span className="badge reader">reader</span>}
                   {!p.online && <span className="badge">offline</span>}
+                  {frozenMode(s, p.id) !== 'off' && <span className="badge">🧊 frozen</span>}
                 </td>
                 <td className="admin-actions">
                   {p.id !== s.hostId && <button className="btn small" onClick={() => act('admin:host', p.id)} disabled={!p.online}>Make host</button>}
                   {p.id !== s.readerId && <button className="btn small" onClick={() => act('admin:reader', p.id)} disabled={!p.online}>Make reader</button>}
+                  {p.id !== s.you && (
+                    <>
+                      <button className="btn small" onClick={() => { const n = prompt(`New name for ${p.name}:`, p.name); if (n?.trim()) act('admin:rename', p.id, n); }}>Rename</button>
+                      <select aria-label={`${p.name}'s buzzer`} value={frozenMode(s, p.id)} onChange={(e) => act('admin:freeze', p.id, e.target.value)}>
+                        <option value="off">Buzzer on</option>
+                        <option value="tossup">🧊 Freeze 1 tossup</option>
+                        <option value="always">🧊 Freeze until I stop</option>
+                      </select>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -92,4 +119,9 @@ export function AdminPanel({ s, onClose }: { s: PublicState; onClose: () => void
       </div>
     </div>
   );
+}
+
+function frozenMode(s: PublicState, id: string): 'off' | 'tossup' | 'always' {
+  const f = s.admin?.frozen.find((x) => x.id === id);
+  return !f ? 'off' : f.always ? 'always' : 'tossup';
 }

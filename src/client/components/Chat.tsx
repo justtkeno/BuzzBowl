@@ -6,6 +6,7 @@ export function Chat({ s, messages }: { s: PublicState; messages: ChatMessage[] 
   const r = roles(s);
   const teamsOn = s.settings.mode === 'teams' && !!r.myTeam;
   const bonusForMe = s.phase === 'bonus' && s.bonus?.teamId === r.myTeam;
+  const muted = !!s.players.find((p) => p.id === r.me)?.muted;
   const [scope, setScope] = useState<'all' | 'team'>('all');
   const [text, setText] = useState('');
   const list = useRef<HTMLDivElement>(null);
@@ -38,8 +39,9 @@ export function Chat({ s, messages }: { s: PublicState; messages: ChatMessage[] 
             <option value="team">Team</option>
           </select>
         )}
-        <input className="grow" value={text} maxLength={300} placeholder={scope === 'team' ? 'Message your team…' : 'Message everyone…'} onChange={(e) => setText(e.target.value)} />
-        <button className="btn">Send</button>
+        <input className="grow" value={text} maxLength={300} disabled={muted} aria-label="Chat message"
+          placeholder={muted ? 'You’re muted in this room' : scope === 'team' ? 'Message your team…' : 'Message everyone…'} onChange={(e) => setText(e.target.value)} />
+        <button className="btn" disabled={muted}>Send</button>
       </form>
     </div>
   );
