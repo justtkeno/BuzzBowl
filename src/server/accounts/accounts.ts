@@ -6,7 +6,7 @@ import {
   BIO_MAX, FRIENDS_MAX, PASSWORD_MIN, USERNAME_RE, summarize,
   type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type ProfileView, type PublicProfile,
 } from '../../shared/accounts';
-import { VISIBILITIES, badgesFor, cleanPinned, type Visibility } from '../../shared/profile';
+import { BADGES, VISIBILITIES, badgesFor, cleanPinned, type Visibility } from '../../shared/profile';
 import type { AccountStore, FriendLink, User } from './store';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
@@ -208,8 +208,9 @@ export class Accounts {
       pinned: cleanPinned(u.pinned),
       badges: [],
       ...(privileged ? { visibility } : {}),
+      ...(viewer && isAdmin(viewer) ? { badgesUnlocked: !!u.grantedBadges?.length } : {}),
     };
-    p.badges = badgesFor({ games, p });
+    p.badges = badgesFor({ games, p, granted: u.grantedBadges });
     return p;
   }
 
@@ -384,6 +385,18 @@ export class Accounts {
       if (isAdmin(u)) { res.status(400).json({ error: 'Admin accounts can’t be moderated here.' }); return null; }
       return u;
     };
+
+    /** Unlock every badge for an account (admins included, yourself too), or put it back to what they earned. */
+    r.post('/admin/users/:username/badges', wrap(async (req, res) => {
+      const me = await this.userFrom(req.headers.cookie);
+      if (!me || !isAdmin(me)) return res.status(403).json({ error: 'Admins only.' });
+      const u = await this.store.userByName(String(req.params.username));
+      if (!u) return res.status(404).json({ error: 'No player with that username.' });
+      const grantedBadges = req.body?.unlock ? BADGES.map((b) => b.id) : [];
+      await this.store.updateUser(u.id, { grantedBadges });
+      console.log(`Admin ${grantedBadges.length ? 'unlocked' : 're-locked'} badges for @${u.username}`);
+      res.json({ ok: true, unlocked: grantedBadges.length > 0 });
+    }));
 
     /** Clear an offensive display name (back to the username) and/or bio. */
     r.post('/admin/users/:username/reset', wrap(async (req, res) => {

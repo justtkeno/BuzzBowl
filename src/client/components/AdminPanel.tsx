@@ -12,6 +12,7 @@ export function AdminPanel({ s, onClose, onPlayers }: { s: PublicState; onClose:
   const { me } = useAccount();
   const [showId, setShowId] = useState(false);
   const [shout, setShout] = useState('');
+  const [everyone, setEveryone] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -54,10 +55,14 @@ export function AdminPanel({ s, onClose, onPlayers }: { s: PublicState; onClose:
             <input type="checkbox" checked={!!s.admin?.peek} onChange={(e) => act('admin:peek', e.target.checked)} />
             <span><b>Peek at answers</b> <span className="muted small">The answer shows under the question while it’s read. Nobody else can tell.</span></span>
           </label>
-          <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (shout.trim()) { act('admin:announce', shout); setShout(''); } }}>
-            <input className="grow" value={shout} maxLength={140} placeholder="Big message on everyone’s screen…" aria-label="Announcement" onChange={(e) => setShout(e.target.value)} />
+          <form className="row gap" onSubmit={(e) => { e.preventDefault(); if (shout.trim()) { act(everyone ? 'site:announce' : 'admin:announce', shout); setShout(''); } }}>
+            <input className="grow" value={shout} maxLength={140} placeholder={everyone ? 'Big message on every screen on Trivio…' : 'Big message on everyone’s screen…'} aria-label="Announcement" onChange={(e) => setShout(e.target.value)} />
             <button className="btn" disabled={!shout.trim()}>Announce</button>
           </form>
+          <label className="check">
+            <input type="checkbox" checked={everyone} onChange={(e) => setEveryone(e.target.checked)} />
+            <span>Send to <b>everyone on Trivio</b>, not just this room <span className="muted small">(skips anyone mid-daily-challenge)</span></span>
+          </label>
         </div>
 
         <div className="row between">

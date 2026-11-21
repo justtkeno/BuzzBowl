@@ -321,6 +321,72 @@ io.on('connection', (socket) => {
     enter(room, name, token, ack);
   });
 
+  // ---------- site admin, from any page ----------
+
+  const siteAdmin = (ack: Ack) => {
+    const a = accounts.of(socket);
+    if (!a?.admin) { ack({ ok: false, error: 'Admins only.' }); return null; }
+    return a;
+  };
+
+  // Everyone on the site right now, and every live room.
+  socket.on('site:overview', (ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    const accountIds = new Set<string>();
+    for (const s of io.sockets.sockets.values()) { const a = accounts.of(s); if (a) accountIds.add(a.id); }
+    const rooms = [...store.all()].map((r) => {
+      const people = r.s.players.filter((p) => !p.bot);
+      return {
+        code: r.s.code, phase: r.s.phase, mode: r.s.settings.mode, paused: r.s.paused, lastActive: r.s.lastActive,
+        daily: r.s.daily ? { number: r.s.daily.number, done: r.s.daily.done } : null,
+        tossup: r.s.tossupNum, bots: r.s.players.length - people.length,
+        host: r.s.players.find((p) => p.id === r.s.hostId)?.name ?? null,
+        players: people.map((p) => ({ name: p.name, username: p.username ?? null, online: p.online })),
+      };
+    }).sort((a, b) => b.players.filter((p) => p.online).length - a.players.filter((p) => p.online).length || b.lastActive - a.lastActive);
+    ack({ ok: true, connections: io.sockets.sockets.size, accounts: accountIds.size, rooms });
+  });
+
+  // A big message on every screen on the site. Players mid-daily-challenge are skipped so it can't cost them a buzz.
+  socket.on('site:announce', (text: unknown, ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    if (!clean) return ack({ ok: false, error: 'Type a message first.' });
+    const msg = { text: clean, at: Date.now() };
+    let sent = 0;
+    for (const s of io.sockets.sockets.values()) {
+      const d = s.data as SocketData;
+      const room = d.code && d.playerId ? store.get(d.code) : undefined;
+      if (room?.s.daily && !room.s.daily.done) continue;
+      s.emit('announce', msg);
+      sent++;
+    }
+    console.log(`Admin @${accounts.of(socket)!.username} announced to ${sent} screens: ${clean}`);
+    ack({ ok: true, sent });
+  });
+
+  // Shut a room down: everyone in it goes back to the home screen.
+  socket.on('site:closeRoom', (code: unknown, ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    const room = store.get(String(code ?? ''));
+    if (!room) return ack({ ok: false, error: 'That room is already gone.' });
+    const c = room.s.code;
+    room.recordIfUnfinished();
+    room.dispose();
+    io.to(c).emit('kicked', { banned: false, closed: true });
+    for (const id of [...(io.sockets.adapter.rooms.get(c) ?? [])]) {
+      const s = io.sockets.sockets.get(id);
+      if (!s) continue;
+      const d = s.data as SocketData;
+      s.leave(c); s.leave(`w:${c}`);
+      if (d.playerId) s.leave(`p:${c}:${d.playerId}`);
+      s.data = {} satisfies SocketData;
+    }
+    store.delete(c);
+    console.log(`Admin @${accounts.of(socket)!.username} closed room ${c}`);
+    ack({ ok: true });
+  });
+
   // Invite a friend into the room you're in. They get a banner wherever they are on the site.
   socket.on('friend:invite', async (username: unknown, ack: Ack) => {
     if (typeof ack !== 'function') return;

@@ -412,4 +412,19 @@ describe('profile privacy and pins', () => {
     expect(await accounts.friendOf(owner.user.id, 'rando')).toBeNull();
     expect(await accounts.friendOf(owner.user.id, 'shy')).toBeNull();
   });
+
+  it('lets only admins unlock every badge, for anyone including themselves', async () => {
+    const admin = (await req('POST', '/login', { username: 'Hao', password: 'long-enough-pw' }));
+    const cookie = admin.headers.get('set-cookie')!.split(';')[0];
+    const user = (await req('POST', '/login', { username: 'rando', password: 'long-enough-pw' })).headers.get('set-cookie')!.split(';')[0];
+    expect((await req('POST', '/admin/users/rando/badges', { unlock: true }, user)).status).toBe(403);
+    expect((await (await req('POST', '/admin/users/Hao/badges', { unlock: true }, cookie)).json()).unlocked).toBe(true);
+    const mine = await view('Hao', cookie);
+    expect(mine.badges.every((b: any) => b.earned)).toBe(true);
+    expect(mine.badgesUnlocked).toBe(true);
+    expect((await view('Hao')).badgesUnlocked).toBeUndefined(); // others don't see that it was unlocked
+    await req('POST', '/admin/users/Hao/badges', { unlock: false }, cookie);
+    expect((await view('Hao', cookie)).badges.some((b: any) => !b.earned)).toBe(true);
+    expect((await req('POST', '/admin/users/nobody_x/badges', { unlock: true }, cookie)).status).toBe(404);
+  });
 });
