@@ -4,6 +4,7 @@ import { DEFAULT_COLOR, DEFAULT_FRAME, colorById } from '../../shared/profile';
 import { login, logout, signup, useAccount } from '../account';
 import '../accounts.css';
 import { SiteAdminPanel } from './SiteAdmin';
+import { Icon } from './Icon';
 
 /**
  * Class and style that give an element (and what's inside it) a profile color as its accent, in either theme.
@@ -70,7 +71,7 @@ export function AccountBar() {
             {me.admin && <CreatorBadge />}
             <span className="muted small">@{me.username}</span>
           </a>
-          {me.admin && <button className="btn ghost small" onClick={() => setAdmin(true)} title="Site admin: announce to everyone, rooms, badges" aria-label="Site admin">🛡</button>}
+          {me.admin && <button className="btn ghost small" onClick={() => setAdmin(true)} title="Site admin: announce to everyone, rooms, badges" aria-label="Site admin"><Icon name="shield" /></button>}
           <button className="btn ghost small" onClick={() => void logout()}>Log out</button>
         </>
       ) : (

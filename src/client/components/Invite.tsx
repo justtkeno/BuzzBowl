@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { toast } from './util';
+import { Icon } from './Icon';
 
 export const inviteUrl = (code: string) => `${location.origin}/r/${code}`;
 
@@ -36,7 +37,7 @@ export function InviteScreen({ code, onClose }: { code: string; onClose: () => v
   const host = location.host;
   return (
     <div className="invite-screen" role="dialog" aria-label="Invite players" onClick={onClose}>
-      <button className="btn ghost icon invite-close" onClick={onClose} aria-label="Close">✕</button>
+      <button className="btn ghost icon invite-close" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
       <div className="invite-inner" onClick={(e) => e.stopPropagation()}>
         <h1>Join the game</h1>
         <p className="invite-sub">Point your phone camera at the code</p>

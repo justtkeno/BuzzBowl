@@ -134,7 +134,7 @@ export const DEFAULT_FRAME = 'none';
 
 /** Easier badges first, the hardest last. */
 export const PROFILE_COLORS: ProfileColor[] = [
-  { id: 'orange', name: 'Ember', light: '#d9480f', dark: '#ff7a3d' },
+  { id: 'orange', name: 'Ember', light: '#d9480f', dark: '#ea7a4b' },
   { id: 'slate', name: 'Slate', light: '#495057', dark: '#adb5bd', badge: 'dailyDebut' },
   { id: 'blue', name: 'Lake', light: '#1971c2', dark: '#4dabf7', badge: 'debut' },
   { id: 'teal', name: 'Lagoon', light: '#0c8599', dark: '#3bc9db', badge: 'firstPower' },

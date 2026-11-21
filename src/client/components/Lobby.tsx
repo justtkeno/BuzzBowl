@@ -5,6 +5,7 @@ import { InviteQR, inviteUrl, shareInvite } from './Invite';
 import { act, roles, toast } from './util';
 import { Verified } from './Account';
 import { partyOn } from './SettingsPanel';
+import { Icon } from './Icon';
 
 interface Props {
   s: PublicState; fresh: boolean;
@@ -14,7 +15,7 @@ interface Props {
 export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen }: Props) {
   const r = roles(s);
   const reader = s.players.find((p) => p.id === s.readerId);
-  const sourceLabel = { qbreader: 'QBReader', sample: 'Built-in questions', upload: `Uploaded packet (${s.uploadedCount?.tossups ?? 0} tossups)`, lightning: '⚡ Lightning round' }[s.settings.source];
+  const sourceLabel = { qbreader: 'QBReader', sample: 'Built-in questions', upload: `Uploaded packet (${s.uploadedCount?.tossups ?? 0} tossups)`, lightning: 'Lightning round' }[s.settings.source];
   const f = s.settings.filters;
   const party = partyOn(s.settings);
 
@@ -32,7 +33,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
           <div className="row gap wrap">
             <button className="btn primary" onClick={() => shareInvite(s.code)}>Copy link</button>
             <button className="btn" onClick={onBigInvite}>Show QR full screen</button>
-            <button className="btn" onClick={onBigScreen} title="Opens a scoreboard and question view for a projector or TV">📺 Big-screen view</button>
+            <button className="btn" onClick={onBigScreen} title="Opens a scoreboard and question view for a projector or TV"><Icon name="screen" /> Big-screen view</button>
           </div>
         </div>
       </div>
@@ -208,7 +209,7 @@ function BotsPanel({ s }: { s: PublicState }) {
                   <select aria-label={`${b.name} skill`} value={b.bot} onChange={(e) => act('bot:skill', b.id, e.target.value)}>
                     {SKILLS.map((k) => <option key={k} value={k}>{BOT_SKILLS[k].label}</option>)}
                   </select>
-                  <button className="btn ghost small" aria-label={`Remove ${b.name}`} title="Remove bot" onClick={() => act('bot:remove', b.id)}>✕</button>
+                  <button className="btn ghost small" aria-label={`Remove ${b.name}`} title="Remove bot" onClick={() => act('bot:remove', b.id)}><Icon name="close" /></button>
                 </>
               ) : <span className="badge">{BOT_SKILLS[b.bot!].label}</span>}
             </li>
