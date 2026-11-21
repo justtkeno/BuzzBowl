@@ -293,6 +293,8 @@ io.on('connection', (socket) => {
     // Start from the settings this host used last time (saved in their browser).
     if (host && settings && typeof settings === 'object') {
       const { source, ...rest } = settings;
+      // 7 s was the old default answer time; hosts who never changed it get the new default.
+      if ((rest as Partial<Settings>).answerSeconds === 7) delete (rest as Partial<Settings>).answerSeconds;
       try { room.updateSettings(host, { ...rest, ...(source && source !== 'upload' ? { source } : {}) }); } catch { /* ignore bad saved settings */ }
     }
     if (solo) { room.s.settings.deadSeconds = 3; room.broadcast(); }
