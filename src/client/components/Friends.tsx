@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { USERNAME_RE, type Friend, type FriendRequest, type FriendsList } from '../../shared/accounts';
 import { removeFriend, sendFriendRequest, useFriends } from '../friends';
 import { call, socket } from '../socket';
-import { AccountDialog, CreatorBadge } from './Account';
+import { AccountDialog, Avatar as UserAvatar, CreatorBadge } from './Account';
 
 /** How often the list refreshes while the panel is open, and (for the tab's counts) while it's closed. */
 const OPEN_POLL_MS = 15_000;
@@ -21,12 +21,11 @@ function statusText(f: Friend) {
   return f.status === 'online' ? 'Online' : 'Offline';
 }
 
-function Avatar({ name, status }: { name: string; status?: Friend['status'] }) {
+function Avatar({ name, status, color, frame }: { name: string; status?: Friend['status']; color?: string; frame?: string }) {
   return (
-    <span className="avatar friend-avatar" aria-hidden="true">
-      {name.slice(0, 1).toUpperCase()}
+    <UserAvatar name={name} color={color} frame={frame} className="friend-avatar">
       {status && status !== 'offline' && <span className={`friend-dot ${status}`} />}
-    </span>
+    </UserAvatar>
   );
 }
 
@@ -171,7 +170,7 @@ function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab, can
 
   const row = (x: Friend) => (
     <li key={x.username} className={`friend ${x.status}`}>
-      <Avatar name={x.displayName} status={x.status} />
+      <Avatar name={x.displayName} status={x.status} color={x.color} frame={x.frame} />
       <div className="grow friend-text">
         <Name who={x} newTab={newTab} />
         <div className="muted small">{x.room && x.room.code === currentCode ? 'In your room' : statusText(x)}</div>
@@ -237,7 +236,7 @@ function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab, can
 function RequestRow({ r, newTab, children }: { r: FriendRequest; newTab?: boolean; children: React.ReactNode }) {
   return (
     <li className="friend">
-      <Avatar name={r.displayName} />
+      <Avatar name={r.displayName} color={r.color} frame={r.frame} />
       <div className="grow friend-text">
         <Name who={r} newTab={newTab} />
         <div className="muted small">@{r.username}</div>

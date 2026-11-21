@@ -113,3 +113,66 @@ export function badgesFor(x: BadgeInput): BadgeState[] {
     return { id: b.id, earned: have >= need, have: Math.min(have, need), need };
   });
 }
+
+// ---------- badge rewards: profile colors and avatar frames ----------
+// Cosmetic only. Each one but the defaults is unlocked by a badge (earned, or granted by a site admin).
+// The server checks the badge when a player picks one, and shows the default once the badge is gone.
+
+export interface Reward {
+  id: string;
+  name: string;
+  /** The badge that unlocks it. Missing: always available (the default). */
+  badge?: string;
+}
+
+/** An accent color: `light` for the light theme, `dark` for the dark theme (each reads well with that theme's accent ink). */
+export interface ProfileColor extends Reward { light: string; dark: string }
+
+export const DEFAULT_COLOR = 'orange';
+export const DEFAULT_FRAME = 'none';
+
+/** Easier badges first, the hardest last. */
+export const PROFILE_COLORS: ProfileColor[] = [
+  { id: 'orange', name: 'Ember', light: '#d9480f', dark: '#ff7a3d' },
+  { id: 'slate', name: 'Slate', light: '#495057', dark: '#adb5bd', badge: 'dailyDebut' },
+  { id: 'blue', name: 'Lake', light: '#1971c2', dark: '#4dabf7', badge: 'debut' },
+  { id: 'teal', name: 'Lagoon', light: '#0c8599', dark: '#3bc9db', badge: 'firstPower' },
+  { id: 'rose', name: 'Rose', light: '#c2255c', dark: '#f783ac', badge: 'onFire' },
+  { id: 'pine', name: 'Pine', light: '#087f5b', dark: '#38d9a9', badge: 'dailyWeek' },
+  { id: 'violet', name: 'Violet', light: '#6741d9', dark: '#9775fa', badge: 'powerHungry' },
+  { id: 'gold', name: 'Gold', light: '#9a6700', dark: '#fcc419', badge: 'dailyWin' },
+];
+
+/** Rings and marks around the avatar, drawn in the player's color (`.frame-*` in accounts.css). */
+export const AVATAR_FRAMES: Reward[] = [
+  { id: 'none', name: 'No frame' },
+  { id: 'ring', name: 'Ring', badge: 'firstWin' },
+  { id: 'dashed', name: 'Dashed ring', badge: 'regular' },
+  { id: 'double', name: 'Double ring', badge: 'contender' },
+  { id: 'flame', name: 'Flame', badge: 'unstoppable' },
+  { id: 'star', name: 'Star', badge: 'dailyPerfect' },
+  { id: 'halo', name: 'Halo', badge: 'champion' },
+];
+
+const COLOR_BY_ID = new Map(PROFILE_COLORS.map((c) => [c.id, c]));
+const FRAME_BY_ID = new Map(AVATAR_FRAMES.map((f) => [f.id, f]));
+export const colorById = (id: string | null | undefined): ProfileColor => COLOR_BY_ID.get(id ?? '') ?? COLOR_BY_ID.get(DEFAULT_COLOR)!;
+export const frameById = (id: string | null | undefined): Reward => FRAME_BY_ID.get(id ?? '') ?? FRAME_BY_ID.get(DEFAULT_FRAME)!;
+export const isColor = (id: unknown): id is string => typeof id === 'string' && COLOR_BY_ID.has(id);
+export const isFrame = (id: unknown): id is string => typeof id === 'string' && FRAME_BY_ID.has(id);
+
+/** Ids of the badges a player has. */
+export const earnedIds = (badges: BadgeState[]) => new Set(badges.filter((b) => b.earned).map((b) => b.id));
+
+/** True when the reward is free or its badge is among `earned`. */
+export const isUnlocked = (r: Reward, earned: Set<string>) => !r.badge || earned.has(r.badge);
+
+/** What to show: the stored color and frame if known (and, given `earned`, still unlocked), else the defaults. */
+export function lookFor(stored: { color?: string | null; frame?: string | null }, earned?: Set<string>): { color: string; frame: string } {
+  const c = colorById(stored.color);
+  const f = frameById(stored.frame);
+  return {
+    color: !earned || isUnlocked(c, earned) ? c.id : DEFAULT_COLOR,
+    frame: !earned || isUnlocked(f, earned) ? f.id : DEFAULT_FRAME,
+  };
+}

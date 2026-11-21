@@ -1,11 +1,14 @@
 import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
-import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, isLocked, type DailyProfile, type GameRecord, type ProfileView, type PublicProfile } from '../../shared/accounts';
-import { BADGE_BY_ID, PIN_MAX, PIN_STATS, VISIBILITIES, VISIBILITY_LABEL, type Visibility } from '../../shared/profile';
+import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, isLocked, type DailyProfile, type GameRecord, type Look, type ProfileView, type PublicProfile } from '../../shared/accounts';
+import {
+  AVATAR_FRAMES, BADGE_BY_ID, PIN_MAX, PIN_STATS, PROFILE_COLORS, VISIBILITIES, VISIBILITY_LABEL, colorById, earnedIds, frameById, isUnlocked,
+  type Reward, type Visibility,
+} from '../../shared/profile';
 import { adminDeleteAccount, adminResetProfile, adminUnlockBadges, fetchProfile, updateMe, useAccount } from '../account';
 import { Announcement } from './Announcement';
 import { useTheme } from '../App';
-import { AccountBar, CreatorBadge } from './Account';
+import { AccountBar, Avatar, CreatorBadge, tint } from './Account';
 import { FriendButton, FriendsTab, InviteBanner } from './Friends';
 import { Marks } from './Daily';
 
@@ -28,6 +31,8 @@ export function Profile({ username }: { username: string }) {
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  /** The color and frame being tried out in the Edit form. */
+  const [preview, setPreview] = useState<Look | null>(null);
 
   useEffect(() => {
     setP(null); setErr(null); setDeleted(false);
@@ -37,6 +42,8 @@ export function Profile({ username }: { username: string }) {
   useEffect(() => { document.title = p ? `${p.displayName} (@${p.username}) · Trivio` : 'Trivio'; }, [p]);
 
   const mine = !!me && !!p && me.username.toLowerCase() === p.username.toLowerCase();
+  const look = (editing && preview) || p;
+  const headTint = tint(look?.color);
 
   return (
     <div className="profile-page">
@@ -50,15 +57,15 @@ export function Profile({ username }: { username: string }) {
         {deleted && <div className="card"><h2>Account deleted</h2><p className="muted">@{username} and its saved games are gone.</p><a className="btn" href="/">Back to Trivio</a></div>}
         {p && !deleted && (
           <>
-            <section className="card profile-head">
-              <span className="avatar big" aria-hidden="true">{p.displayName.slice(0, 1).toUpperCase()}</span>
+            <section className={`card profile-head ${headTint.className ?? ''}`} style={headTint.style}>
+              <Avatar name={p.displayName} color={look!.color} frame={look!.frame} size="big" />
               <div className="grow">
                 <h1>{p.displayName} <span className="verified" title="Verified Trivio account"><Check /></span>{p.admin && <CreatorBadge />}</h1>
                 <div className="muted small">@{p.username} · joined {new Date(p.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
                 {!isLocked(p) && p.visibility && p.visibility !== 'public' && !editing && (
                   <div className="visibility-note small">🔒 {p.visibility === 'private' ? (mine ? 'Private: only you can see your stats' : 'Private profile · you can see it as an admin') : (mine ? 'Friends only: only your friends can see your stats' : 'Friends-only profile · you can see it as an admin')}</div>
                 )}
-                {!isLocked(p) && (editing ? <EditProfile p={p} onDone={(np) => { if (np) setP(np); setEditing(false); }} /> : p.bio && <p className="bio">{p.bio}</p>)}
+                {!isLocked(p) && (editing ? <EditProfile p={p} onPreview={setPreview} onDone={(np) => { if (np) setP(np); setEditing(false); setPreview(null); }} /> : p.bio && <p className="bio">{p.bio}</p>)}
               </div>
               <div className="row gap">
                 {mine && !editing && <button className="btn small" onClick={() => setEditing(true)}>Edit profile</button>}
@@ -74,7 +81,7 @@ export function Profile({ username }: { username: string }) {
               </section>
             ) : (
             <>
-            <Pinned p={p} mine={mine} onEdit={() => setEditing(true)} />
+            <Pinned p={p} color={look!.color} mine={mine} onEdit={() => setEditing(true)} />
             <Badges p={p} mine={mine} />
             {p.totals.games === 0 ? (
               <section className="card">
@@ -117,8 +124,24 @@ function CopyLink() {
   return <button className="btn small" onClick={copy}>{done ? 'Copied!' : 'Copy link'}</button>;
 }
 
-function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfile | null) => void }) {
+function LockIcon() {
+  return <svg className="lock" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2h.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm1.6 0h3.8V5a1.9 1.9 0 0 0-3.8 0z" /></svg>;
+}
+
+/** Which badge unlocks a reward, for locked options. */
+function unlockText(r: Reward) {
+  const b = BADGE_BY_ID.get(r.badge ?? '');
+  return b ? `${r.name} unlocks with the ${b.icon} ${b.name} badge (${b.desc.charAt(0).toLowerCase()}${b.desc.slice(1)}).` : r.name;
+}
+
+function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: PublicProfile | null) => void; onPreview: (look: Look) => void }) {
   const [displayName, setDisplayName] = useState(p.displayName);
+  const [color, setColor] = useState(p.color);
+  const [frame, setFrame] = useState(p.frame);
+  /** What a tapped locked option needs, shown under its picker. */
+  const [hint, setHint] = useState<{ kind: 'color' | 'frame'; text: string } | null>(null);
+  const earned = earnedIds(p.badges);
+  useEffect(() => onPreview({ color, frame }), [color, frame]);
   const [bio, setBio] = useState(p.bio);
   const [visibility, setVisibility] = useState<Visibility>(p.visibility ?? 'public');
   const [pinned, setPinned] = useState<string[]>(p.pinned);
@@ -129,8 +152,8 @@ function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfil
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
-      const u = await updateMe({ displayName, bio, visibility, pinned });
-      onDone({ ...p, displayName: u.displayName, bio: u.bio, visibility: u.visibility, pinned: u.pinned });
+      const u = await updateMe({ displayName, bio, visibility, pinned, color, frame });
+      onDone({ ...p, displayName: u.displayName, bio: u.bio, visibility: u.visibility, pinned: u.pinned, color: u.color, frame: u.frame });
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
   return (
@@ -160,6 +183,42 @@ function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfil
             );
           })}
         </div>
+      </div>
+      <div className="field">
+        <span>Profile color <span className="muted">· {colorById(color).name}</span></span>
+        <div className="reward-picker" role="radiogroup" aria-label="Profile color">
+          {PROFILE_COLORS.map((c) => {
+            const open = isUnlocked(c, earned);
+            const t = tint(c.id, true);
+            return (
+              <button key={c.id} type="button" role="radio" aria-checked={color === c.id} aria-disabled={!open}
+                className={`swatch ${t.className} ${color === c.id ? 'on' : ''} ${open ? '' : 'locked'}`} style={t.style}
+                title={open ? c.name : unlockText(c)} aria-label={open ? c.name : `${c.name}, locked. ${unlockText(c)}`}
+                onClick={() => { if (open) { setColor(c.id); setHint(null); } else setHint({ kind: 'color', text: unlockText(c) }); }}>
+                {!open && <LockIcon />}
+              </button>
+            );
+          })}
+        </div>
+        {hint?.kind === 'color' && <span className="reward-hint small">🔒 {hint.text}</span>}
+      </div>
+      <div className="field">
+        <span>Avatar frame <span className="muted">· {frameById(frame).name}</span></span>
+        <div className="reward-picker" role="radiogroup" aria-label="Avatar frame">
+          {AVATAR_FRAMES.map((f) => {
+            const open = isUnlocked(f, earned);
+            return (
+              <button key={f.id} type="button" role="radio" aria-checked={frame === f.id} aria-disabled={!open}
+                className={`frame-opt ${frame === f.id ? 'on' : ''} ${open ? '' : 'locked'}`}
+                title={open ? f.name : unlockText(f)} aria-label={open ? f.name : `${f.name}, locked. ${unlockText(f)}`}
+                onClick={() => { if (open) { setFrame(f.id); setHint(null); } else setHint({ kind: 'frame', text: unlockText(f) }); }}>
+                <Avatar name={displayName || p.displayName} color={color} frame={f.id} force />
+                {!open && <LockIcon />}
+              </button>
+            );
+          })}
+        </div>
+        {hint?.kind === 'frame' ? <span className="reward-hint small">🔒 {hint.text}</span> : <span className="muted small">Earn badges to unlock more colors and frames.</span>}
       </div>
       {err && <p className="error">{err}</p>}
       <div className="row gap"><button className="btn primary small" disabled={busy || !displayName.trim()}>Save</button><button type="button" className="btn ghost small" onClick={() => onDone(null)}>Cancel</button></div>
@@ -349,7 +408,8 @@ function Recent({ games }: { games: GameRecord[] }) {
 }
 
 /** Up to three stats the player chose to show off, above everything else. */
-function Pinned({ p, mine, onEdit }: { p: PublicProfile; mine: boolean; onEdit: () => void }) {
+function Pinned({ p, color, mine, onEdit }: { p: PublicProfile; color: string; mine: boolean; onEdit: () => void }) {
+  const t = tint(color);
   const stats = p.pinned.map((id) => PIN_STATS.find((s) => s.id === id)).filter((s) => !!s);
   if (!stats.length) {
     return mine ? (
@@ -357,7 +417,7 @@ function Pinned({ p, mine, onEdit }: { p: PublicProfile; mine: boolean; onEdit: 
     ) : null;
   }
   return (
-    <section className={`pinned-row n${stats.length}`} aria-label="Pinned stats">
+    <section className={`pinned-row n${stats.length} ${t.className ?? ''}`} style={t.style} aria-label="Pinned stats">
       {stats.map((s) => {
         const v = s.get(p);
         return (

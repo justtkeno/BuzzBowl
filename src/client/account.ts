@@ -83,7 +83,7 @@ export async function logout() {
   reconnect();
 }
 
-export async function updateMe(patch: { displayName?: string; bio?: string; visibility?: Visibility; pinned?: string[] }) {
+export async function updateMe(patch: { displayName?: string; bio?: string; visibility?: Visibility; pinned?: string[]; color?: string; frame?: string }) {
   const { user } = await api<{ user: Me }>('/me', { method: 'PATCH', body: patch });
   set(user);
   return user;
