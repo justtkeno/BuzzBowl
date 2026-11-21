@@ -30,19 +30,30 @@ export function Stage({ s }: { s: PublicState }) {
   // A buzz the server didn't award (someone was faster) lets go after a moment.
   useEffect(() => {
     if (!buzzing) return;
-    const h = setTimeout(() => setBuzzing(false), 1500);
+    const h = setTimeout(() => {
+      setBuzzing(false);
+      // Not awarded: put the keyboard away again.
+      if (document.activeElement === keeper.current) keeper.current?.blur();
+    }, 1500);
     return () => clearTimeout(h);
   }, [buzzing]);
   useEffect(() => {
     if (s.phase !== 'buzz' || s.buzz?.playerId !== r.me) keeper.current?.blur();
   }, [s.phase, s.buzz?.playerId]);
 
+  // Phones: open the keyboard inside the tap itself (iOS only allows it there). Runs on press and on click,
+  // since some browsers only count the click as the tap.
+  const openKeyboard = () => {
+    if (!isTouch() || !canBuzz || !keeper.current || document.activeElement === keeper.current) return;
+    keeper.current.value = '';
+    keeper.current.focus({ preventScroll: true });
+  };
   const buzz = (e?: { preventDefault(): void }) => {
+    openKeyboard();
     if (!canBuzz || buzzing || !t) return;
     e?.preventDefault();
     setBuzzing(true);
     vibrate(25);
-    if (isTouch()) keeper.current?.focus();
     act('buzz', t.revealed.length);
   };
 
@@ -74,14 +85,14 @@ export function Stage({ s }: { s: PublicState }) {
       {inBonus && <BonusCard s={s} />}
 
       <div className="actionbar">
-        <input ref={keeper} className="keyboard-keeper" aria-hidden="true" tabIndex={-1} readOnly />
+        <input ref={keeper} className="keyboard-keeper" aria-hidden="true" tabIndex={-1} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
         {iAmAnswering && (
-          <AnswerBox key={`${t?.num}-${s.buzz?.prompts}`} event="answer:submit" deadline={s.buzz!.deadline} total={s.buzz!.prompts ? 5 : s.settings.answerSeconds}
+          <AnswerBox key={`${t?.num}-${s.buzz?.prompts}`} event="answer:submit" keeper={keeper} deadline={s.buzz!.deadline} total={s.buzz!.prompts ? 5 : s.settings.answerSeconds}
             prompted={s.buzz!.prompts > 0} lastGiven={t?.buzzes.filter((b) => b.playerId === r.me).at(-1)?.given} paused={s.paused} />
         )}
         {s.buzz?.awaitingRuling && r.isReader && <RulingBox given={s.buzz.awaitingRuling.given} suggestion={s.buzz.awaitingRuling.suggestion} />}
         {s.phase === 'reading' && !r.isReader && (
-          <button className={`buzzer ${canBuzz ? '' : 'disabled'} ${buzzing ? 'pressed' : ''}`} onPointerDown={buzz} onClick={() => buzz()} disabled={!canBuzz}>
+          <button className={`buzzer ${canBuzz ? '' : 'disabled'} ${buzzing ? 'pressed' : ''}`} onPointerDown={buzz} onTouchEnd={openKeyboard} onClick={() => buzz()} disabled={!canBuzz}>
             {!r.myTeam ? 'Spectating' : myTeamLocked ? 'Locked out' : s.paused ? 'Paused' : buzzing ? '…' : 'BUZZ'}
             <small>{canBuzz ? (isTouch() ? 'tap' : 'Space / tap') : ''}</small>
           </button>
@@ -322,10 +333,17 @@ function EndSummary({ s }: { s: PublicState }) {
   );
 }
 
-function AnswerBox({ event, deadline, total, prompted, placeholder, lastGiven, paused }: {
+function AnswerBox({ event, deadline, total, prompted, placeholder, lastGiven, paused, keeper }: {
   event: string; deadline: number | null; total?: number; prompted: boolean; placeholder?: string; lastGiven?: string; paused?: boolean;
+  /** The hidden input that opened the phone keyboard on the buzz tap; anything typed into it carries over. */
+  keeper?: React.RefObject<HTMLInputElement>;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(() => {
+    const early = keeper?.current?.value ?? '';
+    if (keeper?.current) keeper.current.value = '';
+    if (early) socket.emit('answer:typing', early);
+    return early;
+  });
   const sent = useRef(false);
   const box = useRef<HTMLFormElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -354,7 +372,7 @@ function AnswerBox({ event, deadline, total, prompted, placeholder, lastGiven, p
           onChange={(e) => { setText(e.target.value); socket.emit('answer:typing', e.target.value); }} />
         <button className="btn primary big">Submit</button>
       </div>
-      <Countdown deadline={deadline} total={total ?? (prompted ? 5 : 7)} ticks frozen={paused} />
+      <Countdown deadline={deadline} total={total ?? (prompted ? 5 : 10)} ticks frozen={paused} />
       <div className="muted small hint">Spelling and accents don’t need to be exact.</div>
     </form>
   );
