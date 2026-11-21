@@ -89,3 +89,5 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .admin-card .confirm { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
 .btn.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(1.08); }
+.daily-recent { margin-top: .8rem; }
+.daily-recent .marks { margin-top: .2rem; }
