@@ -80,7 +80,7 @@ export function Summary({ s }: { s: PublicState }) {
         </>
       )}
 
-      {r.isController && <button className="btn primary big" onClick={() => act('game:start')}>New game</button>}
+      {r.isController && !s.survival && <button className="btn primary big" onClick={() => act('game:start')}>New game</button>}
     </div>
   );
 }

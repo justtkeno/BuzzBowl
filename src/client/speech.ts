@@ -33,7 +33,7 @@ export function useSpeechOn(): boolean {
 /** Whether this room reads aloud for this viewer: the setting is on, nobody holds the reader seat, and the text is shown. */
 export function readAloudActive(s: PublicState) {
   const readerOnline = !!s.readerId && !!s.players.find((p) => p.id === s.readerId)?.online;
-  return s.settings.readAloud && !readerOnline && !s.daily && !!s.tossup?.textVisible;
+  return s.settings.readAloud && !readerOnline && !s.daily && !s.survival && !!s.tossup?.textVisible;
 }
 
 // iOS and some Android browsers only allow speech that starts inside a tap. Speaking an empty

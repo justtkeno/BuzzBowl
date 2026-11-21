@@ -35,6 +35,7 @@ export const PIN_STATS: { id: string; label: string; get: (p: PublicProfile) => 
   { id: 'dailyPlayed', label: 'Dailies played', get: (p) => (p.daily ? { value: String(p.daily.played), sub: `avg ${fixed(p.daily.avgPoints)} points` } : null) },
   { id: 'dailyBest', label: 'Best daily', get: (p) => (p.daily ? { value: String(p.daily.bestScore), sub: `best finish #${p.daily.bestRank}` } : null) },
   { id: 'dailyStreak', label: 'Daily streak', get: (p) => (p.daily ? { value: String(p.daily.streak), sub: `best ${p.daily.longestStreak} days in a row` } : null) },
+  { id: 'survivalBest', label: 'Best survival run', get: (p) => (p.survival ? { value: String(p.survival.best.correct), sub: `right · #${p.survival.rank} all time` } : null) },
   { id: 'badges', label: 'Badges', get: (p) => ({ value: String(p.badges?.filter((b) => b.earned).length ?? 0), sub: `of ${BADGES.length}` }) },
 ];
 const PIN_IDS = new Set(PIN_STATS.map((s) => s.id));

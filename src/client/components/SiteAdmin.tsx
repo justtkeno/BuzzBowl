@@ -6,7 +6,7 @@ import { REPORT_REASONS, type ReportGroup } from '../../shared/reports';
 
 interface RoomRow {
   code: string; phase: Phase; mode: Mode; paused: boolean; lastActive: number;
-  daily: { number: number; done: boolean } | null; tossup: number; bots: number; host: string | null;
+  daily: { number: number; done: boolean } | null; survival: { lives: number; done: boolean } | null; tossup: number; bots: number; host: string | null;
   players: { name: string; username: string | null; online: boolean }[];
 }
 interface Overview { connections: number; accounts: number; rooms: RoomRow[] }
@@ -138,7 +138,7 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
                   <div>
                     <b className="mono">{r.code}</b>{' '}
                     <span className="muted small">
-                      {r.daily ? `Daily #${r.daily.number}${r.daily.done ? ' · done' : ''}` : r.mode === 'teams' ? 'Teams' : 'Free-for-all'}
+                      {r.daily ? `Daily #${r.daily.number}${r.daily.done ? ' · done' : ''}` : r.survival ? `Survival${r.survival.done ? ' · done' : ` · ${r.survival.lives} lives`}` : r.mode === 'teams' ? 'Teams' : 'Free-for-all'}
                       {' · '}{r.paused ? 'Paused' : PHASE[r.phase]}{r.tossup ? ` · tossup ${r.tossup}` : ''}
                       {!on.length && ` · empty, ${ago(r.lastActive)}`}
                     </span>
@@ -154,7 +154,7 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
                 </div>
                 <div className="row gap site-room-actions">
                   <a className="btn small ghost" href={`/watch/${r.code}`} target="_blank" rel="noreferrer">Watch</a>
-                  {!r.daily && <a className="btn small" href={`/r/${r.code}`}>Join</a>}
+                  {!r.daily && !r.survival && <a className="btn small" href={`/r/${r.code}`}>Join</a>}
                   <button className="btn small bad" disabled={busy} onClick={() => close(r.code)}>Close</button>
                 </div>
               </li>

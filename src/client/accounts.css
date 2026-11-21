@@ -187,7 +187,7 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .friend-avatar { position: relative; width: 30px; height: 30px; }
 .friend-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); background: var(--ok); }
 .friend-dot.room { background: var(--accent); }
-.friend-dot.daily { background: var(--power); }
+.friend-dot.daily, .friend-dot.survival { background: var(--power); }
 .daily-recent { margin-top: .8rem; }
 .daily-recent .marks { margin-top: .2rem; }
 .invite-banner {
