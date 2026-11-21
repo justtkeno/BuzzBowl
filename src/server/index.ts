@@ -39,6 +39,12 @@ const daily = new Daily(
   new QBReaderProvider(),
 );
 
+// Profiles show each account's daily challenge record.
+accounts.profileExtras = async (u) => {
+  const d = await daily.profile(playerKeyFor(u.id, null)!);
+  return d ? { daily: d } : {};
+};
+
 /** Hook a daily room up to the leaderboard (also after a restart). */
 function attachDaily(room: Room) {
   const d = room.s.daily;

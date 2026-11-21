@@ -117,6 +117,9 @@ export class Accounts {
 
   constructor(private store: AccountStore) {}
 
+  /** Extra profile sections from elsewhere (the daily challenge), added when a profile is shown. */
+  profileExtras?: (user: { id: string }) => Promise<Partial<PublicProfile>>;
+
   get kind() { return this.store.kind; }
 
   async init() {
@@ -178,6 +181,7 @@ export class Accounts {
       username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u),
       ...summarize(games),
       recent: games.slice(0, RECENT_GAMES),
+      ...(await this.profileExtras?.(u).catch((e) => { console.error('Profile extras failed:', e); return {}; })),
     };
   }
 

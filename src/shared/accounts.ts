@@ -88,6 +88,28 @@ export interface PublicProfile {
   subjects: SubjectStats[];
   bestSubject: string | null;
   recent: GameRecord[];
+  /** Daily challenge record, once they've played one while logged in. */
+  daily?: DailyProfile;
+}
+
+/** One finished daily challenge on a profile. */
+export interface DailyDay { day: string; number: number; points: number; rank: number; players: number; marks: string }
+
+export interface DailyProfile {
+  played: number;
+  /** Finished #1 on a day that's over, with at least one other player. */
+  wins: number;
+  /** Finished in the top 3 on a day that's over, with at least three players. */
+  podiums: number;
+  bestRank: number;
+  bestScore: number;
+  avgPoints: number;
+  /** Days in a row played, up to today (or yesterday, if today isn't played yet). */
+  streak: number;
+  longestStreak: number;
+  /** Currently #1 on today's leaderboard (it can still change until midnight Eastern). */
+  leadingToday: boolean;
+  recent: DailyDay[];
 }
 
 /** Need this many tossups heard in a subject before it can be "best subject". */

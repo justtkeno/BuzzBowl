@@ -2,6 +2,7 @@
 // the same set. Results are worked out by the room from real buzzes and stored one per player per day.
 
 import type { DailyEntry, DailyStatus, Filters } from '../../shared/types';
+import type { DailyProfile } from '../../shared/accounts';
 import type { DailyOutcome } from '../rooms/room';
 import { CATALOG_TOSSUPS } from '../questions/catalog';
 import { SAMPLE_TOSSUPS } from '../questions/sample';
@@ -117,6 +118,33 @@ export class Daily {
     };
   }
 
+  /** A player's daily challenge record for their profile, or null if they've never played. */
+  async profile(playerKey: string): Promise<DailyProfile | null> {
+    await this.ready;
+    const h = await this.store.history(playerKey);
+    if (!h.length) return null;
+    const today = this.today();
+    // Only finished days count as wins; today's leader can still be passed.
+    const over = h.filter((x) => x.row.day < today);
+    const days = new Set(h.map((x) => x.row.day));
+    let streak = 0;
+    for (let d = days.has(today) ? today : prevDay(today); days.has(d); d = prevDay(d)) streak++;
+    let longestStreak = 0, run = 0, last = '';
+    for (const d of [...days].sort()) { run = last && prevDay(d) === last ? run + 1 : 1; longestStreak = Math.max(longestStreak, run); last = d; }
+    const points = h.map((x) => x.row.points);
+    return {
+      played: h.length,
+      wins: over.filter((x) => x.rank === 1 && x.players >= 2).length,
+      podiums: over.filter((x) => x.rank <= 3 && x.players >= 3).length,
+      bestRank: Math.min(...h.map((x) => x.rank)),
+      bestScore: Math.max(...points),
+      avgPoints: points.reduce((a, b) => a + b, 0) / points.length,
+      streak, longestStreak,
+      leadingToday: h[0].row.day === today && h[0].rank === 1 && h[0].players >= 2,
+      recent: h.slice(0, 7).map((x) => ({ day: x.row.day, number: dailyNumber(x.row.day), points: x.row.points, rank: x.rank, players: x.players, marks: x.row.marks })),
+    };
+  }
+
   async record(o: DailyOutcome, username?: string) {
     this.active.delete(o.playerKey);
     await this.ready;
@@ -126,6 +154,8 @@ export class Daily {
     });
   }
 }
+
+const prevDay = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
 /** Accounts play as themselves; guests are identified by a random key their browser keeps. */
 export function playerKeyFor(accountId: string | undefined, guestKey: unknown): string | null {
