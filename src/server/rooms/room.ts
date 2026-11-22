@@ -15,6 +15,8 @@ import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
 import type { Bonus, QuestionProvider, Tossup } from '../questions/types';
 import type { GameRecord } from '../../shared/accounts';
 import { SurvivalProvider } from '../survival/questions';
+import type { GameSummary } from '../../shared/stats';
+import { dayKey } from '../daily/daily';
 
 /** How the room talks to the outside world (Socket.IO in production, a fake in tests). */
 export interface RoomIO {
@@ -24,6 +26,8 @@ export interface RoomIO {
   emitTo(playerIds: string[], event: string, payload: unknown): void;
   /** A game finished: one record per logged-in player who played in it. */
   gameOver?(records: { accountId: string; game: GameRecord }[]): void;
+  /** A game finished (or was abandoned after 3+ tossups): an anonymous summary for the owner's stats. */
+  gameSummary?(summary: GameSummary): void;
   /** A player was kicked: stop sending them this room's updates. */
   remove?(playerId: string): void;
 }
@@ -731,7 +735,7 @@ export class Room {
     if (patch.bonusSeconds !== undefined) s.bonusSeconds = clamp(patch.bonusSeconds, 5, 60, s.bonusSeconds);
     if (patch.deadSeconds !== undefined) s.deadSeconds = clamp(patch.deadSeconds, 1, 30, s.deadSeconds);
     if (patch.gameLength !== undefined) s.gameLength = clamp(patch.gameLength, 0, 500, s.gameLength);
-    for (const k of ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules', 'readAloud', 'topicVote', 'bounty'] as const) {
+    for (const k of ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules', 'topicVote', 'bounty'] as const) {
       if (typeof patch[k] === 'boolean') s[k] = patch[k]!;
     }
     if (!s.topicVote && this.s.vote) this.cancelVote();
@@ -1013,7 +1017,7 @@ export class Room {
   makeSurvival(playerKey: string) {
     this.s.survival = { playerKey, lives: SURVIVAL_LIVES, marks: '', startedAt: Date.now(), done: false };
     this.useSurvivalQuestions();
-    this.s.settings = { ...structuredClone(DEFAULT_SETTINGS), mode: 'ffa', bonuses: false, deadSeconds: 3, source: 'upload', topicVote: false, readAloud: false };
+    this.s.settings = { ...structuredClone(DEFAULT_SETTINGS), mode: 'ffa', bonuses: false, deadSeconds: 3, source: 'upload', topicVote: false };
   }
 
   /** (Re)attach the survival questions, e.g. after a restart. Questions already played stay in seenTossups. */
@@ -1068,11 +1072,20 @@ export class Room {
 
   /** Hand each logged-in player's results to io.gameOver, once per game. */
   private recordResults(abandoned: boolean) {
-    if (this.s.recorded || !this.s.heard.length || !this.io.gameOver) return;
+    if (this.s.recorded || !this.s.heard.length) return;
     this.s.recorded = true;
     const { players, teams } = this.sharedSnapshot();
     const statsOf = new Map(players.map((p) => [p.id, p]));
     const played = (id: string) => { const st = statsOf.get(id)?.stats; return !!st && (st.heard > 0 || st.buzzes > 0); };
+    const set = this.s.settings;
+    this.io.gameSummary?.({
+      at: Date.now(), day: dayKey(), kind: this.s.daily ? 'daily' : this.s.survival ? 'survival' : 'room',
+      mode: set.mode, party: set.mode === 'ffa' && set.topicVote, source: set.source,
+      players: this.s.players.filter((p) => !p.bot && p.id !== this.s.readerId && played(p.id)).length,
+      bots: this.s.players.filter((p) => p.bot).length, reader: !!this.s.readerId,
+      tossups: this.s.heard.length, bonuses: this.s.bonusNum, bounty: set.bounty, length: set.gameLength, abandoned,
+    });
+    if (!this.io.gameOver) return;
     const teamsMode = this.s.settings.mode === 'teams';
     // Competing sides: teams with someone who played, or (free-for-all) players other than the reader who played.
     const sides = teams.filter((t) => (teamsMode ? t.playerIds.some(played) : t.id !== this.s.readerId && played(t.id)));

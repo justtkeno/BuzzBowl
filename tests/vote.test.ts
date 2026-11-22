@@ -26,7 +26,7 @@ async function setup(opts: { players?: string[]; empty?: string[]; filters?: Par
   const { provider, asked } = recordingProvider(opts.empty);
   const room = new Room('VOTE', io, { qbreader: provider });
   const ids = (opts.players ?? ['Ann', 'Bob']).map((n) => room.join(n).playerId);
-  room.updateSettings(ids[0], { wpm: 600, topicVote: true, readAloud: true, ...(opts.filters ? { filters: { categories: [], subcategories: [], difficulties: [], ...opts.filters } } : {}) });
+  room.updateSettings(ids[0], { wpm: 600, topicVote: true, ...(opts.filters ? { filters: { categories: [], subcategories: [], difficulties: [], ...opts.filters } } : {}) });
   room.start(ids[0]);
   await flush();
   return { room, ids, asked };
@@ -174,7 +174,6 @@ describe('topic vote', () => {
     room.makeDaily({ day: '2026-11-21', number: 1, playerKey: 'k' }, tossups);
     expect(() => room.updateSettings(playerId, { topicVote: true })).toThrow();
     expect(room.s.settings.topicVote).toBe(false);
-    expect(room.s.settings.readAloud).toBe(false);
     room.dispose();
   });
 });

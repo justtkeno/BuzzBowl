@@ -83,7 +83,7 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
               );
             })}
           </div>
-          {f.mode === 'ffa' && partyOn(f) && <p className="muted small">Party: everyone for themselves, the app reads each question out loud, and players vote on the next topic.</p>}
+          {f.mode === 'ffa' && partyOn(f) && <p className="muted small">Party: everyone for themselves, and players vote on the next topic.</p>}
           {midGame && <p className="muted small">Mode can change between questions.</p>}
           <GameLength value={f.gameLength} playing={s.phase === 'lobby' || s.phase === 'gameOver' ? 0 : s.tossup?.num ?? 0} onChange={(n) => set('gameLength', n)} />
           <div className="grid2">
@@ -117,7 +117,6 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
         {tab === 'reading' && (<>
         <section>
           <h3>Without a reader</h3>
-          {check('readAloud', 'Read questions aloud', 'each device speaks the words as they appear; anyone can mute their own')}
           {check('topicVote', 'Vote on the topic', `players pick from 3 categories (${VOTE_SECONDS}s); the winner plays for 5 questions, up to 10 in long games`)}
         </section>
 
@@ -244,11 +243,11 @@ function GameLength({ value, playing, onChange }: { value: number; playing: numb
   );
 }
 
-/** Party = free-for-all with the app reading aloud and topic votes. */
-export const partyOn = (f: Settings) => f.mode === 'ffa' && (f.readAloud || f.topicVote);
+/** Party = free-for-all with topic votes. */
+export const partyOn = (f: Settings) => f.mode === 'ffa' && f.topicVote;
 function pickFormat(x: Settings, m: 'ffa' | 'teams' | 'party'): Settings {
-  if (m === 'party') return { ...x, mode: 'ffa', bonuses: x.mode === 'ffa' ? x.bonuses : false, readAloud: true, topicVote: true };
-  if (m === 'ffa') return { ...x, mode: 'ffa', bonuses: x.mode === 'ffa' ? x.bonuses : false, readAloud: false, topicVote: false };
+  if (m === 'party') return { ...x, mode: 'ffa', bonuses: x.mode === 'ffa' ? x.bonuses : false, topicVote: true };
+  if (m === 'ffa') return { ...x, mode: 'ffa', bonuses: x.mode === 'ffa' ? x.bonuses : false, topicVote: false };
   return { ...x, mode: 'teams', bonuses: true };
 }
 

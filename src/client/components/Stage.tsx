@@ -5,7 +5,6 @@ import type { BuzzMarker, PublicState, Verdict } from '../../shared/types';
 import { DIFFICULTIES, VOTE_SECONDS, buzzWindowSeconds } from '../../shared/types';
 import { socket } from '../socket';
 import { play } from '../sounds';
-import { readAloudActive, setSpeechOn, speechSupported, useSpeechOn } from '../speech';
 import { act, colorFor, isTouch, resultLabel, roles, useNow, vibrate } from './util';
 import { ReportQuestion } from './Report';
 import { Icon } from './Icon';
@@ -166,17 +165,6 @@ function ReadLine({ read, total, power }: { read: number; total: number; power?:
   );
 }
 
-/** This device only: turn the read-aloud voice on or off. */
-function SpeakerToggle() {
-  const on = useSpeechOn();
-  return (
-    <button className={`speaker ${on ? 'on' : ''}`} onClick={() => setSpeechOn(!on)} aria-pressed={on}
-      title={on ? 'Reading aloud on this device. Tap to mute.' : 'Muted on this device. Tap to read aloud.'}>
-      {on ? 'Read aloud' : 'Muted'}
-    </button>
-  );
-}
-
 /** Time bar that goes green → yellow → red. With `ticks`, it also ticks each of the last 3 seconds. */
 function Countdown({ deadline, total, ticks, frozen }: { deadline: number | null | undefined; total: number; ticks?: boolean; frozen?: boolean }) {
   const now = useNow(!!deadline && !frozen);
@@ -251,7 +239,6 @@ export function TossupCard({ s }: { s: PublicState }) {
         {s.voteRun && <span className="vote-run" title={`Voted topic: ${s.voteRun.name}, question ${s.voteRun.num} of ${s.voteRun.total}`}>🗳 {s.voteRun.num}/{s.voteRun.total}</span>}
         {t.difficulty ? <span className="muted">{DIFFICULTIES[t.difficulty] ?? `Level ${t.difficulty}`}</span> : null}
         {t.setName && <span className="muted hide-sm">{t.setName}{t.year ? ` (${t.year})` : ''}</span>}
-        {readAloudActive(s) && speechSupported() && <SpeakerToggle />}
       </div>
 
       {hidden ? (

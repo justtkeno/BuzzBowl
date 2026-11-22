@@ -42,18 +42,17 @@ Small things that help:
 - During a game the screen stays on, and leaving mid-match (or closing the tab) asks first.
 - When the free server is asleep, the installed app shows **Waking up the server…** until it answers (usually 30–60 seconds).
 
-### Sound
+### Your settings
 
-Sound effects are soft and short, and can be turned off from the speaker button (computer) or the ⋯ menu (phone). Each device can also pick its own **buzz sound**: Classic, Soft, Chime, Pop or Wood. Other players' buzzes play a lower version of yours, so you can tell them apart.
+Each device has its own **Settings** (the gear in a room's top bar, ⋯ → Settings on a phone, or Settings on the home screen): sound effects on/off and **volume**, the **buzz sound** (Classic, Soft, Chime, Pop or Wood; other players' buzzes play a lower version of yours), vibration on phones, question text size and theme. The host's room rules are separate, under **Game settings**.
 
 ### Party mode
 
 For a quick free-for-all with no reader. In the lobby, the host taps **Party mode** (or picks **Party** under Format in Settings):
 
-- **Read aloud**: every phone reads the tossup out loud with its built-in voice, in step with the words appearing on screen. Reading stops when someone buzzes and picks up again after a wrong answer. Each device can mute itself with the **Read aloud** chip on the question card, so in the same room one phone or the big-screen view can do the talking.
 - **Topic vote**: players pick the topic from three choices (only categories and topics the room's settings allow), and the winner plays for several tossups in a row: 5, or about a quarter of a set game length, up to 10 (a 30-tossup game gets 8). The card shows 🗳 2/5 while it runs, and the next vote opens after its last tossup. Play starts when everyone has voted, after 10 seconds, or when anyone taps **Start now** (or presses **N**). Keys **1**–**3** vote. Ties are broken at random.
 
-Both are separate settings under **Without a reader**, so either can be used on its own. They switch off while someone holds the reader seat, and never apply to the daily challenge.
+It's also a separate setting under **Without a reader**, usable in teams too. It switches off while someone holds the reader seat, and never applies to the daily challenge.
 
 ### Survival
 
@@ -147,7 +146,7 @@ Pick **⚡ Lightning round** as the question source in Settings for fast one-lin
 
 ## How the timing stays fair
 
-The server owns the clock. It reveals each word (`tick` events) and records when it sent it. A buzz carries the number of words that client had shown. The server trusts that count only back to words sent within the last 1.2 s (plausible lag), and after the first buzz arrives it waits 120 ms for slower connections, then awards the buzz to whoever had seen the fewest words. Points (power vs. ten, neg vs. no penalty) use that word count. Clients never decide anything. Players never receive words before they're read, and players never receive answers before the tossup ends. Only the reader gets both early. Read aloud follows the same rule: a device only speaks words it has already been sent.
+The server owns the clock. It reveals each word (`tick` events) and records when it sent it. A buzz carries the number of words that client had shown. The server trusts that count only back to words sent within the last 1.2 s (plausible lag), and after the first buzz arrives it waits 120 ms for slower connections, then awards the buzz to whoever had seen the fewest words. Points (power vs. ten, neg vs. no penalty) use that word count. Clients never decide anything. Players never receive words before they're read, and players never receive answers before the tossup ends. Only the reader gets both early.
 
 ## Project layout
 

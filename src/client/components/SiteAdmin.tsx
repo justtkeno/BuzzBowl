@@ -5,6 +5,7 @@ import { call } from '../socket';
 import { REPORT_REASONS, type ReportGroup } from '../../shared/reports';
 import { FEEDBACK_KINDS, type FeedbackItem } from '../../shared/feedback';
 import { Icon } from './Icon';
+import { AdminStats } from './AdminStats';
 
 interface RoomRow {
   code: string; phase: Phase; mode: Mode; paused: boolean; lastActive: number;
@@ -87,6 +88,9 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
         <p className="muted small">
           {o ? <>{o.connections} open screen{o.connections === 1 ? '' : 's'} · {o.accounts} signed in · {live.length} active room{live.length === 1 ? '' : 's'}</> : 'Loading…'}
         </p>
+
+        <h3>Stats</h3>
+        <AdminStats openReports={reports?.total ?? null} openFeedback={feedback ? feedback.filter((f) => !f.done).length : null} />
 
         <h3>Announce to everyone on Trivio</h3>
         <form className="row gap" onSubmit={announce}>

@@ -40,8 +40,6 @@ export interface Settings {
   showTextToPlayers: boolean;
   /** When a reader is present, the reader rules on answers (auto-check is a suggestion). */
   readerRules: boolean;
-  /** No reader: each device reads the tossup aloud (text-to-speech) as the words appear. */
-  readAloud: boolean;
   /** No reader: between tossups, players vote on the next tossup's category. */
   topicVote: boolean;
   /** Tossups in a game; the game ends after the last one (and its bonus). 0 = no limit. */
@@ -67,7 +65,6 @@ export const DEFAULT_SETTINGS: Settings = {
   filters: { categories: [], subcategories: [], topics: [], difficulties: [] },
   showTextToPlayers: false,
   readerRules: true,
-  readAloud: false,
   topicVote: false,
   gameLength: 0,
   bounty: false,

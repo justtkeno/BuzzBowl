@@ -63,7 +63,7 @@ async function play(c: Combo): Promise<string[]> {
   if (c.bots) botsFor(room).add(host, 'medium');
   if (c.source === 'upload') room.upload(host, PACKET);
   room.updateSettings(host, {
-    wpm: 800, readAloud: c.vote, topicVote: c.vote, bonuses: c.bonuses, bounty: c.bounty, powers: c.scoring, negs: c.scoring,
+    wpm: 800, topicVote: c.vote, bonuses: c.bonuses, bounty: c.bounty, powers: c.scoring, negs: c.scoring,
     gameLength: c.length, source: c.source,
     filters: { categories: c.filter === 'categories' ? ['History', 'Science'] : [], subcategories: [], difficulties: [], topics: c.filter === 'topic' ? ['space', 'memes'] : [] },
   });

@@ -11,6 +11,15 @@ export function setSoundOn(on: boolean) {
   window.dispatchEvent(new Event('qb-sound'));
 }
 
+/** Sound effects volume for this device, 0 to 1 (default full). */
+export const volume = (): number => {
+  const v = Number(store.get('qb:volume'));
+  return store.get('qb:volume') !== null && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+};
+export function setVolume(v: number) {
+  store.set('qb:volume', String(Math.min(1, Math.max(0, v))));
+}
+
 /** Buzz sounds a player can pick for this device. All short and quiet; other players' buzzes play a lower version. */
 export const BUZZ_SOUNDS = { classic: 'Classic', soft: 'Soft', chime: 'Chime', pop: 'Pop', wood: 'Wood' } as const;
 export type BuzzSound = keyof typeof BUZZ_SOUNDS;
@@ -21,13 +30,6 @@ export const buzzSound = (): BuzzSound => {
 export function setBuzzSound(v: BuzzSound) {
   store.set('qb:buzzSound', v);
   play('buzzMine'); // preview
-}
-/** Next buzz sound in the list (the phone menu cycles through them). */
-export function cycleBuzzSound(): BuzzSound {
-  const order = Object.keys(BUZZ_SOUNDS) as BuzzSound[];
-  const next = order[(order.indexOf(buzzSound()) + 1) % order.length];
-  setBuzzSound(next);
-  return next;
 }
 
 let ctx: AudioContext | null = null;
@@ -49,7 +51,7 @@ function tone(a: AudioContext, freq: number, at: number, len: number, type: Osci
   osc.frequency.setValueAtTime(freq, t0);
   if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + len);
   gain.gain.setValueAtTime(0.0001, t0);
-  gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.015);
+  gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol * volume()), t0 + 0.015);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + len);
   osc.connect(gain).connect(a.destination);
   osc.start(t0);
