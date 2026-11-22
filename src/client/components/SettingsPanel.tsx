@@ -99,7 +99,7 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
         <section>
           <h3>Without a reader</h3>
           {check('readAloud', 'Read questions aloud', 'each device speaks the words as they appear; anyone can mute their own')}
-          {check('topicVote', 'Vote on the next topic', `players pick from 3 categories after each tossup (${VOTE_SECONDS}s)`)}
+          {check('topicVote', 'Vote on the topic', `players pick from 3 categories (${VOTE_SECONDS}s); the winner plays for 5 questions, up to 10 in long games`)}
         </section>
 
         <section>

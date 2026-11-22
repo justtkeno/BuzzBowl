@@ -308,6 +308,8 @@ export interface PublicState {
   survival?: { lives: number; maxLives: number; tossups: number; correct: number; marks: string; done: boolean };
   /** Open between tossups when players vote on the next topic. */
   vote: PublicVote | null;
+  /** The voted topic, which runs for several tossups: this is tossup `num` of `total`. */
+  voteRun?: { name: string; num: number; total: number };
   /** Reader only: the next tossups in line, so they can skip any before they are read. */
   upcoming?: UpcomingTossup[];
   upcomingLoading?: boolean;
@@ -329,6 +331,8 @@ export interface PublicVote {
   mine: string | null;
   /** Server epoch ms when the vote closes. */
   deadline: number;
+  /** How many tossups the winning topic plays for. */
+  runLength: number;
   /** Players who can vote, and how many have. */
   voters: number;
   voted: number;

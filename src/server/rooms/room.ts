@@ -68,6 +68,9 @@ export const TIMING = {
   /** How long players have to vote on the next topic. */
   voteMs: VOTE_SECONDS * 1000,
   voteOptions: 3,
+  /** A voted topic plays for this many tossups (more in long games). */
+  voteRunMin: 5,
+  voteRunMax: 10,
 };
 
 interface Player {
@@ -165,6 +168,8 @@ export interface RoomState {
   vote?: { options: string[]; votes: Record<string, string>; deadline: number } | null;
   /** The category players voted for; used by the next tossup only. */
   nextCategory?: string | null;
+  /** The winning topic of the last vote, played for `total` tossups before the next vote. */
+  voteRun?: { option: string; total: number; played: number } | null;
   /** Seat tokens and account ids that were banned from this room. */
   banned?: { tokens: string[]; accounts: string[] };
   /** Review items (tossup numbers) each player reported, so their Report buttons say "Reported". */
@@ -719,6 +724,7 @@ export class Room {
       if (typeof patch[k] === 'boolean') s[k] = patch[k]!;
     }
     if (!s.topicVote && this.s.vote) this.cancelVote();
+    if (!s.topicVote) this.s.voteRun = null;
     // Shortened to (or below) the tossups already played: no vote, the next step finishes the game.
     if (this.s.vote && this.lengthReached()) this.cancelVote();
     if (patch.powerValue !== undefined) s.powerValue = clamp(patch.powerValue, 0, 50, s.powerValue);
@@ -881,7 +887,7 @@ export class Room {
   }
 
   private resetScores() {
-    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], reported: {}, tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null, vote: null, nextCategory: null });
+    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], reported: {}, tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null, vote: null, nextCategory: null, voteRun: null });
   }
 
   // ---------- question reports ----------
@@ -932,6 +938,7 @@ export class Room {
     this.s.buzz = null;
     this.s.vote = null;
     this.s.nextCategory = null;
+    this.s.voteRun = null;
     this.s.paused = false;
     this.s.pausedAt = null;
     this.s.phase = 'gameOver';
@@ -1118,13 +1125,17 @@ export class Room {
     this.dispose();
     this.pending = [];
     const gen = ++this.loadGen;
-    const voted = this.s.nextCategory ?? null;
+    const run = this.s.voteRun && this.s.settings.topicVote && this.s.voteRun.played < this.s.voteRun.total ? this.s.voteRun : null;
+    const voted = run?.option ?? this.s.nextCategory ?? null;
     Object.assign(this.s, { phase: 'loading', buzz: null, bonus: null, message: null, vote: null, nextCategory: null });
     this.broadcast();
     let q: Tossup | null = voted ? null : this.upcoming.shift() ?? null;
     try {
       // The voted topic narrows the room's filters for this one tossup; if it has nothing left, fall back to the filters.
       if (voted) q = await this.provider().nextTossup(this.onlyCategory(voted), this.s.seenTossups);
+      // The voted topic ran out of questions: end its run early and play from the room's filters.
+      if (voted && !q && run) run.played = run.total;
+      else if (run) run.played++;
       q ??= await this.provider().nextTossup(this.s.settings.filters, this.s.seenTossups);
     } catch (e: any) {
       if (gen !== this.loadGen) return;
@@ -1422,6 +1433,9 @@ export class Room {
   /** Between tossups: offer a few categories for the next one. The next tossup starts when the vote closes. */
   private openVote() {
     if (!this.votingOn() || this.lengthReached()) return;
+    // The voted topic is still running: no vote until its last tossup is done.
+    if (this.s.voteRun && this.s.voteRun.played < this.s.voteRun.total) return;
+    this.s.voteRun = null;
     const f = this.s.settings.filters;
     const topics = cleanTopics(f.topics).map((id) => TOPIC_BY_ID.get(id)!.name);
     // Picked categories and topics are on the ballot; with nothing picked, every category is.
@@ -1455,9 +1469,20 @@ export class Room {
     for (const c of Object.values(v.votes)) if (counts.has(c)) counts.set(c, counts.get(c)! + 1);
     const top = Math.max(...counts.values());
     const leaders = v.options.filter((o) => counts.get(o) === top);
-    this.s.nextCategory = leaders[Math.floor(Math.random() * leaders.length)];
+    this.s.voteRun = { option: leaders[Math.floor(Math.random() * leaders.length)], total: this.voteRunLength(), played: 0 };
     this.s.vote = null;
     void this.loadTossup();
+  }
+
+  /**
+   * How many tossups a voted topic plays for: 5, or about a quarter of a set game length, up to 10
+   * (20 tossups → 5, 30 → 8, 40 or more → 10). Never past the end of the game.
+   */
+  private voteRunLength() {
+    const n = this.s.settings.gameLength;
+    if (!n) return TIMING.voteRunMin;
+    const len = Math.min(TIMING.voteRunMax, Math.max(TIMING.voteRunMin, Math.round(n / 4)));
+    return Math.max(1, Math.min(len, n - this.s.tossupNum));
   }
 
   /** Vote switched off mid-vote: stay on this tossup and let someone press Next. */
@@ -1921,6 +1946,9 @@ export class Room {
         correct: [...s.survival.marks].filter((m) => m === 'P' || m === 'T').length, marks: s.survival.marks, done: s.survival.done,
       } : undefined,
       vote: s.vote ? this.publicVote(s.vote, viewer) : null,
+      ...(s.voteRun && s.voteRun.played > 0 && s.settings.topicVote
+        ? { voteRun: { name: s.voteRun.option, num: Math.min(s.voteRun.played, s.voteRun.total), total: s.voteRun.total } }
+        : {}),
       ...(isReader ? {
         upcoming: this.upcoming.map((q) => ({
           id: q.id, category: q.category, subcategory: q.subcategory, difficulty: q.difficulty, setName: q.setName, year: q.year,
@@ -1937,6 +1965,7 @@ export class Room {
     const voters = this.voters();
     return {
       options: v.options, counts, mine: (viewer && v.votes[viewer]) || null, deadline: v.deadline,
+      runLength: this.voteRunLength(),
       voters: voters.length, voted: voters.filter((p) => v.votes[p.id]).length,
     };
   }
