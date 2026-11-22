@@ -178,3 +178,58 @@ describe('topic vote', () => {
     room.dispose();
   });
 });
+
+describe('voted topic runs', () => {
+  /** Vote everyone for the first option and return it. */
+  async function voteFirst(room: Room, ids: string[]) {
+    const pick = room.s.vote!.options[0];
+    for (const id of ids) room.castVote(id, pick);
+    await flush();
+    return pick;
+  }
+
+  it('keeps the winning topic for 5 tossups with no set length, then votes again', async () => {
+    const { room, ids, asked } = await setup();
+    await finishTossup(room, ids[0]);
+    const pick = await voteFirst(room, ids);
+    expect(room.snapshot(ids[0]).vote).toBeNull();
+    for (let i = 1; i <= 5; i++) {
+      expect(room.s.tossup!.q.category).toBe(pick);
+      expect(room.snapshot(ids[0]).voteRun).toEqual({ name: pick, num: i, total: 5 });
+      await finishTossup(room, ids[0]);
+      if (i < 5) {
+        expect(room.s.vote, `no vote after run tossup ${i}`).toBeNull();
+        room.next(ids[0]);
+        await flush();
+      }
+    }
+    expect(room.s.vote, 'a new vote after the 5th').not.toBeNull();
+    expect(asked.filter((f) => f.categories[0] === pick).length).toBe(5);
+    room.dispose();
+  });
+
+  it('scales with the game length, up to 10, and never runs past the end', async () => {
+    for (const [len, want] of [[10, 5], [20, 5], [30, 8], [40, 10], [100, 10]] as const) {
+      const { room, ids } = await setup();
+      room.updateSettings(ids[0], { gameLength: len });
+      await finishTossup(room, ids[0]);
+      expect(room.snapshot(ids[0]).vote?.runLength, `length ${len}`).toBe(want);
+      room.dispose();
+    }
+    const { room, ids } = await setup();
+    room.updateSettings(ids[0], { gameLength: 3 });
+    await finishTossup(room, ids[0]);
+    expect(room.snapshot(ids[0]).vote?.runLength).toBe(2);
+    room.dispose();
+  });
+
+  it('ends a run early when the topic runs out of questions', async () => {
+    const { room, ids } = await setup({ empty: ['History', 'Literature', 'Geography', 'Fine Arts', 'Religion', 'Mythology', 'Philosophy', 'Social Science', 'Current Events', 'Other Academic', 'Pop Culture'] });
+    await finishTossup(room, ids[0]);
+    await voteFirst(room, ids);
+    expect(room.s.tossup!.q.category).toBe('Science');
+    await finishTossup(room, ids[0]);
+    expect(room.s.vote, 'the run ended, so a new vote opens').not.toBeNull();
+    room.dispose();
+  });
+});

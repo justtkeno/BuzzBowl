@@ -125,7 +125,7 @@ function VotePanel({ s }: { s: PublicState }) {
   return (
     <div className="vote" role="group" aria-label="Vote on the next topic">
       <div className="vote-head">
-        <span>Next topic <span className="muted small">· {v.voted}/{v.voters} voted</span></span>
+        <span>Topic for the next {v.runLength === 1 ? 'question' : `${v.runLength} questions`} <span className="muted small">· {v.voted}/{v.voters} voted</span></span>
         <button className="btn ghost small" onClick={() => act('game:next')} disabled={s.paused}>Start now</button>
       </div>
       <div className="vote-options">
@@ -247,6 +247,7 @@ export function TossupCard({ s }: { s: PublicState }) {
       <div className="meta">
         <span className="tag">{s.settings.source === 'lightning' ? <><Icon name="bolt" /> Lightning {t.num}</> : `Tossup ${t.num}`}{!s.daily && !s.survival && s.settings.gameLength ? ` of ${s.settings.gameLength}` : ''}</span>
         {t.topic ? <CategoryChip category={t.topic.name} icon={t.topic.icon} /> : <CategoryChip category={t.category} sub={t.subcategory} />}
+        {s.voteRun && <span className="vote-run" title={`Voted topic: ${s.voteRun.name}, question ${s.voteRun.num} of ${s.voteRun.total}`}>🗳 {s.voteRun.num}/{s.voteRun.total}</span>}
         {t.difficulty ? <span className="muted">{DIFFICULTIES[t.difficulty] ?? `Level ${t.difficulty}`}</span> : null}
         {t.setName && <span className="muted hide-sm">{t.setName}{t.year ? ` (${t.year})` : ''}</span>}
         {readAloudActive(s) && speechSupported() && <SpeakerToggle />}

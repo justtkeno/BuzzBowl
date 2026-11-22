@@ -45,7 +45,7 @@ Small things that help:
 For a quick free-for-all with no reader. In the lobby, the host taps **Party mode** (or picks **Party** under Format in Settings):
 
 - **Read aloud**: every phone reads the tossup out loud with its built-in voice, in step with the words appearing on screen. Reading stops when someone buzzes and picks up again after a wrong answer. Each device can mute itself with the **Read aloud** chip on the question card, so in the same room one phone or the big-screen view can do the talking.
-- **Topic vote**: after each tossup, players pick the next one's category from three choices (only categories the room's filters allow). The next tossup starts when everyone has voted, after 10 seconds, or when anyone taps **Start now** (or presses **N**). Keys **1**–**3** vote. Ties are broken at random.
+- **Topic vote**: players pick the topic from three choices (only categories and topics the room's settings allow), and the winner plays for several tossups in a row: 5, or about a quarter of a set game length, up to 10 (a 30-tossup game gets 8). The card shows 🗳 2/5 while it runs, and the next vote opens after its last tossup. Play starts when everyone has voted, after 10 seconds, or when anyone taps **Start now** (or presses **N**). Keys **1**–**3** vote. Ties are broken at random.
 
 Both are separate settings under **Without a reader**, so either can be used on its own. They switch off while someone holds the reader seat, and never apply to the daily challenge.
 
