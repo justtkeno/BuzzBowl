@@ -5,6 +5,7 @@ import { ConfirmEmail, ResetPassword } from './components/Account';
 import { InviteBanner } from './components/Friends';
 import { Announcement } from './components/Announcement';
 import { WakeScreen } from './components/WakeScreen';
+import { Privacy } from './components/Privacy';
 import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
@@ -29,6 +30,7 @@ function Page() {
   if (profile) return <Profile username={profile} />;
   if (location.pathname === '/reset') return <ResetPassword />;
   if (location.pathname === '/confirm') return <ConfirmEmail />;
+  if (location.pathname === '/privacy') return <Privacy />;
   return <Player />;
 }
 

@@ -94,6 +94,8 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
           <button className="link" onClick={() => setTour(true)}>How to play</button>
           <span aria-hidden="true">·</span>
           <button className="link" onClick={() => setAppSettings(true)}>Settings</button>
+          <span aria-hidden="true">·</span>
+          <a className="link" href="/privacy">Privacy</a>
         </div>
         <InstallButton />
         <button type="button" className="link small feedback-link" onClick={() => setFeedback(true)}><Icon name="chat" /> Send feedback</button>

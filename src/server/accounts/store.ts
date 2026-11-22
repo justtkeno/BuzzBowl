@@ -63,6 +63,8 @@ export interface AccountStore {
   countTokens(userId: string, kind: AccountToken['kind'], since: number): Promise<number>;
   /** Uses up a link: who it was for, if it was live and of this kind, else null. Either way it can't be used again. */
   takeToken(tokenHash: string, kind: AccountToken['kind']): Promise<{ userId: string; email: string | null } | null>;
+  /** Forget a link that never went out, so it doesn't count toward the hourly limit. */
+  deleteToken(tokenHash: string): Promise<void>;
   addGames(entries: { userId: string; game: GameRecord }[]): Promise<void>;
   /** Newest first. */
   games(userId: string, limit: number): Promise<GameRecord[]>;
@@ -197,6 +199,10 @@ export class FileAccountStore implements AccountStore {
     t.expiresAt = Math.min(t.expiresAt, Date.now());
     this.save();
     return live ? { userId: t.userId, email: t.email } : null;
+  }
+  async deleteToken(hash: string) {
+    this.d.tokens = this.d.tokens.filter((t) => t.hash !== hash);
+    this.save();
   }
   async addGames(entries: { userId: string; game: GameRecord }[]) {
     this.d.games.push(...structuredClone(entries));
@@ -388,6 +394,9 @@ export class PgAccountStore implements AccountStore {
     const r = await this.pool.query<{ user_id: string; email: string | null }>(
       'UPDATE account_tokens SET expires_at = $3 WHERE hash = $1 AND kind = $2 AND expires_at > $3 RETURNING user_id, email', [hash, kind, now]);
     return r.rows[0] ? { userId: r.rows[0].user_id, email: r.rows[0].email } : null;
+  }
+  async deleteToken(hash: string) {
+    await this.pool.query('DELETE FROM account_tokens WHERE hash = $1', [hash]);
   }
   async addGames(entries: { userId: string; game: GameRecord }[]) {
     for (const e of entries) {

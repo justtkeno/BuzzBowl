@@ -86,6 +86,10 @@ a.btn.primary { color: var(--accent-ink); }
 .account-dialog p { margin: 0; }
 .account-dialog h2 { margin: 0; }
 .account-dialog .forgot { text-align: left; }
+.privacy h1 { margin: 0 0 .2rem; }
+.privacy h2 { font-size: 1.05rem; margin: 1.3rem 0 .4rem; }
+.privacy ul { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: .35rem; }
+.privacy p { line-height: 1.5; }
 .email-ok, .field span.email-ok { color: var(--ok); font-weight: 600; }
 
 /* ---------- profile page ---------- */
