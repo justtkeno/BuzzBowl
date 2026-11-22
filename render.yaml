@@ -13,9 +13,16 @@ services:
       # Your account id, so only that exact account is an admin. The in-game 🛡 Admin panel shows it.
       - key: ADMIN_ACCOUNT_IDS
         sync: false
-      # Password-reset emails over SMTP, e.g. smtps://you%40gmail.com:APP_PASSWORD@smtp.gmail.com:465 (see README).
-      - key: SMTP_URL
+      # Account emails go out through the Gmail API (Render's free plan blocks SMTP). Setup steps are in README.md.
+      - key: GMAIL_CLIENT_ID
         sync: false
-      # Sender shown on those emails, e.g. "Trivio <you@gmail.com>".
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
+      # Sender shown on those emails, e.g. "Trivio <playtriviosupport@gmail.com>".
       - key: MAIL_FROM
         sync: false
+      # Where reset and confirmation links point.
+      - key: PUBLIC_URL
+        value: https://playtrivio.onrender.com
