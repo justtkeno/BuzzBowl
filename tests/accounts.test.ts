@@ -330,6 +330,43 @@ describe('account settings: username and password', () => {
   });
 });
 
+describe('when sending fails', () => {
+  it('doesn’t count failed emails toward the hourly limit', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-mailfail-'));
+    let down = true;
+    const sent: Mail[] = [];
+    const accounts = new Accounts(new FileAccountStore(join(dir, 'accounts.json')), {
+      mailer: { send: async (m) => { if (down) throw new Error('Connection timeout'); sent.push(m); } }, publicUrl: 'https://trivio.test',
+    });
+    await accounts.init();
+    const app = express();
+    app.use('/api', accounts.router());
+    const server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    const base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+    const send = (path: string, body: unknown, cookie?: string) =>
+      fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const res = await send('/signup', { username: 'lee', password: 'hunter2hunter2', email: 'lee@example.com' }); // its email fails too
+      const cookie = res.headers.get('set-cookie')!.split(';')[0];
+      await new Promise((r) => setTimeout(r, 30));
+      for (let i = 0; i < 4; i++) {
+        const r = await send('/email/confirm/send', {}, cookie);
+        expect(r.status).toBe(502);
+        expect((await r.json()).error).toMatch(/couldn’t be sent/);
+      }
+      down = false;
+      expect((await send('/email/confirm/send', {}, cookie)).status).toBe(200);
+      expect(sent).toHaveLength(1);
+    } finally {
+      errors.mockRestore();
+      server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('password reset without email set up', () => {
   it('says so instead of pretending to send', async () => {
     const accounts = new Accounts(new FileAccountStore(null));

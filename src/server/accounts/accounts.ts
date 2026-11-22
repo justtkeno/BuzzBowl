@@ -152,7 +152,8 @@ export class Accounts {
     const token = randomBytes(32).toString('base64url');
     const minutes = kind === 'reset' ? RESET_MINUTES : CONFIRM_MINUTES;
     const now = Date.now();
-    await this.store.createToken({ hash: sha256(token), userId: u.id, kind, email: u.email, expiresAt: now + minutes * 60_000, createdAt: now });
+    const hash = sha256(token);
+    await this.store.createToken({ hash, userId: u.id, kind, email: u.email, expiresAt: now + minutes * 60_000, createdAt: now });
     // In the fragment, so the token never reaches server logs or other sites.
     const link = `${base}/${kind}#${token}`;
     const name = escapeHtml(u.displayName), user = escapeHtml(u.username), href = escapeHtml(link);
@@ -173,7 +174,13 @@ export class Accounts {
           + `Confirm it here (optional, works for a week):</p><p><a href="${href}">Confirm your email</a></p>`
           + `<p style="color:#777">If this isn’t your account, ignore this email.</p>`,
       };
-    await this.mailer.send({ to: u.email, ...mail });
+    try {
+      await this.mailer.send({ to: u.email, ...mail });
+    } catch (e) {
+      // It never reached them: don't let it use up one of the hour's links.
+      await this.store.deleteToken(hash).catch(() => {});
+      throw e;
+    }
     return true;
   }
 
