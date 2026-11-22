@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../shared/types';
 import { Home } from './components/Home';
-import { ResetPassword } from './components/Account';
+import { ConfirmEmail, ResetPassword } from './components/Account';
+import { InviteBanner } from './components/Friends';
+import { Announcement } from './components/Announcement';
+import { WakeScreen } from './components/WakeScreen';
 import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
@@ -9,17 +12,23 @@ import { randomName } from './names';
 import { dailyKey } from './daily';
 import { call, prefs, socket } from './socket';
 import { play } from './sounds';
+import { toast } from './components/util';
 
 const codeFromPath = () => location.pathname.match(/^\/r\/([A-Za-z]{4,8})/)?.[1]?.toUpperCase() ?? null;
 const watchCode = () => location.pathname.match(/^\/watch\/([A-Za-z]{4,8})/)?.[1]?.toUpperCase() ?? null;
 const profileName = () => location.pathname.match(/^\/u\/([A-Za-z0-9_]{1,20})\/?$/)?.[1] ?? null;
 
 export function App() {
+  return <><Page /><WakeScreen /></>;
+}
+
+function Page() {
   const watch = watchCode();
   if (watch) return <Spectate code={watch} />;
   const profile = profileName();
   if (profile) return <Profile username={profile} />;
   if (location.pathname === '/reset') return <ResetPassword />;
+  if (location.pathname === '/confirm') return <ConfirmEmail />;
   return <Player />;
 }
 
@@ -89,12 +98,12 @@ function Player() {
     };
     const onDisconnect = () => setConnected(false);
     // The host, reader or admin removed us from the room.
-    const onKicked = ({ banned }: { banned: boolean }) => {
+    const onKicked = ({ banned, closed }: { banned: boolean; closed?: boolean }) => {
       joined.current = null;
       setFresh(false);
       setState(null);
       history.replaceState(null, '', '/');
-      setError(banned ? 'You were banned from that room.' : 'You were removed from the room.');
+      setError(banned ? 'You were banned from that room.' : closed ? 'An admin closed that room.' : 'You were removed from the room.');
     };
     socket.on('kicked', onKicked);
     socket.on('state', onState);
@@ -126,6 +135,13 @@ function Player() {
     afterJoin(res, name);
   }, [enter]);
 
+  // Survival: a fresh solo run, or back into the one in progress.
+  const startSurvival = useCallback(async (name: string) => {
+    const res = await call<{ resume?: string; code: string; playerId: string; token: string; chat: ChatMessage[] }>('survival:start', { name, key: dailyKey() });
+    if (res.resume) return enter(res.resume, name);
+    afterJoin(res, name);
+  }, [enter]);
+
   const rename = useCallback(async (name: string) => {
     await call('player:rename', name);
     prefs.setName(name);
@@ -143,10 +159,30 @@ function Player() {
   };
 
   if (!state) {
-    return <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} onDaily={startDaily} dailyOpen={location.pathname === '/daily'} />;
+    return (
+      <>
+        <Home initialCode={codeFromPath()} error={error} connected={connected} onJoin={enter} onCreate={create} onDaily={startDaily} onSurvival={startSurvival} dailyOpen={location.pathname === '/daily'} survivalOpen={location.pathname === '/survival'} />
+        <InviteBanner onJoin={(code) => { enter(code, prefs.name() || randomName()).catch((e) => setError(e.message)); }} />
+        <Announcement />
+      </>
+    );
   }
-  return <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} />;
+  // From the friends panel: hop straight into a friend's room.
+  const joinFriend = (code: string) => {
+    const name = joined.current?.name || prefs.name() || randomName();
+    enter(code, name).then(() => setFresh(false), (e) => toast(e.message));
+  };
+  return (
+    <>
+      <RoomView state={state} chat={chat} connected={connected} fresh={fresh} onRename={rename} onLeave={leave} onJoinRoom={joinFriend}
+        onSurvival={() => startSurvival(joined.current?.name || prefs.name() || randomName())} />
+      <InviteBanner currentCode={state.code} quiet={(!!state.daily && !state.daily.done) || (!!state.survival && !state.survival.done)} onJoin={joinFriend} />
+    </>
+  );
 }
+
+/** The top bar's color (--surface) in each theme. */
+const LIGHT_BAR = '#ffffff', DARK_BAR = '#1d1c1a';
 
 export function useTheme() {
   useEffect(() => {
@@ -154,6 +190,12 @@ export function useTheme() {
       const t = prefs.theme();
       if (t === 'auto') document.documentElement.removeAttribute('data-theme');
       else document.documentElement.setAttribute('data-theme', t);
+      document.documentElement.setAttribute('data-text', prefs.textSize());
+      // The phone's status bar matches the top bar, in the theme the player picked.
+      const light = t === 'dark' ? DARK_BAR : LIGHT_BAR, dark = t === 'light' ? LIGHT_BAR : DARK_BAR;
+      document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
+        m.content = /dark/.test(m.media) ? dark : light;
+      });
     };
     apply();
     window.addEventListener('qb-theme', apply);
@@ -161,10 +203,17 @@ export function useTheme() {
   }, []);
 }
 
-export function cycleTheme() {
-  const order = ['auto', 'dark', 'light'] as const;
-  const next = order[(order.indexOf(prefs.theme()) + 1) % order.length];
-  prefs.setTheme(next);
+export const TEXT_SIZE_LABEL = { s: 'Small', m: 'Medium', l: 'Large' } as const;
+
+/** Pick a question text size for this device (the Display panel). */
+export function setTextSizeChoice(t: 's' | 'm' | 'l') {
+  prefs.setTextSize(t);
   window.dispatchEvent(new Event('qb-theme'));
-  return next;
 }
+
+/** Pick a theme for this device: auto follows the system's light or dark setting. */
+export function setThemeChoice(t: 'auto' | 'light' | 'dark') {
+  prefs.setTheme(t);
+  window.dispatchEvent(new Event('qb-theme'));
+}
+

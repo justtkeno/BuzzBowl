@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import type { Me, PublicProfile } from '../shared/accounts';
+import type { Me, ProfileView } from '../shared/accounts';
+import type { Visibility } from '../shared/profile';
 import { prefs, socket } from './socket';
 
 // The logged-in account, shared by every component. Guests have me = null.
@@ -23,7 +24,7 @@ export function useAccount() {
   );
 }
 
-async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`/api${path}`, {
@@ -89,13 +90,25 @@ export async function resetPassword(token: string, password: string) {
   reconnect();
 }
 
+/** Emails the (optional) confirmation link again. */
+export async function sendConfirmEmail() {
+  await api('/email/confirm/send', { method: 'POST' });
+}
+
+/** Opens a confirmation link. Works logged out too; refreshes the account if it's this device's. */
+export async function confirmEmail(token: string) {
+  const { username } = await api<{ ok: true; username: string }>('/email/confirm', { method: 'POST', body: { token } });
+  if (me && me.username === username) set({ ...me, emailVerified: true });
+  return username;
+}
+
 export async function logout() {
   await api('/logout', { method: 'POST' }).catch(() => {});
   set(null);
   reconnect();
 }
 
-export async function updateMe(patch: { displayName?: string; bio?: string; email?: string; password?: string }) {
+export async function updateMe(patch: { displayName?: string; bio?: string; visibility?: Visibility; pinned?: string[]; color?: string; frame?: string; email?: string; password?: string }) {
   const { user } = await api<{ user: Me }>('/me', { method: 'PATCH', body: patch });
   set(user);
   return user;
@@ -109,13 +122,18 @@ export async function adminResetProfile(username: string, what: { name: boolean;
   return api<{ ok: true; displayName?: string; bio?: string }>(`/admin/users/${encodeURIComponent(username)}/reset`, { method: 'POST', body });
 }
 
+/** Admin: unlock every badge for an account (yours too), or put it back to what they earned. */
+export async function adminUnlockBadges(username: string, unlock: boolean) {
+  return api<{ ok: true; unlocked: boolean }>(`/admin/users/${encodeURIComponent(username)}/badges`, { method: 'POST', body: { unlock } });
+}
+
 /** Admin: delete someone's account, sessions and saved games. */
 export async function adminDeleteAccount(username: string) {
   return api<{ ok: true }>(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
 }
 
 export async function fetchProfile(username: string) {
-  const { profile } = await api<{ profile: PublicProfile }>(`/users/${encodeURIComponent(username)}`);
+  const { profile } = await api<{ profile: ProfileView }>(`/users/${encodeURIComponent(username)}`);
   return profile;
 }
 

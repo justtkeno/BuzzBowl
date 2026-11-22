@@ -3,6 +3,8 @@ import type { DailyEntry, DailyStatus } from '../../shared/types';
 import { MARK_LABEL, shareText, untilText, useDailyStatus } from '../daily';
 import { isTouch, toast } from './util';
 
+const pctIn = (x: number) => `${Math.round(x * 100)}%`;
+
 /** A row of small squares, one per tossup. */
 export function Marks({ marks, size = 'md' }: { marks: string; size?: 'sm' | 'md' }) {
   return (
@@ -33,35 +35,50 @@ export function DailyBoard({ status }: { status: DailyStatus }) {
         <div className="daily-me">
           <div className="daily-score"><b>{me.points}</b> pts <span className="muted">· #{me.rank} of {status.players}</span></div>
           <Marks marks={me.marks} />
-          <div className="muted small">{me.powers} power{me.powers === 1 ? '' : 's'} · {me.tens} ten{me.tens === 1 ? '' : 's'} · {me.negs} neg{me.negs === 1 ? '' : 's'}</div>
+          <div className="muted small">{me.powers} power{me.powers === 1 ? '' : 's'} · {me.tens} ten{me.tens === 1 ? '' : 's'} · {me.negs} neg{me.negs === 1 ? '' : 's'}{me.depth != null ? ` · average buzz ${pctIn(me.depth)} in` : ''}</div>
           <button className="btn primary" onClick={() => share(status.number, me)}>Share result</button>
         </div>
       )}
       {status.leaderboard.length > 0 ? (
         <table className="daily-table">
-          <thead><tr><th>#</th><th>Player</th><th className="hide-sm">Tossups</th><th className="num">Pts</th></tr></thead>
+          <thead><tr><th>#</th><th>Player</th><th className="hide-sm">Tossups</th><th className="num" title="Average point in the question where they buzzed on correct answers. Earlier is better.">Buzz</th><th className="num">Pts</th></tr></thead>
           <tbody>
             {status.leaderboard.map((e) => (
               <tr key={`${e.rank}-${e.name}`} className={me && e.rank === me.rank && e.name === me.name ? 'me' : ''}>
                 <td className="num">{e.rank}</td>
                 <td>{e.username ? <a href={`/u/${e.username}`}>{e.name}</a> : e.name}</td>
                 <td className="hide-sm"><Marks marks={e.marks} size="sm" /></td>
+                <td className="num muted" title={e.depth != null ? `Buzzed ${pctIn(e.depth)} of the way into the question, on average` : 'No correct buzzes'}>{e.depth != null ? pctIn(e.depth) : '–'}</td>
                 <td className="num"><b>{e.points}</b></td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : <p className="muted small">Nobody has played today’s challenge yet. Be the first!</p>}
+      {status.leaderboard.length > 1 && <p className="muted small daily-note">Ties go to whoever buzzed earlier on average (Buzz: how far into the question, on correct answers), then to whoever finished first.</p>}
     </div>
   );
 }
 
 /** Home page card: play today's challenge, or see how you did. */
 export function DailyCard({ busy, connected, onPlay, openOnLoad }: { busy: boolean; connected: boolean; onPlay: () => void; openOnLoad: boolean }) {
-  const { status, error } = useDailyStatus(connected);
+  const { status, error, refresh } = useDailyStatus(connected);
   const [open, setOpen] = useState(openOnLoad);
   useEffect(() => { if (openOnLoad) setOpen(true); }, [openOnLoad]);
-  if (error) return null;
+  // Keep the card on screen if the status can't load, so today's results are never just gone.
+  if (error && !status) {
+    return (
+      <section className="daily-card" aria-label="Daily challenge">
+        <div className="row between">
+          <div>
+            <div className="daily-title">Daily challenge</div>
+            <div className="muted small">{error}</div>
+          </div>
+          <button className="btn" disabled={!connected} onClick={refresh}>Try again</button>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="daily-card" aria-label="Daily challenge">
       <div className="row between">

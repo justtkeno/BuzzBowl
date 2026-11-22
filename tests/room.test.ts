@@ -280,10 +280,10 @@ describe('changing settings mid-match', () => {
     room.buzz(ids[1], 3);
     await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
     const deadline = room.s.buzz!.deadline!;
-    room.updateSettings(ids[0], { answerSeconds: 15 });
+    room.updateSettings(ids[0], { answerSeconds: 18 });
     expect(room.s.buzz!.deadline!).toBe(deadline + 8_000);
-    expect(room.s.chat.at(-1)?.text).toBe('Ann changed answer time to 15 s.');
-    await vi.advanceTimersByTimeAsync(10_000); // past the old 7 s limit
+    expect(room.s.chat.at(-1)?.text).toBe('Ann changed answer time to 18 s.');
+    await vi.advanceTimersByTimeAsync(13_000); // past the old 10 s limit
     expect(room.s.phase).toBe('buzz');
     room.submitAnswer(ids[1], 'mitochondria');
     expect(room.s.rulings[0]).toMatchObject({ kind: 'power' });
@@ -350,10 +350,10 @@ describe('game pause', () => {
     await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
     room.pauseGame(ids[0], true);
     const deadline = room.s.buzz!.deadline!;
-    room.updateSettings(ids[0], { answerSeconds: 20 });
+    room.updateSettings(ids[0], { answerSeconds: 23 });
     expect(room.s.buzz!.deadline!).toBe(deadline + 13_000);
     room.pauseGame(ids[0], false);
-    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.advanceTimersByTimeAsync(18_000);
     expect(room.s.phase).toBe('buzz');
     await vi.advanceTimersByTimeAsync(6_000);
     expect(room.s.phase).not.toBe('buzz');

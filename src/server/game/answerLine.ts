@@ -18,10 +18,15 @@ export interface AnswerLine {
 const OPEN = '\u0001';
 const CLOSE = '\u0002';
 
-/** Turn bold/underline tags into marker characters, drop other tags and editor notes. */
+/**
+ * Turn the required-part tags into marker characters, drop other tags and editor notes.
+ * Underlines are the real minimum: packets often bold a whole answer and underline the parts inside
+ * (<b><u>Washington</u>, <u>District of Columbia</u></b>), so when a line has any underline, bold is ignored.
+ */
 function toMarked(raw: string): string {
   let s = raw.replace(/^\s*answer\s*:\s*/i, '');
-  s = s.replace(/<\s*(b|u|strong)\b[^>]*>/gi, OPEN).replace(/<\s*\/\s*(b|u|strong)\s*>/gi, CLOSE);
+  const tags = /<\s*u\b/i.test(s) ? 'u' : 'b|u|strong';
+  s = s.replace(new RegExp(`<\\s*(${tags})\\b[^>]*>`, 'gi'), OPEN).replace(new RegExp(`<\\s*\\/\\s*(${tags})\\s*>`, 'gi'), CLOSE);
   s = s.replace(/<[^>]*>/g, '');
   s = decodeEntities(s);
   s = s.replace(/<[^>]*>\s*$/g, ''); // trailing editor tags like <ED> written as entities
@@ -36,6 +41,18 @@ function toMarked(raw: string): string {
   if (depth > 0) out += CLOSE;
   return out.replace(/\s+/g, ' ').trim();
 }
+
+/** The underlined parts of a marked answer, each as its own alternative (for "accept either underlined part"). */
+function partAlts(marked: string): Alt[] {
+  return [...marked.matchAll(/\u0001([^\u0002]*)\u0002/g)]
+    .map((m) => m[1].replace(/["“”]/g, '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .map((display) => ({ full: normalize(display), required: [normalize(display)], display }))
+    .filter((a) => a.full);
+}
+
+/** "accept either underlined part", "accept either", "any underlined portion": each part alone is enough. */
+const EITHER_PART = /^(?:either|any|each)(?:\s+one)?(?:\s+of\s+the)?(?:\s+underlined)?(?:\s+(?:parts?|portions?|names?|answers?|words?))?$/i;
 
 function makeAlt(marked: string): Alt | null {
   const plain = marked.replace(/[\u0001\u0002]/g, '');
@@ -100,10 +117,12 @@ export function parseAnswerLine(raw: string): AnswerLine {
   // The main answer may itself be "X or Y" when both sides carry markers.
   const mainParts = main.split(/\s+or\s+/i);
   const mainSplit = mainParts.length > 1 && mainParts.filter((p) => p.includes(OPEN)).length > 1;
-  for (const p of mainSplit ? mainParts : [main]) {
+  const mains = mainSplit ? mainParts : [main];
+  for (const p of mains) {
     const alt = makeAlt(p);
     if (alt) line.accept.push(alt);
   }
+  let eachPart = false;
 
   for (const clause of clauses) {
     let directive: Directive = 'accept';
@@ -125,10 +144,16 @@ export function parseAnswerLine(raw: string): AnswerLine {
       for (let item of splitItems(seg)) {
         item = item.replace(QUALIFIER, '').replace(FILLER, '').trim();
         if (!item || /^equivalents?$/i.test(item)) continue;
+        // An instruction about the main answer, not an answer of its own.
+        if (directive === 'accept' && EITHER_PART.test(item.replace(/[\u0001\u0002]/g, '').trim())) { eachPart = true; continue; }
         const alt = makeAlt(item);
         if (alt) line[directive].push(alt);
       }
     }
+  }
+  if (eachPart) {
+    const have = new Set(line.accept.map((a) => a.full));
+    for (const p of mains) for (const part of partAlts(p)) if (!have.has(part.full)) { have.add(part.full); line.accept.push(part); }
   }
   return line;
 }

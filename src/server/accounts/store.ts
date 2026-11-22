@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname } from 'node:path';
 import pg from 'pg';
 import type { GameRecord } from '../../shared/accounts';
+import type { Visibility } from '../../shared/profile';
 
 export interface User {
   id: string;
@@ -13,11 +14,28 @@ export interface User {
   bio: string;
   settings: Record<string, unknown> | null;
   createdAt: number;
-  /** Lowercased, unique. Only used for password resets; never shown to others. */
+  /** Lowercased, unique. Only used for account email (password resets, confirming it); never shown to others. */
   email: string | null;
+  /** The owner opened the confirmation link sent to `email`. Optional: resets work either way. */
+  emailVerified?: boolean;
+  /** Who can see their profile stats. Missing means public. */
+  visibility?: Visibility;
+  /** Stat ids pinned to the top of their profile. */
+  pinned?: string[];
+  /** Badges a site admin unlocked for them, earned or not. */
+  grantedBadges?: string[];
+  /** Badge rewards they picked (ids from PROFILE_COLORS / AVATAR_FRAMES). Missing means the default. */
+  color?: string;
+  frame?: string;
 }
 
-export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'email' | 'passwordHash'>>;
+/** A friend request from `from` to `to`; once accepted, the two are friends. */
+export interface FriendLink { from: string; to: string; accepted: boolean; at: number }
+
+/** A one-time emailed link: a password reset, or confirming an email address (`email` is the address it was sent to). */
+export interface AccountToken { hash: string; userId: string; kind: 'reset' | 'confirm'; email: string | null; expiresAt: number; createdAt: number }
+
+export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges' | 'color' | 'frame' | 'email' | 'emailVerified' | 'passwordHash'>>;
 
 /** Where accounts live. Postgres in production, a JSON file for local development and tests. */
 export interface AccountStore {
@@ -36,14 +54,23 @@ export interface AccountStore {
   deleteSession(tokenHash: string): Promise<void>;
   /** Logs the user out everywhere (after a password reset). */
   deleteSessionsOf(userId: string): Promise<void>;
-  createReset(tokenHash: string, userId: string, expiresAt: number): Promise<void>;
-  /** How many reset links were made for this user since `since`. */
-  countResets(userId: string, since: number): Promise<number>;
-  /** Uses up a reset token: the user id if it was live, else null. Either way it can't be used again. */
-  takeReset(tokenHash: string): Promise<string | null>;
+  createToken(t: AccountToken): Promise<void>;
+  /** How many links of this kind were made for this user since `since`. */
+  countTokens(userId: string, kind: AccountToken['kind'], since: number): Promise<number>;
+  /** Uses up a link: who it was for, if it was live and of this kind, else null. Either way it can't be used again. */
+  takeToken(tokenHash: string, kind: AccountToken['kind']): Promise<{ userId: string; email: string | null } | null>;
   addGames(entries: { userId: string; game: GameRecord }[]): Promise<void>;
   /** Newest first. */
   games(userId: string, limit: number): Promise<GameRecord[]>;
+  usersByIds(ids: string[]): Promise<User[]>;
+  /** Every friend link (either direction) that involves this user. */
+  friendLinks(userId: string): Promise<FriendLink[]>;
+  /** Adds a pending request unless there is already a link from `from` to `to`. */
+  requestFriend(from: string, to: string, at: number): Promise<void>;
+  /** Accepts a pending request from `from` to `to`. Returns false when there was none. */
+  acceptFriend(from: string, to: string): Promise<boolean>;
+  /** Removes any link between the two, in both directions. */
+  removeFriend(a: string, b: string): Promise<void>;
   readonly kind: string;
 }
 
@@ -53,12 +80,13 @@ interface FileData {
   users: User[];
   sessions: { hash: string; userId: string; expiresAt: number }[];
   games: { userId: string; game: GameRecord }[];
-  resets: { hash: string; userId: string; expiresAt: number; createdAt: number }[];
+  tokens: AccountToken[];
+  friends: FriendLink[];
 }
 
 export class FileAccountStore implements AccountStore {
   readonly kind = 'file';
-  private d: FileData = { users: [], sessions: [], games: [], resets: [] };
+  private d: FileData = { users: [], sessions: [], games: [], tokens: [], friends: [] };
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private file: string | null) {}
@@ -66,7 +94,7 @@ export class FileAccountStore implements AccountStore {
   async init() {
     if (!this.file || !existsSync(this.file)) return;
     try {
-      this.d = { users: [], sessions: [], games: [], resets: [], ...JSON.parse(readFileSync(this.file, 'utf8')) };
+      this.d = { users: [], sessions: [], games: [], tokens: [], friends: [], ...JSON.parse(readFileSync(this.file, 'utf8')) };
       for (const u of this.d.users) u.email ??= null;
     } catch (e) {
       console.error(`Could not read ${this.file}:`, e);
@@ -89,7 +117,7 @@ export class FileAccountStore implements AccountStore {
       const now = Date.now();
       this.d.sessions = this.d.sessions.filter((s) => s.expiresAt > now);
       // Used and expired links stay a day so they still count toward the hourly limit.
-      this.d.resets = this.d.resets.filter((r) => r.createdAt > now - 86_400_000);
+      this.d.tokens = this.d.tokens.filter((t) => t.createdAt > now - 7 * 86_400_000);
       writeFileSync(`${this.file}.tmp`, JSON.stringify(this.d));
       renameSync(`${this.file}.tmp`, this.file);
     } catch (e) {
@@ -122,7 +150,8 @@ export class FileAccountStore implements AccountStore {
     this.d.users = this.d.users.filter((u) => u.id !== id);
     this.d.sessions = this.d.sessions.filter((s) => s.userId !== id);
     this.d.games = this.d.games.filter((g) => g.userId !== id);
-    this.d.resets = this.d.resets.filter((r) => r.userId !== id);
+    this.d.tokens = this.d.tokens.filter((t) => t.userId !== id);
+    this.d.friends = this.d.friends.filter((f) => f.from !== id && f.to !== id);
     this.save();
   }
   async createSession(hash: string, userId: string, expiresAt: number) {
@@ -141,21 +170,21 @@ export class FileAccountStore implements AccountStore {
     this.d.sessions = this.d.sessions.filter((s) => s.userId !== userId);
     this.save();
   }
-  async createReset(hash: string, userId: string, expiresAt: number) {
-    this.d.resets.push({ hash, userId, expiresAt, createdAt: Date.now() });
+  async createToken(t: AccountToken) {
+    this.d.tokens.push({ ...t });
     this.save();
   }
-  async countResets(userId: string, since: number) {
-    return this.d.resets.filter((r) => r.userId === userId && r.createdAt >= since).length;
+  async countTokens(userId: string, kind: AccountToken['kind'], since: number) {
+    return this.d.tokens.filter((t) => t.userId === userId && t.kind === kind && t.createdAt >= since).length;
   }
-  async takeReset(hash: string) {
-    const r = this.d.resets.find((x) => x.hash === hash);
-    if (!r) return null;
+  async takeToken(hash: string, kind: AccountToken['kind']) {
+    const t = this.d.tokens.find((x) => x.hash === hash && x.kind === kind);
+    if (!t) return null;
     // Spent, but kept (expired) until it ages out so it still counts toward the rate limit.
-    const live = r.expiresAt > Date.now();
-    r.expiresAt = Math.min(r.expiresAt, Date.now());
+    const live = t.expiresAt > Date.now();
+    t.expiresAt = Math.min(t.expiresAt, Date.now());
     this.save();
-    return live ? r.userId : null;
+    return live ? { userId: t.userId, email: t.email } : null;
   }
   async addGames(entries: { userId: string; game: GameRecord }[]) {
     this.d.games.push(...structuredClone(entries));
@@ -167,6 +196,29 @@ export class FileAccountStore implements AccountStore {
       if (this.d.games[i].userId === userId) out.push(structuredClone(this.d.games[i].game));
     }
     return out;
+  }
+  async usersByIds(ids: string[]) {
+    const want = new Set(ids);
+    return structuredClone(this.d.users.filter((u) => want.has(u.id)));
+  }
+  async friendLinks(userId: string) {
+    return structuredClone(this.d.friends.filter((f) => f.from === userId || f.to === userId));
+  }
+  async requestFriend(from: string, to: string, at: number) {
+    if (this.d.friends.some((f) => f.from === from && f.to === to)) return;
+    this.d.friends.push({ from, to, accepted: false, at });
+    this.save();
+  }
+  async acceptFriend(from: string, to: string) {
+    const f = this.d.friends.find((x) => x.from === from && x.to === to && !x.accepted);
+    if (!f) return false;
+    f.accepted = true;
+    this.save();
+    return true;
+  }
+  async removeFriend(a: string, b: string) {
+    this.d.friends = this.d.friends.filter((f) => !((f.from === a && f.to === b) || (f.from === b && f.to === a)));
+    this.save();
   }
 }
 
@@ -183,6 +235,11 @@ CREATE TABLE IF NOT EXISTS users (
   settings JSONB,
   created_at BIGINT NOT NULL
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'public';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pinned JSONB;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS granted_badges JSONB;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS color TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS frame TEXT;
 CREATE TABLE IF NOT EXISTS sessions (
   hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -195,24 +252,39 @@ CREATE TABLE IF NOT EXISTS games (
   data JSONB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS games_user_at ON games (user_id, at DESC);
+CREATE TABLE IF NOT EXISTS friends (
+  from_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  to_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  accepted BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY (from_id, to_id)
+);
+CREATE INDEX IF NOT EXISTS friends_to ON friends (to_id);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email) WHERE email IS NOT NULL;
-CREATE TABLE IF NOT EXISTS password_resets (
+CREATE TABLE IF NOT EXISTS account_tokens (
   hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  email TEXT,
   expires_at BIGINT NOT NULL,
   created_at BIGINT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS password_resets_user ON password_resets (user_id, created_at);
+CREATE INDEX IF NOT EXISTS account_tokens_user ON account_tokens (user_id, kind, created_at);
 `;
 
 interface UserRow {
   id: string; username: string; key: string; password_hash: string; display_name: string; bio: string;
-  settings: Record<string, unknown> | null; created_at: string; email: string | null;
+  settings: Record<string, unknown> | null; created_at: string; visibility: Visibility | null; pinned: string[] | null; granted_badges: string[] | null;
+  color: string | null; frame: string | null; email: string | null; email_verified: boolean | null;
 }
 const fromRow = (r: UserRow | undefined): User | null => r ? {
   id: r.id, username: r.username, key: r.key, passwordHash: r.password_hash, displayName: r.display_name,
-  bio: r.bio, settings: r.settings, createdAt: Number(r.created_at), email: r.email ?? null,
+  bio: r.bio, settings: r.settings, createdAt: Number(r.created_at),
+  visibility: r.visibility ?? 'public', pinned: r.pinned ?? [], grantedBadges: r.granted_badges ?? [],
+  ...(r.color ? { color: r.color } : {}), ...(r.frame ? { frame: r.frame } : {}),
+  email: r.email ?? null, emailVerified: !!r.email_verified,
 } : null;
 
 export class PgAccountStore implements AccountStore {
@@ -229,7 +301,7 @@ export class PgAccountStore implements AccountStore {
   async init() {
     await this.pool.query(SCHEMA);
     await this.pool.query('DELETE FROM sessions WHERE expires_at < $1', [Date.now()]);
-    await this.pool.query('DELETE FROM password_resets WHERE created_at < $1', [Date.now() - 86_400_000]);
+    await this.pool.query('DELETE FROM account_tokens WHERE created_at < $1', [Date.now() - 7 * 86_400_000]);
   }
 
   async createUser(u: User) {
@@ -250,11 +322,16 @@ export class PgAccountStore implements AccountStore {
     return fromRow((await this.pool.query<UserRow>('SELECT * FROM users WHERE email = $1', [email.toLowerCase()])).rows[0]);
   }
   async updateUser(id: string, patch: UserPatch) {
-    const cols: Record<keyof UserPatch, string> = { displayName: 'display_name', bio: 'bio', settings: 'settings', email: 'email', passwordHash: 'password_hash' };
+    const cols: Record<keyof UserPatch, string> = {
+      displayName: 'display_name', bio: 'bio', settings: 'settings', visibility: 'visibility', pinned: 'pinned', grantedBadges: 'granted_badges',
+      color: 'color', frame: 'frame', email: 'email', emailVerified: 'email_verified', passwordHash: 'password_hash',
+    };
     const keys = (Object.keys(patch) as (keyof UserPatch)[]).filter((k) => k in cols);
     if (!keys.length) return;
     const sets = keys.map((k, i) => `${cols[k]} = $${i + 2}`).join(', ');
-    await this.pool.query(`UPDATE users SET ${sets} WHERE id = $1`, [id, ...keys.map((k) => patch[k])]);
+    // node-pg would send a JS array as a Postgres array, not JSON.
+    const value = (k: keyof UserPatch) => (Array.isArray(patch[k]) ? JSON.stringify(patch[k]) : patch[k]);
+    await this.pool.query(`UPDATE users SET ${sets} WHERE id = $1`, [id, ...keys.map(value)]);
   }
   async deleteUser(id: string) {
     // sessions and games go with it (ON DELETE CASCADE).
@@ -273,19 +350,20 @@ export class PgAccountStore implements AccountStore {
   async deleteSessionsOf(userId: string) {
     await this.pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
   }
-  async createReset(hash: string, userId: string, expiresAt: number) {
-    await this.pool.query('INSERT INTO password_resets (hash, user_id, expires_at, created_at) VALUES ($1,$2,$3,$4)', [hash, userId, expiresAt, Date.now()]);
+  async createToken(t: AccountToken) {
+    await this.pool.query('INSERT INTO account_tokens (hash, user_id, kind, email, expires_at, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+      [t.hash, t.userId, t.kind, t.email, t.expiresAt, t.createdAt]);
   }
-  async countResets(userId: string, since: number) {
-    const r = await this.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM password_resets WHERE user_id = $1 AND created_at >= $2', [userId, since]);
+  async countTokens(userId: string, kind: AccountToken['kind'], since: number) {
+    const r = await this.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM account_tokens WHERE user_id = $1 AND kind = $2 AND created_at >= $3', [userId, kind, since]);
     return r.rows[0].n;
   }
-  async takeReset(hash: string) {
+  async takeToken(hash: string, kind: AccountToken['kind']) {
     // Spend it atomically; the row stays (expired) so it still counts toward the rate limit.
     const now = Date.now();
-    const r = await this.pool.query<{ user_id: string }>(
-      'UPDATE password_resets SET expires_at = $2 WHERE hash = $1 AND expires_at > $2 RETURNING user_id', [hash, now]);
-    return r.rows[0]?.user_id ?? null;
+    const r = await this.pool.query<{ user_id: string; email: string | null }>(
+      'UPDATE account_tokens SET expires_at = $3 WHERE hash = $1 AND kind = $2 AND expires_at > $3 RETURNING user_id, email', [hash, kind, now]);
+    return r.rows[0] ? { userId: r.rows[0].user_id, email: r.rows[0].email } : null;
   }
   async addGames(entries: { userId: string; game: GameRecord }[]) {
     for (const e of entries) {
@@ -295,5 +373,25 @@ export class PgAccountStore implements AccountStore {
   async games(userId: string, limit: number) {
     const r = await this.pool.query<{ data: GameRecord }>('SELECT data FROM games WHERE user_id = $1 ORDER BY at DESC LIMIT $2', [userId, limit]);
     return r.rows.map((x) => x.data);
+  }
+  async usersByIds(ids: string[]) {
+    if (!ids.length) return [];
+    const r = await this.pool.query<UserRow>('SELECT * FROM users WHERE id = ANY($1)', [ids]);
+    return r.rows.map((x) => fromRow(x)!);
+  }
+  async friendLinks(userId: string) {
+    const r = await this.pool.query<{ from_id: string; to_id: string; accepted: boolean; created_at: string }>(
+      'SELECT from_id, to_id, accepted, created_at FROM friends WHERE from_id = $1 OR to_id = $1', [userId]);
+    return r.rows.map((x) => ({ from: x.from_id, to: x.to_id, accepted: x.accepted, at: Number(x.created_at) }));
+  }
+  async requestFriend(from: string, to: string, at: number) {
+    await this.pool.query('INSERT INTO friends (from_id, to_id, created_at) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [from, to, at]);
+  }
+  async acceptFriend(from: string, to: string) {
+    const r = await this.pool.query('UPDATE friends SET accepted = TRUE WHERE from_id = $1 AND to_id = $2 AND NOT accepted', [from, to]);
+    return !!r.rowCount;
+  }
+  async removeFriend(a: string, b: string) {
+    await this.pool.query('DELETE FROM friends WHERE (from_id = $1 AND to_id = $2) OR (from_id = $2 AND to_id = $1)', [a, b]);
   }
 }

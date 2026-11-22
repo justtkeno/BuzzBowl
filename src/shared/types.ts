@@ -13,6 +13,8 @@ export const buzzWindowSeconds = (s: { source: SourceKind; deadSeconds: number }
 export interface Filters {
   categories: string[];
   subcategories: string[];
+  /** Standalone topics (ids from shared/topics.ts). Mixed with the categories above; missing means none. */
+  topics?: string[];
   difficulties: number[];
   minYear?: number;
   maxYear?: number;
@@ -38,12 +40,20 @@ export interface Settings {
   showTextToPlayers: boolean;
   /** When a reader is present, the reader rules on answers (auto-check is a suggestion). */
   readerRules: boolean;
+  /** No reader: each device reads the tossup aloud (text-to-speech) as the words appear. */
+  readAloud: boolean;
+  /** No reader: between tossups, players vote on the next tossup's category. */
+  topicVote: boolean;
+  /** Tossups in a game; the game ends after the last one (and its bonus). 0 = no limit. */
+  gameLength: number;
+  /** Now and then a tossup is a bounty: worth double for a correct answer (negs stay the same). Marked before it's read. */
+  bounty: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'ffa',
-  wpm: 150,
-  answerSeconds: 7,
+  wpm: 200,
+  answerSeconds: 10,
   bonusSeconds: 20,
   deadSeconds: 5,
   powers: true,
@@ -54,9 +64,13 @@ export const DEFAULT_SETTINGS: Settings = {
   negValue: -5,
   bonusPartValue: 10,
   source: 'qbreader',
-  filters: { categories: [], subcategories: [], difficulties: [] },
+  filters: { categories: [], subcategories: [], topics: [], difficulties: [] },
   showTextToPlayers: false,
   readerRules: true,
+  readAloud: false,
+  topicVote: false,
+  gameLength: 0,
+  bounty: false,
 };
 
 export type Phase =
@@ -70,6 +84,15 @@ export type Phase =
 
 export type BuzzKind = 'power' | 'ten' | 'neg' | 'zero';
 export type Verdict = 'correct' | 'prompt' | 'incorrect';
+
+/** The answer line as the checker understands it (readable forms), for "why was I wrong". */
+export interface AnswerKey {
+  accept: string[];
+  prompt: string[];
+  reject: string[];
+  /** This viewer's wrong answers on the tossup. rejected: on the do-not-accept list; prompt: would only have been prompted; wrong: matched nothing. */
+  misses: { given: string; why: 'rejected' | 'prompt' | 'wrong' }[];
+}
 
 export interface BuzzMarker {
   playerId: string;
@@ -145,6 +168,8 @@ export interface PublicTossup {
   num: number;
   category: string;
   subcategory: string;
+  /** The picked topic this tossup came from, when the room plays topics. */
+  topic?: { name: string; icon: string };
   difficulty?: number;
   setName?: string;
   year?: number;
@@ -155,6 +180,8 @@ export interface PublicTossup {
   words?: string[];
   powerIndex?: number | null;
   answerHtml?: string;
+  /** Once the tossup ends: the answer line, read the way the checker reads it, and why this viewer's misses missed. */
+  answerKey?: AnswerKey;
   buzzes: BuzzMarker[];
   /** Whether this viewer is allowed to see the words as they are read. */
   textVisible: boolean;
@@ -164,6 +191,8 @@ export interface PublicTossup {
   lockedTeamIds: string[];
   /** Team that will play a bonus when the reader moves on (set once the tossup ends). */
   bonusTeamId: string | null;
+  /** A bounty tossup: a correct answer scores double. Known from the start, so players see it before reading. */
+  bounty?: boolean;
 }
 
 export interface PublicBuzz {
@@ -224,6 +253,10 @@ export interface Ruling {
   correctedTo?: string;
   /** Bonus rulings: the tossup this bonus followed (for the score graph). */
   tossup?: number;
+  /** A correct answer cancelled because an earlier buzz on the same tossup was ruled correct afterwards (protest or override). Holds that ruling's id; the points come back if it's reversed again. */
+  voidedBy?: string;
+  /** Scored on a bounty tossup: correct answers count double. */
+  bounty?: boolean;
 }
 
 export interface Protest {
@@ -244,6 +277,9 @@ export interface ReviewItem {
   powerIndex: number | null;
   answerHtml: string;
   buzzes: BuzzMarker[];
+  /** The question's own id and source, so a player's report can name it. */
+  ref?: { id: string; source: string };
+  bounty?: boolean;
 }
 
 export interface PublicState {
@@ -263,6 +299,8 @@ export interface PublicState {
   rulings: Ruling[];
   protests: Protest[];
   review: ReviewItem[];
+  /** Review items (tossup numbers) this viewer already reported. */
+  reported?: number[];
   tossupsRead: number;
   uploadedCount: { tossups: number; bonuses: number } | null;
   message: string | null;
@@ -274,6 +312,12 @@ export interface PublicState {
   highlights: Highlight[];
   /** Present in a daily-challenge room. */
   daily?: { day: string; number: number; total: number; done: boolean };
+  /** Present in a survival room: lives left and the run so far (one mark per tossup, like the daily). */
+  survival?: { lives: number; maxLives: number; tossups: number; correct: number; marks: string; done: boolean };
+  /** Open between tossups when players vote on the next topic. */
+  vote: PublicVote | null;
+  /** The voted topic, which runs for several tossups: this is tossup `num` of `total`. */
+  voteRun?: { name: string; num: number; total: number };
   /** Reader only: the next tossups in line, so they can skip any before they are read. */
   upcoming?: UpcomingTossup[];
   upcomingLoading?: boolean;
@@ -281,6 +325,25 @@ export interface PublicState {
   admin?: { peek: boolean; frozen: { id: string; always: boolean }[] };
   /** Admin only, while peeking: the answers of the question being read. */
   peek?: { tossup?: string; bonus?: string[] };
+}
+
+/** How long players have to vote on the next topic. */
+export const VOTE_SECONDS = 10;
+
+/** Players' vote on the next tossup's category. */
+export interface PublicVote {
+  options: string[];
+  /** Votes per option. */
+  counts: Record<string, number>;
+  /** This viewer's pick, if they voted. */
+  mine: string | null;
+  /** Server epoch ms when the vote closes. */
+  deadline: number;
+  /** How many tossups the winning topic plays for. */
+  runLength: number;
+  /** Players who can vote, and how many have. */
+  voters: number;
+  voted: number;
 }
 
 /** One line of the daily-challenge leaderboard. */
@@ -309,6 +372,41 @@ export interface DailyStatus {
   me: DailyEntry | null;
   /** Seconds until the next challenge. */
   nextIn: number;
+}
+
+/** Survival: tossups keep coming until you miss this many. */
+export const SURVIVAL_LIVES = 3;
+
+/** One player's best survival run on the leaderboard. */
+export interface SurvivalEntry {
+  rank: number;
+  name: string;
+  username?: string;
+  /** Tossups answered correctly: the score. */
+  correct: number;
+  /** Tossups played in the run, misses included. */
+  tossups: number;
+  points: number;
+  powers: number;
+  /** When the run finished (epoch ms). */
+  at: number;
+}
+
+export interface SurvivalBoard {
+  entries: SurvivalEntry[];
+  /** Players with a run on this board. */
+  players: number;
+  /** This player's best run on this board, with its rank. */
+  me: SurvivalEntry | null;
+}
+
+export interface SurvivalStatus {
+  allTime: SurvivalBoard;
+  week: SurvivalBoard;
+  /** Monday (US Eastern) the weekly board started. */
+  weekStart: string;
+  /** This player has a run in progress (Play resumes it). */
+  running: boolean;
 }
 
 export interface UpcomingTossup {
@@ -366,7 +464,7 @@ export const CATEGORIES: Record<string, string[]> = {
   'Current Events': [],
   Geography: [],
   'Other Academic': [],
-  'Pop Culture': [],
+  'Pop Culture': ['Movies', 'Music', 'Sports', 'Television', 'Video Games', 'Other Pop Culture'],
 };
 
 export const DIFFICULTIES: Record<number, string> = {

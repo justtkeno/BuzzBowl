@@ -25,13 +25,41 @@ Other scripts: `npm test` (unit tests), `npm run typecheck`, `npm run build` + `
 
 ## How to play
 
+New players can take the built-in tour: **How to play** on the home screen (first-time visitors also see a "Take the 1-minute tour" line) or in the room's ⋯ menu. Four short cards cover reading, buzzing, scoring and the ways to play, then a practice tossup lets you buzz and answer once, with hints. The practice runs on your device and doesn't count for anything.
+
 1. **Create room** → share the 4-letter code or invite link. **Solo practice** starts a private room immediately.
-2. The host opens **Settings** to pick free-for-all or teams, scoring, speed, and question filters. Settings can also change mid-match (⋯ menu → ⚙️ Settings on phones): a longer or shorter answer, buzz-window or bonus time applies to a clock that is already running, and chat tells everyone what changed.
-3. **Start game.** Words appear as they are read. Press **Space** (or tap the big button) to buzz. Reading stops for everyone, you get 7 seconds to type, and others watch you type.
-4. Scoring (NAQT-style, all configurable): 15 for a correct buzz before the `(*)`, 10 after it, −5 for a wrong answer before the question ends, 0 after. One buzz per player (or per team) per tossup.
+2. The host opens **Settings** to pick free-for-all or teams, the game length (no limit, or a set number of tossups), scoring, speed, and question filters. With a set length, the question card shows "Tossup 7 of 20", and after the last tossup (and its bonus) **Finish game** shows the summary. The host can change the length mid-game. Settings can also change mid-match (⋯ menu → ⚙️ Settings on phones): a longer or shorter answer, buzz-window or bonus time applies to a clock that is already running, and chat tells everyone what changed.
+3. **Start game.** Words appear as they are read. Press **Space** (or tap the big button) to buzz. Reading stops for everyone, you get 10 seconds to type, and others watch you type.
+4. Scoring (NAQT-style, all configurable): 15 for a correct buzz before the `(*)`, 10 after it, −5 for a wrong answer before the question ends, 0 after. One buzz per player (or per team) per tossup. With **Bounty tossups** on (Settings → Scoring), every so often a tossup is marked **×2 Bounty** before it's read: a correct answer scores double (negs don't change). Bounties are at least 4 tossups apart and come up at least every 8.
 5. In team mode, the team that converts the tossup gets a 3-part bonus. Teammates talk in **team chat**. The captain submits each part.
-6. Press **N** (or **Next tossup**) to continue. **Review** shows every finished question with full text, answer line, and where each player buzzed.
-7. **End game** shows the summary: points, powers/tens/negs, points per tossup heard, average buzz depth, PPB, and a per-category breakdown.
+6. Press **N** (or **Next tossup**) to continue. **Review** shows every finished question with full text, answer line, and where each player buzzed. Spot a problem (a missing accepted answer, a typo, the wrong category)? Tap **Report** under the answer.
+7. **End game** shows the summary: a podium, points, powers/tens/negs, points per tossup heard, average buzz depth, PPB, and a per-category breakdown. **Share recap** makes an image of the game to send or save.
+
+Small things that help:
+- Missed one? Under the answer, **you said “…”** explains why (didn’t match, would only have been prompted, or on the do-not-accept list) and lists what the answer line accepts.
+- Each category has its own color chip, on the question, in Review and on profiles.
+- **Text size** (⋯ menu, or **Aa** on a computer) makes the question text smaller or larger on that device.
+- During a game the screen stays on, and leaving mid-match (or closing the tab) asks first.
+- When the free server is asleep, the installed app shows **Waking up the server…** until it answers (usually 30–60 seconds).
+
+### Sound
+
+Sound effects are soft and short, and can be turned off from the speaker button (computer) or the ⋯ menu (phone). Each device can also pick its own **buzz sound**: Classic, Soft, Chime, Pop or Wood. Other players' buzzes play a lower version of yours, so you can tell them apart.
+
+### Party mode
+
+For a quick free-for-all with no reader. In the lobby, the host taps **Party mode** (or picks **Party** under Format in Settings):
+
+- **Read aloud**: every phone reads the tossup out loud with its built-in voice, in step with the words appearing on screen. Reading stops when someone buzzes and picks up again after a wrong answer. Each device can mute itself with the **Read aloud** chip on the question card, so in the same room one phone or the big-screen view can do the talking.
+- **Topic vote**: players pick the topic from three choices (only categories and topics the room's settings allow), and the winner plays for several tossups in a row: 5, or about a quarter of a set game length, up to 10 (a 30-tossup game gets 8). The card shows 🗳 2/5 while it runs, and the next vote opens after its last tossup. Play starts when everyone has voted, after 10 seconds, or when anyone taps **Start now** (or presses **N**). Keys **1**–**3** vote. Ties are broken at random.
+
+Both are separate settings under **Without a reader**, so either can be used on its own. They switch off while someone holds the reader seat, and never apply to the daily challenge.
+
+### Survival
+
+**Survival** on the home page (under the daily challenge) is an endless solo run: tossups keep coming until you've missed 3. A wrong answer (a neg, or a wrong answer after the question ends) or a tossup that goes dead without a buzz costs a life; the three dots in the top bar are your lives. Your score is how many tossups you got right (ties go to points, then whoever got there first). Questions are mixed categories with no bonuses, a little harder the longer you last (built-in questions when QBReader can't be reached).
+
+Like the daily challenge it's fixed and solo: same settings for everyone, nobody else can join, no skipping, pausing, reader, bots, protests or score changes. Reloading goes back into the same run, and the clock keeps going while you're away, so leaving can't save a life. A run you walk away from ends where it stands. **End run** in the ⋯ menu gives up and counts the tossups so far. At the end you see your run, your best ever and your rank, with **Play again**. The **Board** shows each player's best run, all time and this week (from Monday, Eastern time). Logged-in players get their best run on their profile.
 
 ### Reader (moderator) seat
 
@@ -70,10 +98,17 @@ Anyone can still play as a guest. **Sign up** on the home screen (username + pas
 - a public profile at `/u/<username>` with games, wins, points per game and per tossup, powers/tens/negs, buzz accuracy and depth, best game, a per-subject breakdown with your **best subject**, and recent games
 - a green check next to your name in rooms (links to your profile), and your seat back if you rejoin from another device
 - your display name and room settings remembered on any device
+- **badges** on your profile, earned from your games and daily challenges (first power, 10 in a row, clean sheet, daily champion, week streak and more). On your own profile, **Show all** lists the ones still to get, with progress
+- **badge rewards**: badges unlock a **profile color** and **avatar frames** (ring, dashed, double ring, flame, star, halo), picked in **Edit profile**. They show on your profile, next to your name at the top of the page and in friends' lists. Tap a locked one to see which badge it needs
+- **pinned stats**: in **Edit profile**, pick up to 3 stats (daily 1st places, points per game, buzz depth…) to show at the top of your profile
+- **privacy**: in **Edit profile**, choose who sees your stats, badges and games: everyone, friends only, or only you. Your name and username always show so friends can find you
+- **friends**: tap the small people tab on the right edge of the screen to slide out your friends, and add someone by username there (or with **Add friend** on their profile). Once they accept, you see who's online and who's in a room, with **Join** and **Watch** buttons. In a room, the tab shows in the lobby and after the game, never while questions are being read, and each online friend gets an **Invite** button: they see a small "Alex invited you to play · Join" banner wherever they are on the site. Friends only see your room after you've both said yes. Daily-challenge and survival rooms are never shown.
 
 Results are saved when the host ends a game, or when everyone walks away from a game with at least 3 tossups heard. Solo games count toward stats but not wins. Passwords are hashed with scrypt, sessions are an HTTP-only cookie, and login/signup are rate-limited.
 
-**Email and password reset:** the email is optional, never shown to anyone else, and can be added or changed later under *Edit profile* (that takes the current password). You can log in with it instead of the username. **Log in → Forgot password?** emails a link that works once, for an hour, and logs out every other device when used. Each account gets at most 3 reset emails an hour, and the page never says whether an account or email exists. Emails go out over SMTP, set up as below. Without it, a local server prints the email in the terminal and a production server says resets aren't available.
+**Email and password reset:** the email is optional, never shown to anyone else, and can be added or changed later under *Edit profile* (that takes the current password). You can log in with it instead of the username. **Log in → Forgot password?** emails a link that works once, for an hour, and logs out every other device when used. Each account gets at most 3 reset emails an hour, and the page never says whether an account or email exists.
+
+**Confirming the email is optional.** After sign-up (or an email change), Trivio sends a link to confirm the address. Opening it, on any device, marks it ✓ Confirmed under *Edit profile*, which can also send the link again (up to 3 an hour). A new address starts unconfirmed, and links sent to an old address stop working. Using a password-reset link confirms the address too. Unconfirmed emails still get reset links, so nobody has to confirm. Emails go out over SMTP, set up as below. Without it, a local server prints the email in the terminal and a production server says resets aren't available.
 
 Accounts live in Postgres when `DATABASE_URL` is set, otherwise in `data/accounts-<port>.json` (fine for local use).
 
@@ -91,6 +126,7 @@ Every ruling appears in the **Rulings** tab. Any player can protest one, and the
 ## Questions
 
 - **QBReader** (default): random questions from https://www.qbreader.org/api-docs with category, subcategory, difficulty (1 = middle school … 10 = open) and year filters. Category names live in `src/shared/types.ts` (`CATEGORIES`). Edit them there if QBReader renames one.
+- **Topics**: Settings → **Topics** picks standalone categories, mixed with each other and with any categories you pick: 🎮 Video Games, 🎬 Movies, 🎵 Music, 📺 TV, 🏅 Sports, 🪐 Space, ➗ Math, 💻 Computers & Tech, 🎭 Broadway & Musicals, 💰 Money & Economics, 🧠 Psychology, 🐉 Myths & Legends (all from QBReader, plus built-in questions), and 🍕 Food & Drink, 🐾 Animals, 🦸 Superheroes & Comics, 😂 Internet & Memes, ⛏️ Minecraft (built-in questions only). The question card shows which topic each question came from, and party-mode votes can pick between your topics. Uploaded packets can tag questions with `"topics": ["food"]`.
 - **Sample packet**: 12 original tossups and 6 bonuses built in, so the app works offline.
 - **Upload**: a JSON file like `examples/sample-packet.json`:
 
@@ -115,7 +151,7 @@ Pick **⚡ Lightning round** as the question source in Settings for fast one-lin
 
 ## How the timing stays fair
 
-The server owns the clock. It reveals each word (`tick` events) and records when it sent it. A buzz carries the number of words that client had shown. The server trusts that count only back to words sent within the last 1.2 s (plausible lag), and after the first buzz arrives it waits 120 ms for slower connections, then awards the buzz to whoever had seen the fewest words. Points (power vs. ten, neg vs. no penalty) use that word count. Clients never decide anything. Players never receive words before they're read, and players never receive answers before the tossup ends. Only the reader gets both early.
+The server owns the clock. It reveals each word (`tick` events) and records when it sent it. A buzz carries the number of words that client had shown. The server trusts that count only back to words sent within the last 1.2 s (plausible lag), and after the first buzz arrives it waits 120 ms for slower connections, then awards the buzz to whoever had seen the fewest words. Points (power vs. ten, neg vs. no penalty) use that word count. Clients never decide anything. Players never receive words before they're read, and players never receive answers before the tossup ends. Only the reader gets both early. Read aloud follows the same rule: a device only speaks words it has already been sent.
 
 ## Project layout
 
@@ -128,6 +164,7 @@ src/
     questions/               QBReader / local / uploaded question providers, sample packet
     rooms/room.ts            room state machine (timers, buzz arbitration, bonuses, reader, protests)
     rooms/store.ts           RoomStore interface + in-memory implementation
+    daily/, survival/        daily challenge and survival: question picking, leaderboards (Postgres or JSON file)
   client/                    React app (Vite)
 tests/                       Vitest unit tests (answer checking, scoring, room flow)
 ```

@@ -1,9 +1,18 @@
 import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
-import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, EMAIL_RE, type GameRecord, type PublicProfile } from '../../shared/accounts';
-import { adminDeleteAccount, adminResetProfile, fetchProfile, updateMe, useAccount } from '../account';
+import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, EMAIL_RE, isLocked, type DailyProfile, type GameRecord, type Look, type ProfileView, type PublicProfile, type SurvivalProfile } from '../../shared/accounts';
+import {
+  AVATAR_FRAMES, BADGE_BY_ID, PIN_MAX, PIN_STATS, PROFILE_COLORS, VISIBILITIES, VISIBILITY_LABEL, colorById, earnedIds, frameById, isUnlocked,
+  type Reward, type Visibility,
+} from '../../shared/profile';
+import { adminDeleteAccount, adminResetProfile, adminUnlockBadges, fetchProfile, sendConfirmEmail, updateMe, useAccount } from '../account';
+import { Announcement } from './Announcement';
+import { CategoryDot } from './CategoryChip';
 import { useTheme } from '../App';
-import { AccountBar, CreatorBadge } from './Account';
+import { AccountBar, Avatar, CreatorBadge, tint } from './Account';
+import { FriendButton, FriendsTab, InviteBanner } from './Friends';
+import { Marks } from './Daily';
+import { Icon } from './Icon';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
@@ -20,10 +29,12 @@ const when = (t: number) => {
 export function Profile({ username }: { username: string }) {
   useTheme();
   const { me } = useAccount();
-  const [p, setP] = useState<PublicProfile | null>(null);
+  const [p, setP] = useState<ProfileView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [deleted, setDeleted] = useState(false);
+  /** The color and frame being tried out in the Edit form. */
+  const [preview, setPreview] = useState<Look | null>(null);
 
   useEffect(() => {
     setP(null); setErr(null); setDeleted(false);
@@ -33,6 +44,8 @@ export function Profile({ username }: { username: string }) {
   useEffect(() => { document.title = p ? `${p.displayName} (@${p.username}) · Trivio` : 'Trivio'; }, [p]);
 
   const mine = !!me && !!p && me.username.toLowerCase() === p.username.toLowerCase();
+  const look = (editing && preview) || p;
+  const headTint = tint(look?.color);
 
   return (
     <div className="profile-page">
@@ -46,36 +59,59 @@ export function Profile({ username }: { username: string }) {
         {deleted && <div className="card"><h2>Account deleted</h2><p className="muted">@{username} and its saved games are gone.</p><a className="btn" href="/">Back to Trivio</a></div>}
         {p && !deleted && (
           <>
-            <section className="card profile-head">
-              <span className="avatar big" aria-hidden="true">{p.displayName.slice(0, 1).toUpperCase()}</span>
+            <section className={`card profile-head ${headTint.className ?? ''}`} style={headTint.style}>
+              <Avatar name={p.displayName} color={look!.color} frame={look!.frame} size="big" />
               <div className="grow">
                 <h1>{p.displayName} <span className="verified" title="Verified Trivio account"><Check /></span>{p.admin && <CreatorBadge />}</h1>
                 <div className="muted small">@{p.username} · joined {new Date(p.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
-                {editing ? <EditProfile p={p} onDone={(np) => { if (np) setP(np); setEditing(false); }} /> : p.bio && <p className="bio">{p.bio}</p>}
+                {!isLocked(p) && p.visibility && p.visibility !== 'public' && !editing && (
+                  <div className="visibility-note small"><Icon name="lock" /> {p.visibility === 'private' ? (mine ? 'Private: only you can see your stats' : 'Private profile · you can see it as an admin') : (mine ? 'Friends only: only your friends can see your stats' : 'Friends-only profile · you can see it as an admin')}</div>
+                )}
+                {!isLocked(p) && (editing ? <EditProfile p={p} onPreview={setPreview} onDone={(np) => { if (np) setP(np); setEditing(false); setPreview(null); }} /> : p.bio && <p className="bio">{p.bio}</p>)}
               </div>
               <div className="row gap">
                 {mine && !editing && <button className="btn small" onClick={() => setEditing(true)}>Edit profile</button>}
+                {!mine && <FriendButton username={p.username} />}
                 <CopyLink />
               </div>
             </section>
 
+            {isLocked(p) ? (
+              <section className="card locked-card">
+                <h2><Icon name="lock" /> {p.locked === 'private' ? 'This profile is private' : 'Friends only'}</h2>
+                <p className="muted">{p.locked === 'private' ? `${p.displayName} keeps their stats, badges and games to themselves.` : `Only ${p.displayName}’s friends can see their stats, badges and games. ${me ? 'Add them as a friend to see more.' : 'Log in and add them as a friend to see more.'}`}</p>
+              </section>
+            ) : (
+            <>
+            <Pinned p={p} color={look!.color} mine={mine} onEdit={() => setEditing(true)} />
+            <Badges p={p} mine={mine} />
             {p.totals.games === 0 ? (
               <section className="card">
                 <h2>No games yet</h2>
                 <p className="muted">{mine ? 'Play a game while logged in and your stats will show up here once the game ends.' : `${p.displayName} hasn’t finished a game yet.`}</p>
                 {mine && <a className="btn primary" href="/">Play now</a>}
               </section>
-            ) : (
+            ) : null}
+            {p.totals.games === 0 && p.daily && <DailySection d={p.daily} />}
+            {p.totals.games === 0 && p.survival && <SurvivalSection sv={p.survival} />}
+            {p.totals.games === 0 ? null : (
               <>
                 <Tiles p={p} />
+                {p.daily && <DailySection d={p.daily} />}
+                {p.survival && <SurvivalSection sv={p.survival} />}
                 <Subjects p={p} />
                 <Recent games={p.recent} />
               </>
             )}
             {me?.admin && !mine && !p.admin && <AdminCard p={p} onChange={setP} onDeleted={() => setDeleted(true)} />}
+            </>
+            )}
           </>
         )}
       </main>
+      <FriendsTab />
+      <InviteBanner />
+      <Announcement />
     </div>
   );
 }
@@ -92,22 +128,41 @@ function CopyLink() {
   return <button className="btn small" onClick={copy}>{done ? 'Copied!' : 'Copy link'}</button>;
 }
 
-function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfile | null) => void }) {
+function LockIcon() {
+  return <svg className="lock" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2h.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm1.6 0h3.8V5a1.9 1.9 0 0 0-3.8 0z" /></svg>;
+}
+
+/** Which badge unlocks a reward, for locked options. */
+function unlockText(r: Reward) {
+  const b = BADGE_BY_ID.get(r.badge ?? '');
+  return b ? `${r.name} unlocks with the ${b.icon} ${b.name} badge (${b.desc.charAt(0).toLowerCase()}${b.desc.slice(1)}).` : r.name;
+}
+
+function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: PublicProfile | null) => void; onPreview: (look: Look) => void }) {
   const { me } = useAccount();
   const [displayName, setDisplayName] = useState(p.displayName);
+  const [color, setColor] = useState(p.color);
+  const [frame, setFrame] = useState(p.frame);
+  /** What a tapped locked option needs, shown under its picker. */
+  const [hint, setHint] = useState<{ kind: 'color' | 'frame'; text: string } | null>(null);
+  const earned = earnedIds(p.badges);
+  useEffect(() => onPreview({ color, frame }), [color, frame]);
   const [bio, setBio] = useState(p.bio);
   const [email, setEmail] = useState(me?.email ?? '');
   const [password, setPassword] = useState('');
   const emailChanged = email.trim().toLowerCase() !== (me?.email ?? '');
+  const [visibility, setVisibility] = useState<Visibility>(p.visibility ?? 'public');
+  const [pinned, setPinned] = useState<string[]>(p.pinned);
   const [busy, setBusy] = useState(false);
+  const togglePin = (id: string) => setPinned((x) => (x.includes(id) ? x.filter((y) => y !== id) : x.length < PIN_MAX ? [...x, id] : x));
   const [err, setErr] = useState<string | null>(null);
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
       if (emailChanged && email.trim() && !EMAIL_RE.test(email.trim())) throw new Error('That email address doesn’t look right.');
-      const u = await updateMe({ displayName, bio, ...(emailChanged ? { email: email.trim(), password } : {}) });
-      onDone({ ...p, displayName: u.displayName, bio: u.bio });
+      const u = await updateMe({ displayName, bio, visibility, pinned, color, frame, ...(emailChanged ? { email: email.trim(), password } : {}) });
+      onDone({ ...p, displayName: u.displayName, bio: u.bio, visibility: u.visibility, pinned: u.pinned, color: u.color, frame: u.frame });
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
   return (
@@ -116,8 +171,67 @@ function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfil
       <label className="field"><span>Bio <span className="muted">({bio.length}/{BIO_MAX})</span></span>
         <textarea value={bio} maxLength={BIO_MAX} rows={2} placeholder="Favorite categories, team, school…" onChange={(e) => setBio(e.target.value)} />
       </label>
+      <div className="field">
+        <span>Who can see your stats, badges and games</span>
+        <div className="seg" role="radiogroup" aria-label="Profile visibility">
+          {VISIBILITIES.map((v) => (
+            <button key={v} type="button" role="radio" aria-checked={visibility === v} className={visibility === v ? 'on' : ''} onClick={() => setVisibility(v)}>{VISIBILITY_LABEL[v]}</button>
+          ))}
+        </div>
+        <span className="muted small">Your name and username always show, so friends can find you.</span>
+      </div>
+      <div className="field">
+        <span>Pinned stats <span className="muted">({pinned.length}/{PIN_MAX}, shown at the top in this order)</span></span>
+        <div className="pin-picker">
+          {PIN_STATS.map((s) => {
+            const i = pinned.indexOf(s.id);
+            return (
+              <button key={s.id} type="button" className={`pin-chip ${i >= 0 ? 'on' : ''}`} aria-pressed={i >= 0} disabled={i < 0 && pinned.length >= PIN_MAX} onClick={() => togglePin(s.id)}>
+                {i >= 0 && <span className="pin-num">{i + 1}</span>}{s.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="field">
+        <span>Profile color <span className="muted">· {colorById(color).name}</span></span>
+        <div className="reward-picker" role="radiogroup" aria-label="Profile color">
+          {PROFILE_COLORS.map((c) => {
+            const open = isUnlocked(c, earned);
+            const t = tint(c.id, true);
+            return (
+              <button key={c.id} type="button" role="radio" aria-checked={color === c.id} aria-disabled={!open}
+                className={`swatch ${t.className} ${color === c.id ? 'on' : ''} ${open ? '' : 'locked'}`} style={t.style}
+                title={open ? c.name : unlockText(c)} aria-label={open ? c.name : `${c.name}, locked. ${unlockText(c)}`}
+                onClick={() => { if (open) { setColor(c.id); setHint(null); } else setHint({ kind: 'color', text: unlockText(c) }); }}>
+                {!open && <LockIcon />}
+              </button>
+            );
+          })}
+        </div>
+        {hint?.kind === 'color' && <span className="reward-hint small"><Icon name="lock" /> {hint.text}</span>}
+      </div>
+      <div className="field">
+        <span>Avatar frame <span className="muted">· {frameById(frame).name}</span></span>
+        <div className="reward-picker" role="radiogroup" aria-label="Avatar frame">
+          {AVATAR_FRAMES.map((f) => {
+            const open = isUnlocked(f, earned);
+            return (
+              <button key={f.id} type="button" role="radio" aria-checked={frame === f.id} aria-disabled={!open}
+                className={`frame-opt ${frame === f.id ? 'on' : ''} ${open ? '' : 'locked'}`}
+                title={open ? f.name : unlockText(f)} aria-label={open ? f.name : `${f.name}, locked. ${unlockText(f)}`}
+                onClick={() => { if (open) { setFrame(f.id); setHint(null); } else setHint({ kind: 'frame', text: unlockText(f) }); }}>
+                <Avatar name={displayName || p.displayName} color={color} frame={f.id} force />
+                {!open && <LockIcon />}
+              </button>
+            );
+          })}
+        </div>
+        {hint?.kind === 'frame' ? <span className="reward-hint small"><Icon name="lock" /> {hint.text}</span> : <span className="muted small">Earn badges to unlock more colors and frames.</span>}
+      </div>
       <label className="field"><span>Email <span className="muted">(only you see this; used to reset your password)</span></span>
         <input type="email" value={email} maxLength={254} autoComplete="email" autoCapitalize="off" spellCheck={false} placeholder="you@example.com" onChange={(e) => setEmail(e.target.value)} />
+        <EmailStatus email={email.trim()} changed={emailChanged} />
       </label>
       {emailChanged && (
         <label className="field"><span>Current password <span className="muted">(needed to change your email)</span></span>
@@ -127,6 +241,27 @@ function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfil
       {err && <p className="error">{err}</p>}
       <div className="row gap"><button className="btn primary small" disabled={busy || !displayName.trim() || (emailChanged && !password)}>Save</button><button type="button" className="btn ghost small" onClick={() => onDone(null)}>Cancel</button></div>
     </form>
+  );
+}
+
+/** Under the email field: whether it's confirmed, and a way to send the (optional) confirmation link. */
+function EmailStatus({ email, changed }: { email: string; changed: boolean }) {
+  const { me } = useAccount();
+  const [state, setState] = useState<'idle' | 'busy' | 'sent'>('idle');
+  const [err, setErr] = useState<string | null>(null);
+  if (!email) return <span className="muted small">Without an email, a forgotten password can’t be reset.</span>;
+  if (changed) return <span className="muted small">After you save, we’ll email a link to confirm it. Confirming is optional.</span>;
+  if (me?.emailVerified) return <span className="email-ok small">✓ Confirmed</span>;
+  const send = async () => {
+    setState('busy'); setErr(null);
+    try { await sendConfirmEmail(); setState('sent'); } catch (e: any) { setErr(e.message); setState('idle'); }
+  };
+  return (
+    <span className="muted small">
+      Not confirmed (optional).{' '}
+      {state === 'sent' ? 'Link sent. Check your inbox and spam folder.' : <button type="button" className="link" disabled={state === 'busy'} onClick={send}>Send a confirmation link</button>}
+      {err && <span className="error"> {err}</span>}
+    </span>
   );
 }
 
@@ -147,11 +282,17 @@ function AdminCard({ p, onChange, onDeleted }: { p: PublicProfile; onChange: (p:
   });
   return (
     <section className="card admin-card">
-      <h2>👑 Admin</h2>
+      <h2><Icon name="crown" /> Admin</h2>
       <p className="muted small">Only you can see this. Use it for offensive names or bios, or accounts that shouldn’t exist.</p>
       <div className="row gap">
         <button className="btn small" disabled={busy || p.displayName === p.username} onClick={() => reset(true, false)}>Reset display name</button>
         <button className="btn small" disabled={busy || !p.bio} onClick={() => reset(false, true)}>Clear bio</button>
+        <button className="btn small" disabled={busy} onClick={() => run(async () => {
+          const unlock = !p.badgesUnlocked;
+          await adminUnlockBadges(p.username, unlock);
+          onChange({ ...(await fetchProfile(p.username)) as PublicProfile });
+          setNote(unlock ? 'Every badge is unlocked on this profile.' : 'Badges are back to the ones they earned.');
+        })}>{p.badgesUnlocked ? 'Re-lock badges' : 'Unlock all badges'}</button>
         {confirming ? (
           <span className="confirm">
             <span className="small">Really delete @{p.username}? This can’t be undone.</span>
@@ -215,7 +356,7 @@ function Subjects({ p }: { p: PublicProfile }) {
           const few = s.heard < BEST_SUBJECT_MIN_HEARD;
           return (
             <div key={s.category} className={`subject ${few ? 'few' : ''}`}>
-              <div className="subject-name">{s.category}{s.category === p.bestSubject && <span className="badge best-badge">best</span>}</div>
+              <div className="subject-name"><CategoryDot category={s.category} />{s.category}{s.category === p.bestSubject && <span className="badge best-badge">best</span>}</div>
               <div className="subject-bar" title={`${fixed(s.ppth, 2)} points per tossup`}>
                 <div className={`fill ${s.ppth < 0 ? 'neg' : ''}`} style={{ width: `${(Math.abs(s.ppth) / max) * 100}%` }} />
               </div>
@@ -232,6 +373,72 @@ function Subjects({ p }: { p: PublicProfile }) {
   );
 }
 
+/** Today's date in US Eastern, when the daily challenge rolls over. */
+const easternToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
+function DailySection({ d }: { d: DailyProfile }) {
+  const today = easternToday();
+  const tiles: { label: string; value: string; sub: string; tone?: string }[] = [
+    { label: '1st place', value: String(d.wins), sub: d.leadingToday ? 'and leading today' : plural(d.wins, 'daily win'), tone: 'accent' },
+    { label: 'Days played', value: String(d.played), sub: `${plural(d.podiums, 'top-3 finish').replace('finishs', 'finishes')}` },
+    { label: 'Best finish', value: `#${d.bestRank}`, sub: `best score ${d.bestScore}` },
+    { label: 'Avg score', value: fixed(d.avgPoints), sub: 'points per daily' },
+    { label: 'Streak', value: String(d.streak), sub: `${d.streak === 1 ? 'day' : 'days'} in a row · best ${d.longestStreak}` },
+  ];
+  return (
+    <section className="card">
+      <h2>Daily challenge</h2>
+      <div className="tiles">
+        {tiles.map((x) => (
+          <div key={x.label} className={`tile ${x.tone ?? ''}`}>
+            <div className="tile-label">{x.label}</div>
+            <div className="tile-value">{x.value}</div>
+            <div className="tile-sub">{x.sub}</div>
+          </div>
+        ))}
+      </div>
+      <ul className="recent daily-recent">
+        {d.recent.map((x) => {
+          const solo = x.players < 2;
+          return (
+            <li key={x.day}>
+              <span className={`result ${!solo && x.rank === 1 ? 'win' : solo ? '' : 'loss'}`}>{solo ? 'Solo' : `${ordinal(x.rank)} of ${x.players}`}</span>
+              <div className="grow">
+                <div><b>Daily #{x.number}</b> <span className="muted small">· {x.points} pts{x.day === today ? ' · so far today' : ''}</span></div>
+                <Marks marks={x.marks} size="sm" />
+              </div>
+              <span className="muted small when">{x.day === today ? 'Today' : new Date(`${x.day}T12:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="muted small">A 1st place counts once the day ends (midnight Eastern) and at least two people played. Ties go to whoever buzzed earlier on average.</p>
+    </section>
+  );
+}
+
+function SurvivalSection({ sv }: { sv: SurvivalProfile }) {
+  const tiles = [
+    { label: 'Best run', value: String(sv.best.correct), sub: `right · ${plural(sv.best.tossups, 'tossup')} · ${sv.best.points} pts`, tone: 'accent' },
+    { label: 'All-time rank', value: `#${sv.rank}`, sub: `of ${plural(sv.players, 'player')}` },
+    { label: 'Runs', value: String(sv.runs), sub: `best on ${new Date(sv.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` },
+  ];
+  return (
+    <section className="card">
+      <h2>Survival</h2>
+      <div className="tiles">
+        {tiles.map((x) => (
+          <div key={x.label} className={`tile ${x.tone ?? ''}`}>
+            <div className="tile-label">{x.label}</div>
+            <div className="tile-value">{x.value}</div>
+            <div className="tile-sub">{x.sub}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Recent({ games }: { games: GameRecord[] }) {
   return (
     <section className="card">
@@ -239,11 +446,11 @@ function Recent({ games }: { games: GameRecord[] }) {
       <ul className="recent">
         {games.map((g, i) => {
           const solo = g.sides < 2;
-          const result = g.daily ? 'Daily' : solo ? 'Solo' : g.rank === 1 ? 'Won' : `${ordinal(g.rank)} of ${g.sides}`;
-          const kind = g.daily ? `Daily Challenge #${g.daily}` : g.mode === 'teams' ? 'teams' : 'free-for-all';
+          const result = g.daily ? 'Daily' : g.survival ? 'Survival' : solo ? 'Solo' : g.rank === 1 ? 'Won' : `${ordinal(g.rank)} of ${g.sides}`;
+          const kind = g.daily ? `Daily Challenge #${g.daily}` : g.survival ? 'survival run' : g.mode === 'teams' ? 'teams' : 'free-for-all';
           return (
             <li key={`${g.at}-${i}`}>
-              <span className={`result ${g.daily ? 'daily' : solo ? '' : g.rank === 1 ? 'win' : 'loss'}`}>{result}</span>
+              <span className={`result ${g.daily || g.survival ? 'daily' : solo ? '' : g.rank === 1 ? 'win' : 'loss'}`}>{result}</span>
               <div className="grow">
                 <div><b>{g.points} pts</b> <span className="muted small">· {g.daily && <>{kind} · </>}{g.powers}/{g.tens}/{g.negs} · {plural(g.tossups, 'tossup')}{g.daily ? '' : ` · ${kind}`}{g.abandoned ? ' · unfinished' : ''}</span></div>
                 {!solo && (
@@ -253,6 +460,70 @@ function Recent({ games }: { games: GameRecord[] }) {
                 )}
               </div>
               <span className="muted small when">{when(g.at)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/** Up to three stats the player chose to show off, above everything else. */
+function Pinned({ p, color, mine, onEdit }: { p: PublicProfile; color: string; mine: boolean; onEdit: () => void }) {
+  const t = tint(color);
+  const stats = p.pinned.map((id) => PIN_STATS.find((s) => s.id === id)).filter((s) => !!s);
+  if (!stats.length) {
+    return mine ? (
+      <button className="pin-empty" onClick={onEdit}><Icon name="pin" /> Pin up to {PIN_MAX} stats to the top of your profile</button>
+    ) : null;
+  }
+  return (
+    <section className={`pinned-row n${stats.length} ${t.className ?? ''}`} style={t.style} aria-label="Pinned stats">
+      {stats.map((s) => {
+        const v = s.get(p);
+        return (
+          <div key={s.id} className="tile pinned">
+            <div className="tile-label">{s.label}</div>
+            <div className="tile-value">{v?.value ?? '–'}</div>
+            {v?.sub && <div className="tile-sub">{v.sub}</div>}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+/** Earned badges. On your own profile, the ones still to get show with progress. */
+function Badges({ p, mine }: { p: PublicProfile; mine: boolean }) {
+  const [all, setAll] = useState(false);
+  const earned = p.badges.filter((b) => b.earned);
+  const locked = p.badges.filter((b) => !b.earned).sort((a, b) => (b.have ?? 0) / (b.need ?? 1) - (a.have ?? 0) / (a.need ?? 1));
+  if (!earned.length && !mine) return null;
+  const shown = mine && all ? [...earned, ...locked] : earned;
+  return (
+    <section className="card">
+      <div className="row between badges-head">
+        <h2>Badges <span className="muted small">{earned.length} of {p.badges.length}</span></h2>
+        {mine && locked.length > 0 && <button className="btn ghost small" onClick={() => setAll(!all)}>{all ? 'Earned only' : 'Show all'}</button>}
+      </div>
+      {!shown.length && <p className="muted small">No badges yet. Finish a game to earn your first.{mine && ' Tap “Show all” to see what’s out there.'}</p>}
+      <ul className="badges">
+        {shown.map((b) => {
+          const d = BADGE_BY_ID.get(b.id);
+          if (!d) return null;
+          return (
+            <li key={b.id} className={`badge-item ${b.earned ? 'earned' : 'locked'}`} title={d.desc}>
+              <span className="badge-icon" aria-hidden="true">{d.icon}</span>
+              <div className="badge-text">
+                <div className="badge-name">{d.name}</div>
+                <div className="muted small">{d.desc}</div>
+                {!b.earned && b.need && b.need > 1 && (
+                  <div className="badge-progress" aria-label={`${b.have} of ${b.need}`}>
+                    <div className="track"><div className="fill" style={{ width: `${((b.have ?? 0) / b.need) * 100}%` }} /></div>
+                    <span className="small muted">{b.have}/{b.need}</span>
+                  </div>
+                )}
+              </div>
             </li>
           );
         })}

@@ -1,17 +1,20 @@
 import {
-  DEFAULT_SETTINGS, SPECTATOR, buzzWindowSeconds,
-  type BotSkill, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
-  type Ruling, type ScorePoint, type Settings, type Verdict,
+  CATEGORIES, DEFAULT_SETTINGS, SPECTATOR, SURVIVAL_LIVES, VOTE_SECONDS, buzzWindowSeconds,
+  type AnswerKey, type BotSkill, type BuzzKind, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
+  type Filters, type Ruling, type ScorePoint, type Settings, type Verdict,
 } from '../../shared/types';
-import { checkAnswerDetailed } from '../game/answerCheck';
+import { checkAnswerDetailed, matchesAlt } from '../game/answerCheck';
+import { parseAnswerLine, type AnswerLine } from '../game/answerLine';
 import { computePlayerStats, computeTeamTotals, parseTossupText, scoreTossup, type Adjustment, type HeardEntry } from '../game/scoring';
-import { stripHtml, safeAnswerHtml } from '../game/text';
-import { LocalProvider, parseUpload, QBReaderProvider } from '../questions/providers';
+import { normalize, stripHtml, safeAnswerHtml } from '../game/text';
+import { LocalProvider, parseUpload, QBReaderProvider, TopicMix, shuffle } from '../questions/providers';
+import { TOPIC_BY_ID, TOPIC_BY_NAME, cleanTopics, inTopic } from '../../shared/topics';
 import { CATALOG_BONUSES, CATALOG_TOSSUPS } from '../questions/catalog';
 import { LIGHTNING } from '../questions/catalog/lightning';
 import { SAMPLE_BONUSES, SAMPLE_TOSSUPS } from '../questions/sample';
 import type { Bonus, QuestionProvider, Tossup } from '../questions/types';
 import type { GameRecord } from '../../shared/accounts';
+import { SurvivalProvider } from '../survival/questions';
 
 /** How the room talks to the outside world (Socket.IO in production, a fake in tests). */
 export interface RoomIO {
@@ -32,6 +35,12 @@ export class ActionError extends Error {}
 const fail = (msg: string): never => { throw new ActionError(msg); };
 
 /** How each setting reads in the chat note when the host changes it mid-match. */
+/** The bounty dice. Tests swap `next` to make bounties predictable. */
+export const bountyRandom = { next: () => Math.random() };
+
+/** A bounty tossup doubles what a correct answer earns; negs and zeros stay as they are. */
+const withBounty = (r: { points: number; kind: BuzzKind }, bounty: boolean) => (bounty && r.points > 0 ? { ...r, points: r.points * 2 } : r);
+
 const SETTING_LABELS: [keyof Settings, string, string][] = [
   ['wpm', 'reading speed', ' wpm'],
   ['answerSeconds', 'answer time', ' s'],
@@ -46,6 +55,7 @@ const SETTING_LABELS: [keyof Settings, string, string][] = [
   ['bonusPartValue', 'bonus part value', ''],
   ['showTextToPlayers', 'question text for players', ''],
   ['readerRules', 'reader rulings', ''],
+  ['bounty', 'bounty tossups', ''],
 ];
 
 export const TIMING = {
@@ -62,6 +72,12 @@ export const TIMING = {
   teamSize: 4,
   /** How many upcoming tossups the reader can preview. */
   lookahead: 3,
+  /** How long players have to vote on the next topic. */
+  voteMs: VOTE_SECONDS * 1000,
+  voteOptions: 3,
+  /** A voted topic plays for this many tossups (more in long games). */
+  voteRunMin: 5,
+  voteRunMax: 10,
 };
 
 interface Player {
@@ -89,6 +105,10 @@ interface LiveTossup {
   paused: boolean;
   ended: boolean;
   bonusTeam: string | null;
+  /** Where the question came from (a question report names it). Missing in rooms saved before reports. */
+  source?: string;
+  /** Bounty tossup: correct answers score double. */
+  bounty?: boolean;
 }
 
 interface LiveBuzz {
@@ -121,6 +141,8 @@ interface LiveBonus {
 export interface RoomState {
   /** Set for a daily-challenge room: one player, fixed questions, fixed settings. */
   daily: DailyInfo | null;
+  /** Set for a survival room: one player, tossups until three misses, fixed settings. */
+  survival: SurvivalInfo | null;
   code: string;
   hostId: string | null;
   readerId: string | null;
@@ -144,6 +166,8 @@ export interface RoomState {
   bonusNum: number;
   message: string | null;
   lastActive: number;
+  /** Number of the last bounty tossup, so bounties stay spread out. */
+  lastBounty?: number | null;
   /** Whole-game pause by the host or reader: every timer is frozen. */
   paused: boolean;
   pausedAt: number | null;
@@ -151,8 +175,16 @@ export interface RoomState {
   seatHold?: { host?: { id: string; until: number }; reader?: { id: string; until: number } };
   /** This game's results were already saved to players' profiles. */
   recorded?: boolean;
+  /** Open topic vote between tossups (topicVote setting, no reader). */
+  vote?: { options: string[]; votes: Record<string, string>; deadline: number } | null;
+  /** The category players voted for; used by the next tossup only. */
+  nextCategory?: string | null;
+  /** The winning topic of the last vote, played for `total` tossups before the next vote. */
+  voteRun?: { option: string; total: number; played: number } | null;
   /** Seat tokens and account ids that were banned from this room. */
   banned?: { tokens: string[]; accounts: string[] };
+  /** Review items (tossup numbers) each player reported, so their Report buttons say "Reported". */
+  reported?: Record<string, number[]>;
 }
 
 const rid =(n = 10) => Array.from({ length: n }, () => 'abcdefghijkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 32)]).join('');
@@ -165,6 +197,22 @@ const clamp = (v: unknown, lo: number, hi: number, dflt: number) => {
 const sampleProvider = new LocalProvider([...SAMPLE_TOSSUPS, ...CATALOG_TOSSUPS], [...SAMPLE_BONUSES, ...CATALOG_BONUSES]);
 /** Lightning round: short one-line prompts, no bonuses. */
 const lightningProvider = new LocalProvider(LIGHTNING, []);
+
+/** Parsed answer lines, kept per question so snapshots don't re-parse them. */
+const parsedLines = new WeakMap<Tossup, AnswerLine>();
+function answerKey(q: Tossup, misses: string[]): AnswerKey {
+  let line = parsedLines.get(q);
+  if (!line) { line = parseAnswerLine(q.answer); parsedLines.set(q, line); }
+  const shown = (alts: AnswerLine['accept']) => [...new Set(alts.map((a) => a.display ?? a.full))];
+  return {
+    accept: shown(line.accept), prompt: shown(line.prompt), reject: shown(line.reject),
+    misses: misses.map((given) => {
+      const g = normalize(given);
+      const why = line!.reject.some((a) => matchesAlt(g, a, true)) ? 'rejected' : line!.prompt.some((a) => matchesAlt(g, a)) ? 'prompt' : 'wrong';
+      return { given, why };
+    }),
+  };
+}
 
 export interface RoomDeps {
   qbreader?: QuestionProvider;
@@ -179,6 +227,22 @@ export interface DailyOutcome {
   marks: string;
   /** Average fraction of the question heard before correct buzzes (lower is earlier). */
   depth: number | null;
+}
+
+export interface SurvivalInfo {
+  playerKey: string;
+  lives: number;
+  /** One mark per tossup played, like the daily: P power, T ten, N neg, Z wrong without a neg, - no buzz. */
+  marks: string;
+  startedAt: number;
+  done: boolean;
+}
+/** One finished survival run, worked out by the server from the player's actual buzzes. */
+export interface SurvivalOutcome {
+  code: string; playerKey: string; playerId: string; name: string; accountId?: string;
+  /** Tossups played, misses included. */
+  tossups: number;
+  correct: number; points: number; powers: number; tens: number; negs: number; marks: string;
 }
 
 /** Plays a fixed list of tossups in order (the daily set). */
@@ -209,7 +273,7 @@ export class Room {
       code, hostId: null, readerId: null, settings: structuredClone(DEFAULT_SETTINGS), phase: 'lobby',
       players: [], teams: [], tossup: null, buzz: null, bonus: null, rulings: [], adjustments: [], heard: [],
       protests: [], review: [], chat: [], seenTossups: new Set(), seenBonuses: new Set(), upload: null,
-      tossupNum: 0, bonusNum: 0, message: null, lastActive: Date.now(), paused: false, pausedAt: null, daily: null,
+      tossupNum: 0, bonusNum: 0, message: null, lastActive: Date.now(), paused: false, pausedAt: null, daily: null, survival: null,
     };
   }
 
@@ -267,11 +331,20 @@ export class Room {
     return !this.readerOnline() || viewer === this.s.readerId || this.s.settings.showTextToPlayers;
   }
 
+  /** The first of the room's picked topics this question belongs to, for the chip on the card. */
+  private topicOf(q: Tossup): { topic?: { name: string; icon: string } } {
+    const t = cleanTopics(this.s.settings.filters.topics).map((id) => TOPIC_BY_ID.get(id)!).find((x) => inTopic(q, x));
+    return t ? { topic: { name: t.name, icon: t.icon } } : {};
+  }
+
+  /** Where questions come from, with the room's picked topics mixed in (see TopicMix). */
   private provider(): QuestionProvider {
-    if (this.s.settings.source === 'sample') return sampleProvider;
-    if (this.s.settings.source === 'lightning') return lightningProvider;
-    if (this.s.settings.source === 'upload') return this.uploadProvider ?? sampleProvider;
-    return this.qbreader;
+    const src = this.s.settings.source;
+    if (src === 'sample') return new TopicMix(sampleProvider, sampleProvider, false);
+    if (src === 'lightning') return new TopicMix(lightningProvider, lightningProvider, false);
+    if (src === 'upload') { const up = this.uploadProvider ?? sampleProvider; return new TopicMix(up, up, false); }
+    // Topics QBReader doesn't have use the built-in questions.
+    return new TopicMix(this.qbreader, sampleProvider, true);
   }
 
   private setTimer(name: string, ms: number, fn: () => void) {
@@ -292,6 +365,7 @@ export class Room {
   pauseGame(by: string, paused: boolean) {
     if (!this.isController(by)) fail('Only the host or reader can pause the game.');
     if (this.s.daily && paused) fail('The daily challenge can’t be paused.');
+    if (this.s.survival && paused) fail('Survival can’t be paused.');
     if (paused === this.s.paused) return;
     if (paused) {
       if (this.s.phase === 'lobby' || this.s.phase === 'gameOver') fail('Nothing to pause.');
@@ -308,6 +382,7 @@ export class Room {
       if (t) { if (t.deadline) t.deadline += shift; t.revealTimes = t.revealTimes.map((x) => x + shift); }
       if (b?.deadline) b.deadline += shift;
       if (bn?.deadline) bn.deadline += shift;
+      if (this.s.vote) this.s.vote.deadline += shift;
       this.system('Game resumed.');
     }
     this.broadcast();
@@ -359,6 +434,7 @@ export class Room {
     }
     if (!clean) fail('Pick a display name.');
     if (this.s.daily && this.s.players.length) fail('The daily challenge is played solo. Start your own from the home page.');
+    if (this.s.survival && this.s.players.length) fail('Survival is played solo. Start your own run from the home page.');
     if (this.s.players.length >= 60) fail('This room is full.');
     const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null, ...(account ? { accountId: account.id, username: account.username, ...(account.admin ? { admin: true } : {}) } : {}) };
     this.s.players.push(p);
@@ -421,6 +497,7 @@ export class Room {
   adminSetReader(by: string, target: string | null) {
     const admin = this.mustAdmin(by);
     if (this.s.daily) fail('The daily challenge has no reader.');
+    if (this.s.survival) fail('Survival has no reader.');
     if (target === null) {
       const old = this.s.readerId ? this.player(this.s.readerId) : undefined;
       if (!old) return;
@@ -457,6 +534,7 @@ export class Room {
     const me = this.mustPlayer(by);
     if (!this.isController(by) && !me.admin) fail('Only the host or reader can do that.');
     if (this.s.daily) fail('Not available in the daily challenge.');
+    if (this.s.survival) fail('Not available in survival.');
     const p = this.mustPlayer(target);
     if (p.id === by) fail('You can’t do that to yourself.');
     if (p.admin && !me.admin) fail('You can’t do that to the Trivio creator.');
@@ -622,7 +700,9 @@ export class Room {
   private questionsLabel() {
     const s = this.s.settings, f = s.filters;
     const source = { qbreader: 'QBReader', sample: 'the built-in questions', upload: 'the uploaded packet', lightning: 'the lightning round' }[s.source] ?? s.source;
-    const parts = [f.subcategories.length ? f.subcategories.join(', ') : f.categories.length ? f.categories.join(', ') : 'all categories'];
+    const topics = cleanTopics(f.topics).map((id) => TOPIC_BY_ID.get(id)!.name);
+    const cats = f.subcategories.length ? f.subcategories.join(', ') : f.categories.length ? f.categories.join(', ') : topics.length ? '' : 'all categories';
+    const parts = [[cats, ...topics].filter(Boolean).join(', ')];
     if (s.source === 'lightning' && f.difficulties.length) parts.push(`difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}`);
     if (s.source === 'qbreader') {
       if (f.difficulties.length) parts.push(`difficulty ${[...f.difficulties].sort((a, b) => a - b).join(', ')}`);
@@ -636,6 +716,7 @@ export class Room {
   updateSettings(by: string, patch: Partial<Settings>) {
     if (!this.isController(by)) fail('Only the host or reader can change settings.');
     if (this.s.daily) fail('The daily challenge uses the same settings for everyone.');
+    if (this.s.survival) fail('Survival uses the same settings for everyone.');
     const s = this.s.settings;
     const questionsKey = this.questionsKey();
     const before = { ...s };
@@ -649,9 +730,14 @@ export class Room {
     if (patch.answerSeconds !== undefined) s.answerSeconds = clamp(patch.answerSeconds, 2, 30, s.answerSeconds);
     if (patch.bonusSeconds !== undefined) s.bonusSeconds = clamp(patch.bonusSeconds, 5, 60, s.bonusSeconds);
     if (patch.deadSeconds !== undefined) s.deadSeconds = clamp(patch.deadSeconds, 1, 30, s.deadSeconds);
-    for (const k of ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules'] as const) {
+    if (patch.gameLength !== undefined) s.gameLength = clamp(patch.gameLength, 0, 500, s.gameLength);
+    for (const k of ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules', 'readAloud', 'topicVote', 'bounty'] as const) {
       if (typeof patch[k] === 'boolean') s[k] = patch[k]!;
     }
+    if (!s.topicVote && this.s.vote) this.cancelVote();
+    if (!s.topicVote) this.s.voteRun = null;
+    // Shortened to (or below) the tossups already played: no vote, the next step finishes the game.
+    if (this.s.vote && this.lengthReached()) this.cancelVote();
     if (patch.powerValue !== undefined) s.powerValue = clamp(patch.powerValue, 0, 50, s.powerValue);
     if (patch.tenValue !== undefined) s.tenValue = clamp(patch.tenValue, 0, 50, s.tenValue);
     if (patch.negValue !== undefined) s.negValue = clamp(patch.negValue, -50, 0, s.negValue);
@@ -665,6 +751,7 @@ export class Room {
       s.filters = {
         categories: Array.isArray(f.categories) ? f.categories.map(String).slice(0, 30) : s.filters.categories,
         subcategories: Array.isArray(f.subcategories) ? f.subcategories.map(String).slice(0, 60) : s.filters.subcategories,
+        topics: Array.isArray(f.topics) ? cleanTopics(f.topics) : s.filters.topics ?? [],
         difficulties: Array.isArray(f.difficulties) ? f.difficulties.map(Number).filter((d) => d >= 0 && d <= 10) : s.filters.difficulties,
         minYear: f.minYear ? clamp(f.minYear, 1990, 2100, 0) || undefined : undefined,
         maxYear: f.maxYear ? clamp(f.maxYear, 1990, 2100, 0) || undefined : undefined,
@@ -684,6 +771,7 @@ export class Room {
       const changes = SETTING_LABELS.filter(([k]) => s[k] !== before[k]).map(([k, label, unit]) =>
         typeof s[k] === 'boolean' ? `${label} ${s[k] ? 'on' : 'off'}` : `${label} to ${s[k]}${unit}`);
       if (s.mode !== before.mode) changes.unshift(s.mode === 'teams' ? 'the format to teams' : 'the format to free-for-all');
+      if (s.gameLength !== before.gameLength) changes.push(s.gameLength ? `the game length to ${s.gameLength} tossups` : 'the game length to no limit');
       if (questionsChanged) changes.push(`the questions to ${this.questionsLabel()}`);
       if (changes.length) {
         const tail = questionsChanged && this.midGame() ? ' They start with the next tossup.' : '';
@@ -771,6 +859,7 @@ export class Room {
   /** Take (target = self) or assign (host) the reader seat; null target frees it. */
   setReader(by: string, target: string | null) {
     if (this.s.daily) fail('The daily challenge has no reader.');
+    if (this.s.survival) fail('Survival has no reader.');
     if (this.midGame()) fail('Change the reader between questions.');
     if (target === null) {
       if (by !== this.s.readerId && by !== this.s.hostId) fail('Only the reader or host can free the seat.');
@@ -797,6 +886,7 @@ export class Room {
   start(by: string) {
     if (!this.isController(by)) fail('Only the host or reader can start.');
     if (this.s.daily?.done) fail('You’ve played today’s challenge. Come back tomorrow for a new one!');
+    if (this.s.survival?.done) fail('This run is over. Tap Play again for a new one.');
     if (this.s.phase === 'gameOver') this.resetScores();
     else if (this.s.phase !== 'lobby') fail('The game is already running.');
     this.s.message = null;
@@ -808,16 +898,58 @@ export class Room {
   }
 
   private resetScores() {
-    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null });
+    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], reported: {}, tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null, vote: null, nextCategory: null, voteRun: null, lastBounty: null });
+  }
+
+  // ---------- question reports ----------
+
+  /**
+   * The question behind one of this room's review items, for a player's report. Only finished tossups are in the
+   * review, so nobody can report (or learn anything about) a question that is still being read.
+   */
+  reportTarget(by: string, num: unknown) {
+    const p = this.mustPlayer(by);
+    if (p.bot) fail('Bots can’t report questions.');
+    const item = this.s.review.find((r) => r.num === Number(num));
+    if (!item?.ref) fail('You can report a question once it has been read.');
+    if (this.s.reported?.[by]?.includes(item!.num)) fail('You already reported this question.');
+    const words = [...item!.words];
+    if (item!.powerIndex !== null && item!.powerIndex <= words.length) words.splice(item!.powerIndex, 0, '(*)');
+    return {
+      questionId: item!.ref!.id, source: item!.ref!.source, category: item!.category, subcategory: item!.subcategory,
+      setName: item!.setName ?? null, question: words.join(' '), answer: item!.answerHtml,
+    };
+  }
+
+  /** Remember that this player reported this review item (their Report button turns into "Reported"). */
+  markReported(by: string, num: number) {
+    const mine = ((this.s.reported ??= {})[by] ??= []);
+    if (!mine.includes(num)) mine.push(num);
+    this.s.lastActive = Date.now();
+    this.io.emitTo([by], 'state', this.snapshot(by));
   }
 
   end(by: string) {
     if (!this.isController(by)) fail('Only the host or reader can end the game.');
+    this.finishGame();
+  }
+
+  /** The set number of tossups has been played (never in the daily challenge, which has its own count, or survival, which runs until 3 misses). */
+  private lengthReached() {
+    const n = this.s.settings.gameLength;
+    return !this.s.daily && !this.s.survival && n > 0 && this.s.tossupNum >= n;
+  }
+
+  /** Stop the game and show the summary: the host ended it, or the last tossup is done. */
+  private finishGame() {
     this.dispose();
     this.pending = [];
     this.loadGen++;
     if (this.s.tossup && !this.s.tossup.ended) this.s.tossup.ended = true;
     this.s.buzz = null;
+    this.s.vote = null;
+    this.s.nextCategory = null;
+    this.s.voteRun = null;
     this.s.paused = false;
     this.s.pausedAt = null;
     this.s.phase = 'gameOver';
@@ -828,6 +960,8 @@ export class Room {
       const outcome = this.dailyOutcome();
       if (outcome) this.onDailyDone?.(outcome);
     }
+    // Ending a run early (giving up) counts as finishing it.
+    if (this.s.survival && !this.s.survival.done) this.finishSurvival();
     this.broadcast();
   }
 
@@ -870,8 +1004,65 @@ export class Room {
     };
   }
 
+  // ---------- survival ----------
+
+  /** Called once when a survival run ends (out of lives, given up, or abandoned). */
+  onSurvivalDone?: (outcome: SurvivalOutcome) => void;
+
+  /** Turn this fresh room into a survival run: endless tossups, standard settings, no extras. */
+  makeSurvival(playerKey: string) {
+    this.s.survival = { playerKey, lives: SURVIVAL_LIVES, marks: '', startedAt: Date.now(), done: false };
+    this.useSurvivalQuestions();
+    this.s.settings = { ...structuredClone(DEFAULT_SETTINGS), mode: 'ffa', bonuses: false, deadSeconds: 3, source: 'upload', topicVote: false, readAloud: false };
+  }
+
+  /** (Re)attach the survival questions, e.g. after a restart. Questions already played stay in seenTossups. */
+  private useSurvivalQuestions() { this.uploadProvider = new SurvivalProvider(this.qbreader, () => this.s.tossupNum + 1); }
+
+  /** The one person playing the run. */
+  private survivor() { return this.s.players.find((x) => !x.bot); }
+
+  /** A tossup of the run just ended: note how it went, and take a life unless they got it. */
+  private survivalTossupOver(num: number, got: boolean) {
+    const sv = this.s.survival!;
+    const p = this.survivor();
+    const r = p && this.s.rulings.filter((x) => x.type === 'tossup' && x.num === num && x.playerId === p.id && !x.overridden).at(-1);
+    sv.marks += !r ? '-' : r.correct ? (r.kind === 'power' ? 'P' : 'T') : r.kind === 'neg' ? 'N' : 'Z';
+    if (got) return;
+    sv.lives = Math.max(0, sv.lives - 1);
+    if (sv.lives === 0) {
+      this.system('Out of lives. That’s the run!');
+      this.finishSurvival();
+    }
+  }
+
+  /** End the run once: report it for the leaderboard and save the game to the player's profile right away. */
+  private finishSurvival() {
+    const sv = this.s.survival;
+    if (!sv || sv.done) return;
+    sv.done = true;
+    const outcome = this.survivalOutcome();
+    if (outcome) this.onSurvivalDone?.(outcome);
+    this.recordResults(false);
+  }
+
+  private survivalOutcome(): SurvivalOutcome | null {
+    const sv = this.s.survival;
+    const p = this.survivor();
+    if (!sv || !p) return null;
+    const mine = this.s.rulings.filter((r) => r.type === 'tossup' && r.playerId === p.id && !r.overridden);
+    const count = (m: string) => [...sv.marks].filter((x) => x === m).length;
+    return {
+      code: this.s.code, playerKey: sv.playerKey, playerId: p.id, name: p.name, accountId: p.accountId,
+      tossups: sv.marks.length, correct: count('P') + count('T'), powers: count('P'), tens: count('T'), negs: count('N'),
+      points: mine.reduce((a, r) => a + r.points, 0), marks: sv.marks,
+    };
+  }
+
   /** Save a game everyone walked away from (called before an idle room is deleted). */
   recordIfUnfinished() {
+    // A survival run left open ends where it stands: the tossups already played count, nothing more.
+    if (this.s.survival && !this.s.survival.done && this.s.phase !== 'lobby') this.finishSurvival();
     if (this.s.phase !== 'lobby' && this.s.phase !== 'gameOver' && this.s.heard.length >= 3) this.recordResults(true);
   }
 
@@ -901,6 +1092,7 @@ export class Room {
           standings: ranked.slice(0, 8).map((t) => ({ name: t.name, points: t.points, you: t.id === side?.id })),
           ...(abandoned ? { abandoned: true } : {}),
           ...(this.s.daily ? { daily: this.s.daily.number } : {}),
+          ...(this.s.survival ? { survival: true } : {}),
           tossups: this.s.heard.length,
           points: st.points, powers: st.powers, tens: st.tens, negs: st.negs, buzzes: st.buzzes, heard: st.heard,
           correctDepthSum: st.avgCorrectDepth != null ? st.avgCorrectDepth * correct : 0,
@@ -917,8 +1109,11 @@ export class Room {
     const admin = !!this.player(by)?.admin;
     if (!this.canDirect(by) && !admin) fail('The reader decides when to move on.');
     this.notPaused();
+    if (this.s.vote) return this.closeVote();
     const { phase, tossup, bonus } = this.s;
     if (phase === 'tossupEnd' && this.s.daily && this.s.tossupNum >= this.s.daily.total) return this.end(by);
+    if (phase === 'tossupEnd' && this.s.survival?.done) return this.end(by);
+    if ((phase === 'reading' || phase === 'buzz') && this.s.survival) fail('Every tossup counts in survival: buzz, or let it run out.');
     if (phase === 'tossupEnd') {
       if (tossup?.bonusTeam) void this.startBonus(tossup.bonusTeam);
       else void this.loadTossup();
@@ -935,14 +1130,36 @@ export class Room {
     }
   }
 
+  /**
+   * Whether tossup `num` is a bounty: never the first, at least 3 tossups after the last one, then a 1 in 4
+   * chance each time, and always by 8 tossups after the last. Never in the daily challenge or survival.
+   */
+  private rollBounty(num: number) {
+    if (!this.s.settings.bounty || this.s.daily || this.s.survival || num < 2) return false;
+    const gap = num - (this.s.lastBounty ?? 0);
+    if (gap < 4) return false;
+    if (gap < 8 && bountyRandom.next() >= 0.25) return false;
+    this.s.lastBounty = num;
+    return true;
+  }
+
   private async loadTossup() {
+    // Every way to the next tossup (Next, a closed vote, a skipped or finished bonus) ends here after the last one.
+    if (this.lengthReached()) return this.finishGame();
     this.dispose();
     this.pending = [];
     const gen = ++this.loadGen;
-    Object.assign(this.s, { phase: 'loading', buzz: null, bonus: null, message: null });
+    const run = this.s.voteRun && this.s.settings.topicVote && this.s.voteRun.played < this.s.voteRun.total ? this.s.voteRun : null;
+    const voted = run?.option ?? this.s.nextCategory ?? null;
+    Object.assign(this.s, { phase: 'loading', buzz: null, bonus: null, message: null, vote: null, nextCategory: null });
     this.broadcast();
-    let q: Tossup | null = this.upcoming.shift() ?? null;
+    let q: Tossup | null = voted ? null : this.upcoming.shift() ?? null;
     try {
+      // The voted topic narrows the room's filters for this one tossup; if it has nothing left, fall back to the filters.
+      if (voted) q = await this.provider().nextTossup(this.onlyCategory(voted), this.s.seenTossups);
+      // The voted topic ran out of questions: end its run early and play from the room's filters.
+      if (voted && !q && run) run.played = run.total;
+      else if (run) run.played++;
       q ??= await this.provider().nextTossup(this.s.settings.filters, this.s.seenTossups);
     } catch (e: any) {
       if (gen !== this.loadGen) return;
@@ -953,8 +1170,16 @@ export class Room {
       return this.broadcast();
     }
     if (gen !== this.loadGen) return;
+    if (!q && this.s.survival) {
+      this.finishSurvival();
+      this.s.message = 'You’ve gone through every question we have. What a run!';
+      this.s.phase = this.s.tossupNum ? 'tossupEnd' : 'lobby';
+      return this.broadcast();
+    }
     if (!q) {
-      this.s.message = 'No more unread questions match these filters. Widen the filters or upload a packet.';
+      this.s.message = this.s.settings.source === 'upload'
+        ? 'No more unread questions in the uploaded packet match these filters. Clear the filters, or switch to QBReader or Built-in questions.'
+        : 'No more unread questions match these filters. Widen the filters or upload a packet.';
       this.s.phase = this.s.tossupNum ? 'tossupEnd' : 'lobby';
       if (this.s.tossup) this.s.tossup.bonusTeam = null;
       return this.broadcast();
@@ -963,7 +1188,8 @@ export class Room {
     const { words, powerIndex } = parseTossupText(q.question);
     this.s.tossup = {
       num: ++this.s.tossupNum, q, words, powerIndex, revealed: 0, revealTimes: [], locked: new Set(), markers: [],
-      paused: false, ended: false, bonusTeam: null,
+      paused: false, ended: false, bonusTeam: null, source: this.s.daily ? 'daily' : this.s.settings.source,
+      ...(this.rollBounty(this.s.tossupNum) ? { bounty: true } : {}), // tossupNum is this tossup's number by now
     };
     this.s.phase = 'reading';
     this.broadcast();
@@ -1046,6 +1272,7 @@ export class Room {
   setPaused(by: string, paused: boolean) {
     if (!this.isController(by)) fail('Only the reader or host can pause.');
     if (this.s.daily && paused) fail('The daily challenge can’t be paused.');
+    if (this.s.survival && paused) fail('Survival can’t be paused.');
     this.notPaused();
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading') fail('Nothing is being read.');
@@ -1163,13 +1390,14 @@ export class Room {
       return this.broadcast();
     }
     const correct = verdict === 'correct';
-    const { points, kind } = scoreTossup(correct, b.wordIndex, t.words.length, t.powerIndex, this.s.settings);
+    const { points, kind } = withBounty(scoreTossup(correct, b.wordIndex, t.words.length, t.powerIndex, this.s.settings), !!t.bounty);
     const p = this.player(b.playerId);
     this.s.rulings.push({
       id: rid(), type: 'tossup', num: t.num, playerId: b.playerId, playerName: p?.name ?? '?', teamId: b.teamId,
       category: t.q.category, given, correct, overridden: false, points, kind,
       wordIndex: b.wordIndex, totalWords: t.words.length, powerIndex: t.powerIndex,
       ...(correct && correctedTo ? { correctedTo } : {}),
+      ...(t.bounty ? { bounty: true } : {}),
     });
     marker.result = kind;
     if (correct && correctedTo) marker.correctedTo = correctedTo;
@@ -1204,11 +1432,92 @@ export class Room {
     this.s.review.unshift({
       num: t.num, category: t.q.category, subcategory: t.q.subcategory, setName: t.q.setName,
       words: t.words, powerIndex: t.powerIndex, answerHtml: safeAnswerHtml(t.q.answer), buzzes: t.markers,
+      ref: { id: t.q.id, source: t.source ?? (this.s.daily ? 'daily' : this.s.settings.source) },
+      ...(t.bounty ? { bounty: true } : {}),
     });
     if (this.s.review.length > 100) this.s.review.pop();
     t.bonusTeam = winnerTeam && this.s.settings.bonuses && this.s.settings.source !== 'lightning' ? winnerTeam : null;
+    if (this.s.survival && !this.s.survival.done) this.survivalTossupOver(t.num, !!winnerTeam);
     this.s.phase = 'tossupEnd';
+    if (!t.bonusTeam) this.openVote();
     this.broadcast();
+  }
+
+  // ---------- topic vote ----------
+
+  private votingOn() { return this.s.settings.topicVote && !this.s.daily && !this.s.survival && !this.readerOnline(); }
+
+  /** Online human players who can vote (the reader and bots don't). */
+  private voters() { return this.s.players.filter((p) => p.online && !p.bot && this.teamOf(p.id)); }
+
+  /** The room's filters narrowed to one category (keeping any subcategories picked inside it). */
+  private onlyCategory(category: string): Filters {
+    const f = this.s.settings.filters;
+    const topic = TOPIC_BY_NAME.get(category);
+    if (topic) return { ...f, categories: [], subcategories: [], topics: [topic.id] };
+    const subs = CATEGORIES[category] ?? [];
+    return { ...f, categories: [category], subcategories: f.subcategories.filter((sc) => subs.includes(sc)) };
+  }
+
+  /** Between tossups: offer a few categories for the next one. The next tossup starts when the vote closes. */
+  private openVote() {
+    if (!this.votingOn() || this.lengthReached()) return;
+    // The voted topic is still running: no vote until its last tossup is done.
+    if (this.s.voteRun && this.s.voteRun.played < this.s.voteRun.total) return;
+    this.s.voteRun = null;
+    const f = this.s.settings.filters;
+    const topics = cleanTopics(f.topics).map((id) => TOPIC_BY_ID.get(id)!.name);
+    // Picked categories and topics are on the ballot; with nothing picked, every category is.
+    const pool = [...(f.categories.length ? f.categories : topics.length ? [] : Object.keys(CATEGORIES)), ...topics];
+    if (pool.length < 2) return;
+    const last = this.s.tossup?.q.category;
+    // Prefer categories other than the one just played, so the topics move around.
+    const fresh = shuffle(pool.filter((c) => c !== last));
+    const options = [...fresh, ...pool.filter((c) => c === last)].slice(0, TIMING.voteOptions);
+    this.s.vote = { options, votes: {}, deadline: Date.now() + TIMING.voteMs };
+    this.setTimer('vote', TIMING.voteMs, () => this.closeVote());
+  }
+
+  castVote(by: string, category: string) {
+    const v = this.s.vote ?? fail('There is no vote open.');
+    if (!this.voters().some((p) => p.id === by)) fail('Only players can vote.');
+    if (!v!.options.includes(category)) fail('That topic is not on the ballot.');
+    this.notPaused();
+    v!.votes[by] = category;
+    const voters = this.voters();
+    if (voters.every((p) => v!.votes[p.id])) return this.closeVote();
+    this.broadcast();
+  }
+
+  /** Count the votes (ties broken at random, no votes = any option) and start the next tossup. */
+  private closeVote() {
+    const v = this.s.vote;
+    if (!v) return;
+    this.clearTimer('vote');
+    const counts = new Map(v.options.map((o) => [o, 0]));
+    for (const c of Object.values(v.votes)) if (counts.has(c)) counts.set(c, counts.get(c)! + 1);
+    const top = Math.max(...counts.values());
+    const leaders = v.options.filter((o) => counts.get(o) === top);
+    this.s.voteRun = { option: leaders[Math.floor(Math.random() * leaders.length)], total: this.voteRunLength(), played: 0 };
+    this.s.vote = null;
+    void this.loadTossup();
+  }
+
+  /**
+   * How many tossups a voted topic plays for: 5, or about a quarter of a set game length, up to 10
+   * (20 tossups → 5, 30 → 8, 40 or more → 10). Never past the end of the game.
+   */
+  private voteRunLength() {
+    const n = this.s.settings.gameLength;
+    if (!n) return TIMING.voteRunMin;
+    const len = Math.min(TIMING.voteRunMax, Math.max(TIMING.voteRunMin, Math.round(n / 4)));
+    return Math.max(1, Math.min(len, n - this.s.tossupNum));
+  }
+
+  /** Vote switched off mid-vote: stay on this tossup and let someone press Next. */
+  private cancelVote() {
+    this.clearTimer('vote');
+    this.s.vote = null;
   }
 
   // ---------- bonuses ----------
@@ -1290,7 +1599,7 @@ export class Room {
     const bn = this.s.bonus;
     if (!bn) return;
     bn.current++;
-    if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.broadcast(); }
+    if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.openVote(); this.broadcast(); }
     else this.startBonusPart();
   }
 
@@ -1311,6 +1620,8 @@ export class Room {
 
   protest(by: string, rulingId: string, note: string) {
     const p = this.mustPlayer(by);
+    if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
+    if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     const r = this.s.rulings.find((x) => x.id === rulingId) ?? fail('No such ruling.');
     if (this.s.protests.some((x) => x.rulingId === rulingId && !x.resolved)) fail('That ruling is already protested.');
     this.s.protests.push({ id: rid(), rulingId, byId: by, byName: p.name, note: String(note ?? '').slice(0, 200), resolved: false });
@@ -1321,6 +1632,7 @@ export class Room {
   resolveProtest(by: string, protestId: string, accept: boolean) {
     if (!this.isController(by)) fail('Only the host or reader resolves protests.');
     if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
+    if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     const pr = this.s.protests.find((x) => x.id === protestId && !x.resolved) ?? fail('No open protest.');
     pr!.resolved = true;
     if (accept) this.flipRuling(pr!.rulingId);
@@ -1331,6 +1643,7 @@ export class Room {
   override(by: string, rulingId: string) {
     if (!this.isController(by)) fail('Only the host or reader can override.');
     if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
+    if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     this.flipRuling(rulingId);
     const r = this.s.rulings.find((x) => x.id === rulingId)!;
     this.system(`Ruling on "${r.given || '(no answer)'}" changed to ${r.correct ? 'correct' : 'incorrect'}.`);
@@ -1339,28 +1652,60 @@ export class Room {
 
   private flipRuling(rulingId: string) {
     const r = this.s.rulings.find((x) => x.id === rulingId) ?? fail('No such ruling.');
-    r!.correct = !r!.correct;
-    r!.overridden = !r!.overridden;
-    if (r!.type === 'tossup') {
-      const { points, kind } = scoreTossup(r!.correct, r!.wordIndex ?? 0, r!.totalWords ?? 0, r!.powerIndex ?? null, this.s.settings);
-      r!.points = points;
-      r!.kind = kind;
-      const lists = [this.s.tossup?.num === r!.num ? this.s.tossup.markers : [], ...this.s.review.filter((x) => x.num === r!.num).map((x) => x.buzzes)];
-      for (const list of new Set(lists)) for (const m of list) if (m.playerId === r!.playerId && m.given === r!.given) m.result = kind;
-      // Reversing a ruling on the tossup that just ended also decides who gets its bonus.
-      const t = this.s.tossup;
-      if (t && t.num === r!.num && t.ended && this.s.phase === 'tossupEnd' && this.s.settings.bonuses) {
-        if (r!.correct && !t.bonusTeam) t.bonusTeam = r!.teamId;
-        else if (!r!.correct && t.bonusTeam === r!.teamId) t.bonusTeam = null;
-      }
-    } else {
+    if (r!.type !== 'tossup') {
+      r!.correct = !r!.correct;
+      r!.overridden = !r!.overridden;
       r!.points = r!.correct ? this.s.settings.bonusPartValue : 0;
+      return;
+    }
+    // A cancelled answer was correct; flipping it means ruling it wrong.
+    r!.correct = r!.voidedBy ? false : !r!.correct;
+    r!.voidedBy = undefined;
+    r!.overridden = !r!.overridden;
+    this.rescoreTossupRuling(r!);
+    this.settleTossup(r!.num);
+  }
+
+  private rescoreTossupRuling(r: Ruling) {
+    const scored = withBounty(scoreTossup(r.correct, r.wordIndex ?? 0, r.totalWords ?? 0, r.powerIndex ?? null, this.s.settings), !!r.bounty);
+    // A cancelled correct answer scores nothing (it isn't a neg).
+    const { points, kind } = r.voidedBy ? { points: 0, kind: 'zero' as const } : scored;
+    r.points = points;
+    r.kind = kind;
+    const lists = [this.s.tossup?.num === r.num ? this.s.tossup.markers : [], ...this.s.review.filter((x) => x.num === r.num).map((x) => x.buzzes)];
+    for (const list of new Set(lists)) for (const m of list) if (m.playerId === r.playerId && m.given === r.given) m.result = kind;
+  }
+
+  /**
+   * Only one answer scores on a tossup: the earliest correct one. After a ruling is reversed, later correct
+   * answers on the same tossup are cancelled (and get their points back if the earlier one is reversed again).
+   */
+  private settleTossup(num: number) {
+    let winner: Ruling | null = null;
+    for (const r of this.s.rulings) {
+      if (r.type !== 'tossup' || r.num !== num) continue;
+      const right = r.correct || !!r.voidedBy;
+      if (!right) continue;
+      if (!winner) {
+        winner = r;
+        if (r.voidedBy) { r.voidedBy = undefined; r.correct = true; this.rescoreTossupRuling(r); }
+      } else if (r.voidedBy !== winner.id) {
+        r.voidedBy = winner.id;
+        r.correct = false;
+        this.rescoreTossupRuling(r);
+      }
+    }
+    // Reversing a ruling on the tossup that just ended also decides who gets its bonus.
+    const t = this.s.tossup;
+    if (t && t.num === num && t.ended && this.s.phase === 'tossupEnd' && this.s.settings.bonuses && this.s.settings.source !== 'lightning') {
+      t.bonusTeam = winner ? winner.teamId : null;
     }
   }
 
   adjust(by: string, playerId: string, delta: number) {
     if (!this.isController(by)) fail('Only the host or reader can adjust scores.');
     if (this.s.daily) fail('Not available in the daily challenge: every score is checked the same way for everyone.');
+    if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     const teamId = this.teamOf(playerId) ?? fail('That player is not playing.');
     const d = clamp(delta, -50, 50, 0);
     if (!d) return;
@@ -1371,6 +1716,9 @@ export class Room {
 
   upload(by: string, raw: unknown) {
     if (!this.isController(by)) fail('Only the host or reader can upload a packet.');
+    // Fixed-question rooms: a packet would replace the questions everyone else plays.
+    if (this.s.daily) fail('The daily challenge uses the same questions for everyone.');
+    if (this.s.survival) fail('Survival uses the same questions for everyone.');
     const parsed = parseUpload(raw);
     if (!parsed.tossups.length) fail('No tossups found. Each needs "question" and "answer" fields.');
     this.s.upload = parsed;
@@ -1501,6 +1849,7 @@ export class Room {
     for (const p of room.s.players) p.online = false;
     room.hostReservedUntil = Date.now() + 2 * 60_000;
     if (room.s.upload) room.uploadProvider = new LocalProvider(room.s.upload.tossups, room.s.upload.bonuses);
+    if (room.s.survival) room.useSurvivalQuestions();
     room.rearm();
     return room;
   }
@@ -1508,6 +1857,7 @@ export class Room {
   private rearm() {
     const s = this.s;
     const now = Date.now();
+    s.vote = null; // a vote doesn't survive a restart; whoever is there presses Next
     if (s.phase === 'loading') {
       s.phase = s.tossup ? 'tossupEnd' : s.tossupNum ? 'tossupEnd' : 'lobby';
       if (s.tossup && !s.tossup.ended) s.tossup.ended = true;
@@ -1572,17 +1922,20 @@ export class Room {
       phase: s.phase,
       tossup: t && {
         num: t.num, category: t.q.category, subcategory: t.q.subcategory, difficulty: t.q.difficulty, setName: t.q.setName, year: t.q.year,
+        ...this.topicOf(t.q),
         revealed: t.words.slice(0, t.revealed).map((w) => (visible || t.ended ? w : '')),
         totalWords: t.words.length,
         words: reveal ? t.words : undefined,
         powerIndex: reveal ? t.powerIndex : undefined,
         answerHtml: reveal ? safeAnswerHtml(t.q.answer) : undefined,
+        answerKey: t.ended ? answerKey(t.q, t.markers.filter((m) => m.playerId === viewer && (m.result === 'neg' || m.result === 'zero') && m.given).map((m) => m.given!)) : undefined,
         buzzes: t.markers,
         textVisible: visible,
         paused: t.paused,
         deadline: t.deadline,
         lockedTeamIds: [...t.locked],
         bonusTeamId: t.ended ? t.bonusTeam : null,
+        ...(t.bounty ? { bounty: true } : {}),
       },
       buzz: s.buzz && {
         playerId: s.buzz.playerId, playerName: this.player(s.buzz.playerId)?.name ?? '?', wordIndex: s.buzz.wordIndex,
@@ -1610,6 +1963,7 @@ export class Room {
       rulings: s.rulings.slice(-60),
       protests: s.protests.filter((p) => !p.resolved),
       review: s.review,
+      reported: viewer ? s.reported?.[viewer] ?? [] : [],
       tossupsRead: s.heard.length,
       uploadedCount: s.upload ? { tossups: s.upload.tossups.length, bonuses: s.upload.bonuses.length } : null,
       message: s.message,
@@ -1617,6 +1971,14 @@ export class Room {
       history: shared.history,
       highlights: shared.highlights,
       daily: s.daily ? { day: s.daily.day, number: s.daily.number, total: s.daily.total, done: s.daily.done } : undefined,
+      survival: s.survival ? {
+        lives: s.survival.lives, maxLives: SURVIVAL_LIVES, tossups: s.survival.marks.length,
+        correct: [...s.survival.marks].filter((m) => m === 'P' || m === 'T').length, marks: s.survival.marks, done: s.survival.done,
+      } : undefined,
+      vote: s.vote ? this.publicVote(s.vote, viewer) : null,
+      ...(s.voteRun && s.voteRun.played > 0 && s.settings.topicVote
+        ? { voteRun: { name: s.voteRun.option, num: Math.min(s.voteRun.played, s.voteRun.total), total: s.voteRun.total } }
+        : {}),
       ...(isReader ? {
         upcoming: this.upcoming.map((q) => ({
           id: q.id, category: q.category, subcategory: q.subcategory, difficulty: q.difficulty, setName: q.setName, year: q.year,
@@ -1624,6 +1986,17 @@ export class Room {
         })),
         upcomingLoading: this.fillingQueue,
       } : {}),
+    };
+  }
+
+  private publicVote(v: NonNullable<RoomState['vote']>, viewer: string | null) {
+    const counts: Record<string, number> = Object.fromEntries(v.options.map((o) => [o, 0]));
+    for (const c of Object.values(v.votes)) if (c in counts) counts[c]++;
+    const voters = this.voters();
+    return {
+      options: v.options, counts, mine: (viewer && v.votes[viewer]) || null, deadline: v.deadline,
+      runLength: this.voteRunLength(),
+      voters: voters.length, voted: voters.filter((p) => v.votes[p.id]).length,
     };
   }
 

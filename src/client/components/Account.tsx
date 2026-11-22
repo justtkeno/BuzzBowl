@@ -1,8 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import { EMAIL_RE, PASSWORD_MIN, USERNAME_RE } from '../../shared/accounts';
-import { forgotPassword, login, logout, resetPassword, signup, useAccount } from '../account';
+import { DEFAULT_COLOR, DEFAULT_FRAME, colorById } from '../../shared/profile';
+import { confirmEmail, forgotPassword, login, logout, resetPassword, signup, useAccount } from '../account';
 import { useTheme } from '../App';
 import '../accounts.css';
+import { SiteAdminPanel } from './SiteAdmin';
+import { Icon } from './Icon';
+
+/**
+ * Class and style that give an element (and what's inside it) a profile color as its accent, in either theme.
+ * The default color leaves the site's own accent alone unless `force` is set (for previews inside a tinted card).
+ */
+export function tint(color: string | undefined, force = false): { className?: string; style?: React.CSSProperties } {
+  if (!force && (!color || color === DEFAULT_COLOR)) return {};
+  const c = colorById(color);
+  return { className: 'tinted', style: { '--c-light': c.light, '--c-dark': c.dark } as React.CSSProperties };
+}
+
+/** A player's avatar: the first letter of their name in their profile color, with their frame. */
+export function Avatar({ name, color, frame, size, className, force, children }: {
+  name: string; color?: string; frame?: string; size?: 'big'; className?: string; force?: boolean; children?: React.ReactNode;
+}) {
+  const t = tint(color, force);
+  const cls = ['avatar', size, frame && frame !== DEFAULT_FRAME ? `frame-${frame}` : '', t.className, className].filter(Boolean).join(' ');
+  return (
+    <span className={cls} style={t.style} aria-hidden="true">
+      {(Array.from(name.trim())[0] ?? '?').toUpperCase()}
+      {children}
+    </span>
+  );
+}
 
 /** Small check mark next to a logged-in player's name, linking to their profile. Admins get a creator badge too. */
 export function Verified({ username, admin }: { username?: string; admin?: boolean }) {
@@ -33,17 +60,19 @@ function Crown() {
 export function AccountBar() {
   const { me, loaded } = useAccount();
   const [open, setOpen] = useState<null | 'login' | 'signup'>(null);
+  const [admin, setAdmin] = useState(false);
   if (!loaded) return <div className="account-bar" />;
   return (
     <div className="account-bar">
       {me ? (
         <>
           <a className="account-me" href={`/u/${me.username}`}>
-            <span className="avatar" aria-hidden="true">{me.displayName.slice(0, 1).toUpperCase()}</span>
+            <Avatar name={me.displayName} color={me.color} frame={me.frame} />
             <span>{me.displayName}</span>
             {me.admin && <CreatorBadge />}
             <span className="muted small">@{me.username}</span>
           </a>
+          {me.admin && <button className="btn ghost small" onClick={() => setAdmin(true)} title="Site admin: announce to everyone, rooms, badges" aria-label="Site admin"><Icon name="shield" /></button>}
           <button className="btn ghost small" onClick={() => void logout()}>Log out</button>
         </>
       ) : (
@@ -54,6 +83,7 @@ export function AccountBar() {
         </>
       )}
       {open && <AccountDialog initial={open} onClose={() => setOpen(null)} />}
+      {admin && <SiteAdminPanel onClose={() => setAdmin(false)} />}
     </div>
   );
 }
@@ -136,7 +166,7 @@ export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup
           <button type="button" role="tab" aria-selected={tab === 'login'} className={tab === 'login' ? 'on' : ''} onClick={() => setTab('login')}>Log in</button>
           <button type="button" role="tab" aria-selected={tab === 'signup'} className={tab === 'signup' ? 'on' : ''} onClick={() => setTab('signup')}>Sign up</button>
         </div>
-        {tab === 'signup' && <p className="muted small">An account keeps your stats from every game on a public profile, puts a check mark by your name, and remembers your name and room settings on any device.</p>}
+        {tab === 'signup' && <p className="muted small">An account keeps your stats from every game on a public profile, puts a check mark by your name, lets you add friends and join their games, and remembers your name and room settings on any device.</p>}
         <label className="field">
           <span>{tab === 'signup' ? 'Username' : 'Username or email'}</span>
           <input ref={first} value={username} maxLength={tab === 'signup' ? 20 : 254} autoComplete="username" autoCapitalize="off" spellCheck={false} onChange={(e) => setUsername(e.target.value)} placeholder={tab === 'signup' ? 'letters, numbers, _' : ''} />
@@ -164,6 +194,7 @@ export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup
           <button className="btn primary" disabled={busy || !username.trim() || !password}>{tab === 'signup' ? 'Create account' : 'Log in'}</button>
         </div>
         {tab === 'signup' && !email.trim() && <p className="muted small">Without an email, a forgotten password can’t be reset. You can add one later on your profile.</p>}
+        {tab === 'signup' && !!email.trim() && <p className="muted small">We’ll email you a link to confirm it. That’s optional: resets work either way.</p>}
       </form>
     </div>
   );
@@ -214,6 +245,33 @@ export function ResetPassword() {
           </>
         )}
       </form>
+    </div>
+  );
+}
+
+/** The page an emailed confirmation link opens (/confirm#token). */
+export function ConfirmEmail() {
+  useTheme();
+  const [token] = useState(() => location.hash.slice(1));
+  const [result, setResult] = useState<{ ok: true; username: string } | { ok: false; error: string } | null>(null);
+  const once = useRef(false);
+
+  useEffect(() => {
+    document.title = 'Confirm email · Trivio';
+    if (once.current) return;
+    once.current = true;
+    if (!token) { setResult({ ok: false, error: 'This link is missing its code. Open the link from the email again.' }); return; }
+    history.replaceState(null, '', '/confirm');
+    confirmEmail(token).then((username) => setResult({ ok: true, username }), (e) => setResult({ ok: false, error: e.message }));
+  }, [token]);
+
+  return (
+    <div className="modal-back reset-page">
+      <div className="modal account-dialog" role="dialog" aria-label="Confirm your email">
+        <h2>{!result ? 'Confirming…' : result.ok ? 'Email confirmed' : 'Couldn’t confirm'}</h2>
+        {result && <p>{result.ok ? `Password-reset links for @${result.username} will go to this address.` : result.error}</p>}
+        {result && <div className="row gap end">{result.ok && <a className="btn ghost" href={`/u/${result.username}`}>Your profile</a>}<a className="btn primary" href="/">Go to Trivio</a></div>}
+      </div>
     </div>
   );
 }

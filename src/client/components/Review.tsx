@@ -2,19 +2,22 @@ import { BuzzMap } from './Stage';
 import { useState } from 'react';
 import type { PublicState } from '../../shared/types';
 import { resultLabel } from './util';
+import { ReportQuestion } from './Report';
+import { CategoryChip } from './CategoryChip';
+import { Icon } from './Icon';
 
 export function Review({ s, onClose }: { s: PublicState; onClose: () => void }) {
   const [open, setOpen] = useState<number | null>(s.review[0]?.num ?? null);
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Question review">
-        <div className="row between"><h2>Review questions</h2><button className="btn ghost icon" onClick={onClose} aria-label="Close">✕</button></div>
+        <div className="row between"><h2>Review questions</h2><button className="btn ghost icon close-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button></div>
         {s.review.length === 0 && <p className="muted">Finished tossups show up here with full text, answer lines and where everyone buzzed.</p>}
         {s.review.map((q) => (
           <div key={q.num} className={`review-item ${open === q.num ? 'open' : ''}`}>
             <button className="review-head" onClick={() => setOpen(open === q.num ? null : q.num)}>
-              <span className="tag">TU {q.num}</span>
-              <span className="grow">{q.category}{q.subcategory !== q.category ? ` · ${q.subcategory}` : ''}</span>
+              <span className="tag">TU {q.num}</span>{q.bounty && <span className="bounty-chip">×2</span>}
+              <span className="grow"><CategoryChip category={q.category} sub={q.subcategory} /></span>
               <span dangerouslySetInnerHTML={{ __html: q.answerHtml.split('[')[0] }} />
             </button>
             {open === q.num && (
@@ -36,7 +39,10 @@ export function Review({ s, onClose }: { s: PublicState; onClose: () => void }) 
                     {q.buzzes.map((b, i) => <li key={i}>{b.playerName} at word {b.wordIndex} of {q.words.length}: “{b.given || '—'}” → {resultLabel[b.result]}</li>)}
                   </ul>
                 )}
-                {q.setName && <p className="muted small">{q.setName}</p>}
+                <div className="review-foot">
+                  {q.setName && <span className="muted small">{q.setName}</span>}
+                  <ReportQuestion s={s} num={q.num} />
+                </div>
               </div>
             )}
           </div>

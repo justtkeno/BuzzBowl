@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { PublicState } from '../../shared/types';
 import { ScoreGraph } from './ScoreGraph';
+import { shareRecap } from '../recap';
 import { act, fmtPct, roles } from './util';
 
 export function Summary({ s }: { s: PublicState }) {
@@ -8,11 +9,15 @@ export function Summary({ s }: { s: PublicState }) {
   const players = s.players.filter((p) => p.id !== s.readerId && (p.stats.heard || p.stats.buzzes)).sort((a, b) => b.stats.points - a.stats.points);
   const [focus, setFocus] = useState(players.find((p) => p.id === r.me)?.id ?? players[0]?.id);
   const fp = players.find((p) => p.id === focus);
+  // Ending during the answer screen can leave tossupsRead one behind; finished questions are in the review.
+  const heard = Math.max(s.tossupsRead, s.review.length);
 
   return (
     <div className="card summary">
       <h2>Game summary</h2>
-      <p className="muted">{s.tossupsRead} tossup{s.tossupsRead === 1 ? "" : "s"} heard.</p>
+      <p className="muted">{heard} tossup{heard === 1 ? '' : 's'} heard.</p>
+
+      <Podium s={s} />
 
       {s.highlights.length > 0 && (
         <div className="highlights">
@@ -78,7 +83,36 @@ export function Summary({ s }: { s: PublicState }) {
         </>
       )}
 
-      {r.isController && <button className="btn primary big" onClick={() => act('game:start')}>New game</button>}
+      <div className="row gap summary-actions">
+        {r.isController && !s.survival && <button className="btn primary big" onClick={() => act('game:start')}>New game</button>}
+        {!s.survival && !s.daily && <button className="btn big" onClick={() => void shareRecap(s)}>Share recap</button>}
+      </div>
+    </div>
+  );
+}
+
+/** 1st, 2nd and 3rd (teams, or players in free-for-all) on a small podium. Ties share a step. */
+function Podium({ s }: { s: PublicState }) {
+  const sides = s.settings.mode === 'teams'
+    ? s.teams.map((t) => ({ id: t.id, name: t.name, points: t.points, you: t.playerIds.includes(s.you ?? '') }))
+    : s.players.filter((p) => p.id !== s.readerId && (p.stats.heard || p.stats.buzzes)).map((p) => ({ id: p.id, name: p.name, points: p.stats.points, you: p.id === s.you }));
+  if (sides.length < 2) return null;
+  const sorted = [...sides].sort((a, b) => b.points - a.points);
+  // Competition ranking: 100, 100, 80 -> 1, 1, 3.
+  const ranked = sorted.map((x, i) => ({ ...x, rank: sorted.findIndex((y) => y.points === x.points) + 1 })).filter((x) => x.rank <= 3).slice(0, 3);
+  // Classic order: 2nd on the left, 1st in the middle, 3rd on the right.
+  const order = ranked.length === 2 ? [ranked[1], ranked[0]] : [ranked[1], ranked[0], ranked[2]];
+  const medal = ['', '🥇', '🥈', '🥉'];
+  return (
+    <div className={`podium n${ranked.length}`} aria-label="Podium">
+      {order.map((x, i) => (
+        <div key={x.id} className={`podium-step r${x.rank} ${x.you ? 'you' : ''}`} style={{ animationDelay: `${(3 - x.rank) * 120}ms` }}>
+          <span className="podium-medal" aria-hidden="true">{medal[x.rank]}</span>
+          <span className="podium-name" title={x.name}>{x.name}</span>
+          <span className="podium-points">{x.points}</span>
+          <div className="podium-block"><span className="sr-only">{x.rank === 1 ? '1st' : x.rank === 2 ? '2nd' : '3rd'}</span>{x.rank}</div>
+        </div>
+      ))}
     </div>
   );
 }

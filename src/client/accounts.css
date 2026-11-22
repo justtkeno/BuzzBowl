@@ -18,18 +18,79 @@ a.btn.primary { color: var(--accent-ink); }
 .account-me { display: flex; align-items: center; gap: .45rem; flex: 1; min-width: 0; color: var(--text); text-decoration: none; font-weight: 600; border-radius: 8px; padding: .2rem .35rem; }
 .account-me:hover { background: var(--surface-2); }
 .account-me .muted { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.avatar { display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: .85rem; }
-.avatar.big { width: 64px; height: 64px; font-size: 1.8rem; }
+.avatar {
+  position: relative; display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: .85rem;
+  /* frame sizes: ring width, gap between avatar and ring, corner mark */
+  --ring: 1.5px; --gap: 1.5px; --mark: 12px;
+}
+.avatar.big { width: 64px; height: 64px; font-size: 1.8rem; --ring: 2.5px; --gap: 3px; --mark: 22px; }
+
+/* ---------- badge rewards: profile colors and avatar frames ---------- */
+/* A profile color: --c-light / --c-dark come from PROFILE_COLORS, set inline by tint(). */
+.tinted { --accent: var(--c-light); --accent-soft: color-mix(in srgb, var(--c-light) 13%, var(--surface)); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .tinted { --accent: var(--c-dark); --accent-soft: color-mix(in srgb, var(--c-dark) 17%, var(--surface)); }
+}
+:root[data-theme='dark'] .tinted { --accent: var(--c-dark); --accent-soft: color-mix(in srgb, var(--c-dark) 17%, var(--surface)); }
+
+.avatar.frame-ring { box-shadow: 0 0 0 var(--gap) var(--surface), 0 0 0 calc(var(--gap) + var(--ring)) var(--accent); }
+.avatar.frame-double {
+  box-shadow: 0 0 0 var(--gap) var(--surface), 0 0 0 calc(var(--gap) + var(--ring)) var(--accent),
+    0 0 0 calc(2 * var(--gap) + var(--ring)) var(--surface), 0 0 0 calc(2 * var(--gap) + 2 * var(--ring)) color-mix(in srgb, var(--accent) 50%, var(--surface));
+}
+.avatar.frame-dashed::before, .avatar.frame-halo::before {
+  content: ''; position: absolute; inset: calc(-1 * (var(--gap) + var(--ring))); border-radius: 50%; pointer-events: none;
+}
+.avatar.frame-dashed::before { border: var(--ring) dashed var(--accent); }
+/* The top frame: a ring with two soft glints that turn very slowly. */
+.avatar.frame-halo::before {
+  inset: calc(-1 * (var(--gap) + var(--ring) + .5px)); padding: calc(var(--ring) + .5px);
+  background: conic-gradient(var(--accent), color-mix(in srgb, var(--accent) 35%, #fff) 25%, var(--accent) 50%, color-mix(in srgb, var(--accent) 35%, #fff) 75%, var(--accent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: halo-turn 14s linear infinite;
+}
+@keyframes halo-turn { to { transform: rotate(1turn); } }
+@media (prefers-reduced-motion: reduce) { .avatar.frame-halo::before { animation: none; } }
+/* Corner marks: a small glyph on a surface-colored disc, top right (friends' status dots sit bottom right). */
+.avatar.frame-flame, .avatar.frame-star { box-shadow: 0 0 0 var(--gap) var(--surface), 0 0 0 calc(var(--gap) + 1px) color-mix(in srgb, var(--accent) 45%, var(--surface)); }
+.avatar.frame-flame::before, .avatar.frame-star::before, .avatar.frame-flame::after, .avatar.frame-star::after {
+  content: ''; position: absolute; top: calc(var(--mark) * -.32); right: calc(var(--mark) * -.32); width: var(--mark); height: var(--mark); pointer-events: none;
+}
+.avatar.frame-flame::before, .avatar.frame-star::before { border-radius: 50%; background: var(--surface); }
+.avatar.frame-flame::after, .avatar.frame-star::after { background: var(--accent); -webkit-mask: var(--glyph) center / 76% no-repeat; mask: var(--glyph) center / 76% no-repeat; }
+.avatar.frame-star { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 .8l2.2 4.6 5 .7-3.6 3.5.9 5L8 12.2l-4.5 2.4.9-5L.8 6.1l5-.7z'/%3E%3C/svg%3E"); }
+.avatar.frame-flame { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8.8.4c.6 2.6-.6 4-1.9 5.4C5.6 7.2 4.2 8.6 4.2 10.8c0 2.7 1.7 4.8 3.9 4.8s4.1-2 4.1-4.8c0-1.8-.8-3.2-1.8-4.2.1 1.3-.4 2.2-1.3 2.7C9.9 6.4 9.8 3 8.8.4zM8.1 14.2c-1 0-1.8-.8-1.8-1.9 0-1.2.8-1.9 1.7-2.9.2 1 .8 1.4 1.4 1.8.4.3.6.7.6 1.2 0 1-.9 1.8-1.9 1.8z'/%3E%3C/svg%3E"); }
+
+/* Pickers in the Edit form */
+.reward-picker { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 2px; }
+.reward-picker button { position: relative; display: grid; place-items: center; cursor: pointer; font: inherit; padding: 0; }
+.swatch { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); }
+.swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.frame-opt { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.frame-opt .avatar { width: 24px; height: 24px; font-size: .72rem; --mark: 11px; }
+.frame-opt.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.reward-picker .locked { opacity: .4; }
+.reward-picker .locked .avatar { filter: grayscale(1); }
+.swatch.locked { filter: saturate(.35); }
+.reward-picker .lock { position: absolute; }
+.frame-opt .lock { right: 2px; bottom: 2px; color: var(--muted); }
+.reward-hint { color: var(--muted); }
+
+/* The profile color, quietly, on the head card */
+.profile-head { background: linear-gradient(color-mix(in srgb, var(--accent) 6%, var(--surface)), var(--surface) 110px); border-color: color-mix(in srgb, var(--accent) 22%, var(--border)); }
 
 .account-dialog { width: min(420px, 100%); display: flex; flex-direction: column; gap: .85rem; }
 .account-dialog .tabs { margin: -.25rem -.4rem .1rem; }
 .account-dialog p { margin: 0; }
 .account-dialog h2 { margin: 0; }
 .account-dialog .forgot { text-align: left; }
+.email-ok, .field span.email-ok { color: var(--ok); font-weight: 600; }
 
 /* ---------- profile page ---------- */
 .profile-page { min-height: 100vh; }
-.profile-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .55rem 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.profile-top { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: max(.55rem, var(--safe-top)) 16px .55rem; border-bottom: 1px solid var(--border); background: var(--surface); }
 .profile-top .brand { color: var(--text); text-decoration: none; }
 .profile-top .account-bar { flex: 0 1 auto; min-width: 0; }
 .profile-top .account-bar .grow { flex: 0 1 auto; }
@@ -92,3 +153,116 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .admin-card .confirm { display: inline-flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .btn.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
 .btn.danger:hover:not(:disabled) { background: var(--bad); filter: brightness(1.08); }
+
+/* ---------- friends: edge tab + slide-out panel ---------- */
+.friends-tab {
+  position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 9;
+  display: flex; flex-direction: column; align-items: center; gap: .2rem;
+  padding: .6rem .4rem .55rem .5rem; border: 1px solid var(--border); border-right: none; border-radius: 12px 0 0 12px;
+  background: var(--surface); color: var(--muted); box-shadow: var(--shadow); cursor: pointer;
+}
+.friends-tab:hover { color: var(--text); }
+.friends-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.friends-tab-count { font-size: .72rem; font-weight: 700; color: var(--ok); font-variant-numeric: tabular-nums; line-height: 1; }
+.friends-tab-alert { position: absolute; top: 5px; left: 5px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.friends-back { position: fixed; inset: 0; z-index: 21; background: rgb(0 0 0 / 28%); animation: fade-in .2s ease-out; }
+.friends-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 21; width: min(340px, 88vw);
+  display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border);
+  box-shadow: -12px 0 40px rgb(0 0 0 / 18%); animation: friends-in .22s ease-out; outline: none;
+  padding-top: var(--safe-top); padding-bottom: env(safe-area-inset-bottom);
+}
+@keyframes friends-in { from { transform: translateX(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .friends-drawer { animation: none; } }
+.friends-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: .7rem .75rem .5rem 1rem; }
+.friends-drawer-head h2 { margin: 0; font-size: 1.1rem; }
+.friends-body, .friends-guest { flex: 1; overflow-y: auto; padding: 0 1rem 1rem; display: flex; flex-direction: column; gap: .7rem; }
+.friends-body .error, .friends-body p { margin: 0; }
+.friends-section h3 { margin: .2rem 0 .1rem; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.friend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.friend { display: flex; align-items: center; gap: .6rem; padding: .45rem 0; min-width: 0; }
+.friend.offline .friend-avatar, .friend.offline .friend-name { opacity: .55; }
+.friend-text { min-width: 0; }
+.friend-text .small { overflow-wrap: anywhere; }
+.friend-name { color: var(--text); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-name:hover { text-decoration: underline; }
+.friend-actions { flex: none; }
+.friend-avatar { position: relative; width: 30px; height: 30px; }
+.friend-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); background: var(--ok); }
+.friend-dot.room { background: var(--accent); }
+.friend-dot.daily, .friend-dot.survival { background: var(--power); }
+.daily-recent { margin-top: .8rem; }
+.daily-recent .marks { margin-top: .2rem; }
+.invite-banner {
+  position: fixed; z-index: 35; top: calc(var(--safe-top) + 10px); left: 50%; transform: translateX(-50%);
+  width: min(420px, calc(100vw - 24px)); display: flex; align-items: center; gap: .55rem;
+  padding: .5rem .5rem .5rem .65rem; background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 18%); animation: invite-in .25s ease-out; font-size: .92rem;
+}
+.invite-banner .grow { min-width: 0; }
+@keyframes invite-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+@media (prefers-reduced-motion: reduce) { .invite-banner { animation: none; } }
+
+/* ---------- pinned stats, badges, visibility ---------- */
+.visibility-note { margin-top: .35rem; color: var(--muted); }
+.pinned-row { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pinned-row.n1 { grid-template-columns: minmax(0, 1fr); }
+.pinned-row.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tile.pinned { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.tile.pinned .tile-value { color: var(--accent); }
+@media (max-width: 520px) { .pinned-row .tile { padding: .65rem .7rem; } .pinned-row .tile-value { font-size: 1.35rem; } .pinned-row .tile-label { font-size: .7rem; } }
+.pin-empty { align-self: flex-start; background: none; border: 1px dashed var(--border); border-radius: var(--radius); padding: .55rem .8rem; color: var(--muted); cursor: pointer; font: inherit; font-size: .9rem; }
+.pin-empty:hover { color: var(--text); border-color: var(--muted); }
+.pin-picker { display: flex; flex-wrap: wrap; gap: .35rem; }
+.pin-chip { display: inline-flex; align-items: center; gap: .3rem; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px; padding: .3rem .7rem; font: inherit; font-size: .85rem; cursor: pointer; }
+.pin-chip.on { border-color: var(--accent); background: var(--accent-soft); }
+.pin-chip:disabled { opacity: .45; cursor: default; }
+.pin-num { display: inline-grid; place-items: center; width: 1.05rem; height: 1.05rem; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: .68rem; font-weight: 700; }
+.badges-head h2 { margin: 0; }
+.badges { list-style: none; margin: .75rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+@media (max-width: 520px) {
+  .badges { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .badge-item { flex-direction: column; gap: .3rem; padding: .5rem .55rem; }
+  .badge-item .small { font-size: .74rem; line-height: 1.3; }
+  .badge-name { font-size: .86rem; }
+}
+.badge-item { display: flex; gap: .6rem; align-items: flex-start; padding: .55rem .65rem; border: 1px solid var(--border); border-radius: 10px; min-width: 0; }
+.badge-item.earned { background: var(--surface-2); }
+.badge-item.locked { opacity: .6; }
+.badge-item.locked .badge-icon { filter: grayscale(1); }
+.badge-icon { font-size: 1.35rem; line-height: 1; flex: none; width: 1.6rem; text-align: center; }
+.badge-text { min-width: 0; flex: 1; }
+.badge-name { font-weight: 600; font-size: .92rem; }
+.badge-progress { display: flex; align-items: center; gap: .4rem; margin-top: .3rem; }
+.badge-progress .track { flex: 1; height: 5px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.badge-progress .fill { height: 100%; border-radius: 999px; background: var(--accent); min-width: 2px; }
+.badge-progress .small { font-variant-numeric: tabular-nums; }
+.locked-card h2 { margin-top: 0; }
+
+/* ---------- site admin ---------- */
+.site-admin { width: min(640px, 100%); }
+.site-admin h3 { margin: .9rem 0 .4rem; }
+.site-admin p { margin: .3rem 0; }
+.site-rooms { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.site-rooms li { display: flex; align-items: center; gap: .6rem; padding: .55rem 0; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.site-rooms li.idle { opacity: .6; }
+.site-room-text { min-width: 0; flex: 1 1 220px; }
+.site-room-people { display: flex; flex-wrap: wrap; gap: .1rem .55rem; margin-top: .15rem; }
+.site-room-people a { color: inherit; }
+.site-room-actions { flex: none; }
+.site-reports { list-style: none; margin: 0; padding: 0; }
+.site-reports > li { display: flex; flex-direction: column; gap: .25rem; padding: .55rem 0; border-top: 1px solid var(--border); min-width: 0; overflow-wrap: anywhere; }
+.site-report-q.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
+.site-report-list { margin: 0; padding-left: 1rem; }
+.site-report-list a { color: inherit; }
+.report-count { color: var(--warn); }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
+
+/* Narrow screens: the account bar drops the @username and creator badge before it would overflow. */
+.account-me { overflow: hidden; }
+@media (max-width: 420px) {
+  .profile-top .account-me .muted, .profile-top .account-me .creator-badge { display: none; }
+  .account-me .creator-badge + .muted { display: none; }
+}
+
+@media (max-width: 420px) { .profile-top .account-bar > .muted.grow { display: none; } }

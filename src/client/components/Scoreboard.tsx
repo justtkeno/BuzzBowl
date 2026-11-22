@@ -3,6 +3,7 @@ import type { PublicPlayer, PublicState } from '../../shared/types';
 import { BOT_SKILLS } from '../../shared/types';
 import { act, colorFor, fmtPct, roles } from './util';
 import { Verified } from './Account';
+import { Icon } from './Icon';
 
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -81,7 +82,7 @@ export function Scoreboard({ s }: { s: PublicState }) {
       </td>
       <td className="num" title="powers / tens / negs">{p.stats.powers}/{p.stats.tens}/{p.stats.negs}</td>
       <td className="num pts"><AnimatedScore value={p.stats.points} /></td>
-      {r.isController && !s.daily && (
+      {r.isController && !r.fixed && (
         <td className="adj">
           <button className="mini" title="−5" aria-label={`Take 5 points from ${p.name}`} onClick={() => act('score:adjust', p.id, -5)}>−</button>
           <button className="mini" title="+5" aria-label={`Give ${p.name} 5 points`} onClick={() => act('score:adjust', p.id, 5)}>+</button>
@@ -92,8 +93,8 @@ export function Scoreboard({ s }: { s: PublicState }) {
 
   return (
     <div className="scoreboard" ref={flipRef as React.RefObject<HTMLDivElement>}>
-      {reader && <div className="reader-line">🎙 Reader: <b>{reader.name}</b>{!reader.online && ' (offline)'}</div>}
-      {!reader && s.heldReader && <div className="reader-line muted">🎙 Reader <b>{s.heldReader.name}</b> is reconnecting. The app reads until they’re back.</div>}
+      {reader && <div className="reader-line"><Icon name="mic" /> Reader: <b>{reader.name}</b>{!reader.online && ' (offline)'}</div>}
+      {!reader && s.heldReader && <div className="reader-line muted"><Icon name="mic" /> Reader <b>{s.heldReader.name}</b> is reconnecting. The app reads until they’re back.</div>}
       {s.settings.mode === 'teams' ? (
         teams.map((t) => (
           <div key={t.id} data-flip={t.id} className={`team-block ${r.myTeam === t.id ? 'mine' : ''}`}>
@@ -109,7 +110,7 @@ export function Scoreboard({ s }: { s: PublicState }) {
         ))
       ) : (
         <table className="ffa">
-          <thead><tr><th>Player</th><th className="num">P/10/N</th><th className="num">Pts</th>{r.isController && !s.daily && <th />}</tr></thead>
+          <thead><tr><th>Player</th><th className="num">P/10/N</th><th className="num">Pts</th>{r.isController && !r.fixed && <th />}</tr></thead>
           <tbody>{ffa.map((p) => row(p))}</tbody>
         </table>
       )}

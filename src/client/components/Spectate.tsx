@@ -7,8 +7,10 @@ import { call, socket } from '../socket';
 import { InviteQR, inviteUrl } from './Invite';
 import { ScoreGraph } from './ScoreGraph';
 import { AnimatedScore } from './Scoreboard';
-import { BonusCard, TossupCard } from './Stage';
+import { BonusCard, QuestionSkeleton, TossupCard } from './Stage';
 import { colorFor } from './util';
+import { useReadAloud } from '../speech';
+import { Icon } from './Icon';
 
 /**
  * Big-screen view for a projector or TV at club practice: large question text and scoreboard,
@@ -19,6 +21,7 @@ export function Spectate({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(socket.connected);
   useTheme();
+  useReadAloud(s);
 
   useEffect(() => {
     const watch = () => call<{ state: PublicState }>('room:watch', { code }).then((r) => { setS(r.state); setError(null); }, (e) => setError(e.message));
@@ -74,8 +77,8 @@ export function Spectate({ code }: { code: string }) {
               </div>
             </div>
           )}
-          {s.phase === 'loading' && <div className="card center muted">Loading question…</div>}
-          {live && s.phase !== 'loading' && (s.phase === 'bonus' && s.bonus ? <BonusCard s={s} /> : s.tossup && <TossupCard s={s} />)}
+          {s.phase === 'loading' && <QuestionSkeleton />}
+          {live && s.phase !== 'loading' && (s.phase === 'bonus' && s.bonus ? <BonusCard key={`b${s.bonus!.num}`} s={s} /> : s.tossup && <TossupCard key={`t${s.tossup!.num}`} s={s} />)}
           {s.phase === 'gameOver' && (
             <div className="card">
               <h2>Final results</h2>
@@ -104,7 +107,7 @@ export function Spectate({ code }: { code: string }) {
           <p className="muted">{s.tossupsRead} tossup{s.tossupsRead === 1 ? '' : 's'} heard</p>
         </aside>
       </main>
-      {s.paused && <div className="paused-overlay"><div>❚❚ Game paused</div></div>}
+      {s.paused && <div className="paused-overlay"><div><Icon name="pause" /> Game paused</div></div>}
     </div>
   );
 }
