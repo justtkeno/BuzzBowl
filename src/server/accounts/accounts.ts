@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import express, { type Request, type Response } from 'express';
 import type { Socket } from 'socket.io';
 import {
-  BIO_MAX, EMAIL_MAX, EMAIL_RE, FRIENDS_MAX, PASSWORD_MIN, USERNAME_RE, summarize,
+  BIO_MAX, EMAIL_MAX, EMAIL_RE, FRIENDS_MAX, PASSWORD_MIN, USERNAME_COOLDOWN_DAYS, USERNAME_RE, summarize,
   type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type ProfileView, type PublicProfile,
 } from '../../shared/accounts';
 import {
@@ -102,7 +102,7 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt
 
 export function toMe(u: User): Me {
   return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u), ...(isAdmin(u) ? { adminLocked } : {}), settings: u.settings,
-    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u), email: u.email, emailVerified: !!u.email && !!u.emailVerified };
+    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u), email: u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null };
 }
 
 /** Tiny in-memory limiter for login/signup attempts, per IP. */
@@ -184,6 +184,8 @@ export class Accounts {
     this.sendLink(u, 'confirm', base).catch((e) => console.error('Could not send a confirmation email:', e?.message ?? e));
   }
 
+  /** Called after a username change, so other stores (leaderboards, live rooms) can follow. Never throws to the caller. */
+  onRename?: (accountId: string, from: string, to: string) => Promise<void>;
   /** Extra profile sections from elsewhere (the daily challenge, survival), added when a profile is shown. */
   profileExtras?: (user: { id: string }) => Promise<Partial<PublicProfile>>;
   /** Finds the daily challenge a solo game saved before games carried `daily` belongs to (its number), if any. */
@@ -434,6 +436,42 @@ export class Accounts {
       await this.store.updateUser(u.id, patch);
       if (patch.email) this.confirmLater({ ...u, ...patch }, req);
       res.json({ user: toMe({ ...u, ...patch }) });
+    }));
+
+    // ---------- account settings: username, password ----------
+
+    r.post('/me/username', wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) return res.status(401).json({ error: 'Log in first.' });
+      if (limited(req, res)) return;
+      const username = String(req.body?.username ?? '').trim();
+      if (!USERNAME_RE.test(username)) return res.status(400).json({ error: 'Usernames are 3–20 letters, numbers or underscores.' });
+      if (username === u.username) return res.status(400).json({ error: 'That’s already your username.' });
+      const next = (u.usernameChangedAt ?? 0) + USERNAME_COOLDOWN_DAYS * 86_400_000;
+      if (Date.now() < next) return res.status(429).json({ error: `You can change your username again on ${new Date(next).toUTCString().slice(0, 16)}.`, next });
+      // Without ADMIN_ACCOUNT_IDS, admin goes by username: don't let a rename take or drop it.
+      if (!adminLocked && (ADMINS.has(username.toLowerCase()) || ADMINS.has(u.username.toLowerCase())) && username.toLowerCase() !== u.key) {
+        return res.status(403).json({ error: 'That username can’t be used.' });
+      }
+      const at = Date.now();
+      if (!(await this.store.renameUser(u.id, username, at))) return res.status(409).json({ error: 'That username is taken.' });
+      console.log(`@${u.username} is now @${username}`);
+      await this.onRename?.(u.id, u.username, username).catch((e) => console.error('Could not carry a username change over:', e?.message ?? e));
+      res.json({ user: toMe({ ...u, username, key: username.toLowerCase(), usernameChangedAt: at }) });
+    }));
+
+    r.post('/password/change', wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) return res.status(401).json({ error: 'Log in first.' });
+      if (limited(req, res)) return;
+      const password = String(req.body?.password ?? '');
+      if (!(await verifyPassword(String(req.body?.current ?? ''), u.passwordHash))) return res.status(403).json({ error: 'Your current password isn’t right.' });
+      if (password.length < PASSWORD_MIN) return res.status(400).json({ error: `Passwords need at least ${PASSWORD_MIN} characters.` });
+      if (password.length > 200) return res.status(400).json({ error: 'That password is too long.' });
+      await this.store.updateUser(u.id, { passwordHash: await hashPassword(password) });
+      await this.store.deleteSessionsOf(u.id); // other devices log out; this one gets a fresh session
+      await this.startSession(req, res, u.id);
+      res.json({ user: toMe(u) });
     }));
 
     // ---------- password reset ----------

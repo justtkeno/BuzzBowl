@@ -260,6 +260,76 @@ describe('confirming an email (optional)', () => {
   });
 });
 
+describe('account settings: username and password', () => {
+  let server: Server;
+  let base: string;
+  let dir: string;
+  const renames: string[] = [];
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-acct-settings-'));
+    const accounts = new Accounts(new FileAccountStore(join(dir, 'accounts.json')));
+    accounts.onRename = async (id, from, to) => { renames.push(`${from}->${to}`); };
+    await accounts.init();
+    const app = express();
+    app.use('/api', accounts.router());
+    server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+  });
+  afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); vi.useRealTimers(); });
+
+  const send = (method: string, path: string, body: unknown, cookie?: string) =>
+    fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
+  const cookieOf = (res: Response) => res.headers.get('set-cookie')!.split(';')[0];
+  const me = async (cookie: string) => (await (await fetch(`${base}/me`, { headers: { cookie } })).json()).user;
+
+  it('changes the username, then waits a week before the next change', async () => {
+    const cookie = cookieOf(await send('POST', '/signup', { username: 'sam', password: 'hunter2hunter2' }));
+    await send('POST', '/signup', { username: 'taken_name', password: 'hunter2hunter2' });
+    expect((await me(cookie)).usernameChangedAt).toBeNull();
+    expect((await send('POST', '/me/username', { username: 'no' }, cookie)).status).toBe(400);
+    expect((await send('POST', '/me/username', { username: 'TAKEN_NAME' }, cookie)).status).toBe(409);
+    expect((await send('POST', '/me/username', { username: 'sam' }, cookie)).status).toBe(400); // same name
+    expect((await send('POST', '/me/username', { username: 'x' })).status).toBe(401);
+
+    const ok = await send('POST', '/me/username', { username: 'Sammy' }, cookie);
+    expect(ok.status).toBe(200);
+    expect((await ok.json()).user.username).toBe('Sammy');
+    expect(renames).toEqual(['sam->Sammy']);
+    expect((await fetch(`${base}/users/sammy`)).status).toBe(200);
+    expect((await fetch(`${base}/users/sam`)).status).toBe(404);
+    expect((await send('POST', '/login', { username: 'sammy', password: 'hunter2hunter2' })).status).toBe(200);
+    // The old name is free for someone else.
+    expect((await send('POST', '/signup', { username: 'sam', password: 'hunter2hunter2' })).status).toBe(200);
+
+    const again = await send('POST', '/me/username', { username: 'Sam_two' }, cookie);
+    expect(again.status).toBe(429);
+    expect((await again.json()).next).toBe((await me(cookie)).usernameChangedAt + 7 * 86_400_000);
+  });
+
+  it('allows the next change once the week is up', async () => {
+    const cookie = cookieOf(await send('POST', '/login', { username: 'sammy', password: 'hunter2hunter2' }));
+    const real = Date.now;
+    Date.now = () => real() + 7 * 86_400_000 + 1000;
+    try {
+      expect((await send('POST', '/me/username', { username: 'Sam_two' }, cookie)).status).toBe(200);
+    } finally { Date.now = real; }
+  });
+
+  it('changes the password with the current one, logging out other devices', async () => {
+    const other = cookieOf(await send('POST', '/login', { username: 'sam_two', password: 'hunter2hunter2' }));
+    const here = cookieOf(await send('POST', '/login', { username: 'sam_two', password: 'hunter2hunter2' }));
+    expect((await send('POST', '/password/change', { current: 'wrong-password', password: 'new-password-1' }, here)).status).toBe(403);
+    expect((await send('POST', '/password/change', { current: 'hunter2hunter2', password: 'short' }, here)).status).toBe(400);
+    const ok = await send('POST', '/password/change', { current: 'hunter2hunter2', password: 'new-password-1' }, here);
+    expect(ok.status).toBe(200);
+    expect((await me(cookieOf(ok))).username).toBe('Sam_two'); // still logged in here
+    expect(await me(other)).toBeNull();
+    expect((await send('POST', '/login', { username: 'sam_two', password: 'new-password-1' })).status).toBe(200);
+  });
+});
+
 describe('password reset without email set up', () => {
   it('says so instead of pretending to send', async () => {
     const accounts = new Accounts(new FileAccountStore(null));

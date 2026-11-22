@@ -33,6 +33,8 @@ export interface DailyStore {
   rankOf(row: DailyRow): Promise<number>;
   /** Every day this player played, newest first, with where they finished that day. */
   history(playerKey: string): Promise<DailyPlace[]>;
+  /** An account changed its username: follow it on this player's saved rows (the shown name too, where it was the username). */
+  rename(playerKey: string, username: string): Promise<void>;
 }
 
 export interface DailyPlace { row: DailyRow; rank: number; players: number }
@@ -83,6 +85,10 @@ export class FileDailyStore implements DailyStore {
         return { row, rank: 1 + day.filter((r) => r.playerKey !== key && better(r, row) < 0).length, players: day.length };
       })
       .sort((a, b) => b.row.day.localeCompare(a.row.day));
+  }
+  async rename(key: string, username: string) {
+    for (const r of this.d.results) if (r.playerKey === key) { if (r.name === r.username) r.name = username; r.username = username; }
+    this.save();
   }
 }
 
@@ -171,5 +177,8 @@ export class PgDailyStore implements DailyStore {
       [key],
     );
     return r.rows.map((x) => ({ row: fromDb(x), rank: x.place as number, players: x.players as number }));
+  }
+  async rename(key: string, username: string) {
+    await this.pool.query('UPDATE daily_results SET name = CASE WHEN name = username THEN $2 ELSE name END, username = $2 WHERE player_key = $1', [key, username]);
   }
 }

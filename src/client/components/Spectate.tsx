@@ -10,6 +10,7 @@ import { AnimatedScore } from './Scoreboard';
 import { BonusCard, QuestionSkeleton, TossupCard } from './Stage';
 import { colorFor } from './util';
 import { Icon } from './Icon';
+import { SettingsMenu } from './AppSettings';
 
 /**
  * Big-screen view for a projector or TV at club practice: large question text and scoreboard,
@@ -19,6 +20,7 @@ export function Spectate({ code }: { code: string }) {
   const [s, setS] = useState<PublicState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(socket.connected);
+  const [settings, setSettings] = useState(false);
   useTheme();
 
   useEffect(() => {
@@ -61,7 +63,9 @@ export function Spectate({ code }: { code: string }) {
         <div className="brand"><Logo /> Trivio</div>
         <div className="watch-join">Join at <b>{inviteUrl(s.code).replace(/^https?:\/\//, '').replace(/\/r\/.*/, '')}</b> · code <b className="watch-code">{s.code}</b></div>
         {!connected && <span className="badge warn">Reconnecting…</span>}
+        <button className="btn ghost small icon watch-gear" onClick={() => setSettings(true)} title="Settings: text size, theme, sound" aria-label="Settings"><Icon name="gear" /></button>
       </header>
+      {settings && <SettingsMenu onClose={() => setSettings(false)} />}
 
       <main className="watch-main">
         <section className="watch-stage">

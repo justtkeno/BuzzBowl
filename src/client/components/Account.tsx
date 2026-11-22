@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { EMAIL_RE, PASSWORD_MIN, USERNAME_RE } from '../../shared/accounts';
 import { DEFAULT_COLOR, DEFAULT_FRAME, colorById } from '../../shared/profile';
-import { confirmEmail, forgotPassword, login, logout, resetPassword, signup, useAccount } from '../account';
+import { confirmEmail, forgotPassword, login, resetPassword, signup, useAccount } from '../account';
 import { useTheme } from '../App';
 import '../accounts.css';
+import { SettingsMenu } from './AppSettings';
 import { SiteAdminPanel } from './SiteAdmin';
 import { Icon } from './Icon';
 
@@ -61,6 +62,7 @@ export function AccountBar() {
   const { me, loaded } = useAccount();
   const [open, setOpen] = useState<null | 'login' | 'signup'>(null);
   const [admin, setAdmin] = useState(false);
+  const [settings, setSettings] = useState(false);
   if (!loaded) return <div className="account-bar" />;
   return (
     <div className="account-bar">
@@ -73,7 +75,6 @@ export function AccountBar() {
             <span className="muted small">@{me.username}</span>
           </a>
           {me.admin && <button className="btn ghost small" onClick={() => setAdmin(true)} title="Site admin: announce to everyone, rooms, badges" aria-label="Site admin"><Icon name="shield" /></button>}
-          <button className="btn ghost small" onClick={() => void logout()}>Log out</button>
         </>
       ) : (
         <>
@@ -82,6 +83,8 @@ export function AccountBar() {
           <button className="btn small" onClick={() => setOpen('signup')}>Sign up</button>
         </>
       )}
+      <button className="btn ghost small icon gear-btn" onClick={() => setSettings(true)} title="Settings: account, sound, display" aria-label="Settings"><Icon name="gear" /></button>
+      {settings && <SettingsMenu onClose={() => setSettings(false)} />}
       {open && <AccountDialog initial={open} onClose={() => setOpen(null)} />}
       {admin && <SiteAdminPanel onClose={() => setAdmin(false)} />}
     </div>

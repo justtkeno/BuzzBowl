@@ -1,11 +1,12 @@
 import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
-import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, EMAIL_RE, isLocked, type DailyProfile, type GameRecord, type Look, type ProfileView, type PublicProfile, type SurvivalProfile } from '../../shared/accounts';
+import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, isLocked, type DailyProfile, type GameRecord, type Look, type ProfileView, type PublicProfile, type SurvivalProfile } from '../../shared/accounts';
 import {
   AVATAR_FRAMES, BADGE_BY_ID, PIN_MAX, PIN_STATS, PROFILE_COLORS, VISIBILITIES, VISIBILITY_LABEL, colorById, earnedIds, frameById, isUnlocked,
   type Reward, type Visibility,
 } from '../../shared/profile';
-import { adminDeleteAccount, adminResetProfile, adminUnlockBadges, fetchProfile, sendConfirmEmail, updateMe, useAccount } from '../account';
+import { adminDeleteAccount, adminResetProfile, adminUnlockBadges, fetchProfile, updateMe, useAccount } from '../account';
+import { SettingsMenu } from './AppSettings';
 import { Announcement } from './Announcement';
 import { CategoryDot } from './CategoryChip';
 import { useTheme } from '../App';
@@ -139,7 +140,7 @@ function unlockText(r: Reward) {
 }
 
 function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: PublicProfile | null) => void; onPreview: (look: Look) => void }) {
-  const { me } = useAccount();
+  const [account, setAccount] = useState(false);
   const [displayName, setDisplayName] = useState(p.displayName);
   const [color, setColor] = useState(p.color);
   const [frame, setFrame] = useState(p.frame);
@@ -148,9 +149,6 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
   const earned = earnedIds(p.badges);
   useEffect(() => onPreview({ color, frame }), [color, frame]);
   const [bio, setBio] = useState(p.bio);
-  const [email, setEmail] = useState(me?.email ?? '');
-  const [password, setPassword] = useState('');
-  const emailChanged = email.trim().toLowerCase() !== (me?.email ?? '');
   const [visibility, setVisibility] = useState<Visibility>(p.visibility ?? 'public');
   const [pinned, setPinned] = useState<string[]>(p.pinned);
   const [busy, setBusy] = useState(false);
@@ -160,8 +158,7 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
-      if (emailChanged && email.trim() && !EMAIL_RE.test(email.trim())) throw new Error('That email address doesn’t look right.');
-      const u = await updateMe({ displayName, bio, visibility, pinned, color, frame, ...(emailChanged ? { email: email.trim(), password } : {}) });
+      const u = await updateMe({ displayName, bio, visibility, pinned, color, frame });
       onDone({ ...p, displayName: u.displayName, bio: u.bio, visibility: u.visibility, pinned: u.pinned, color: u.color, frame: u.frame });
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -229,39 +226,11 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
         </div>
         {hint?.kind === 'frame' ? <span className="reward-hint small"><Icon name="lock" /> {hint.text}</span> : <span className="muted small">Earn badges to unlock more colors and frames.</span>}
       </div>
-      <label className="field"><span>Email <span className="muted">(only you see this; used to reset your password)</span></span>
-        <input type="email" value={email} maxLength={254} autoComplete="email" autoCapitalize="off" spellCheck={false} placeholder="you@example.com" onChange={(e) => setEmail(e.target.value)} />
-        <EmailStatus email={email.trim()} changed={emailChanged} />
-      </label>
-      {emailChanged && (
-        <label className="field"><span>Current password <span className="muted">(needed to change your email)</span></span>
-          <input type="password" value={password} autoComplete="current-password" onChange={(e) => setPassword(e.target.value)} />
-        </label>
-      )}
+      <p className="muted small">Username, email and password are in <button type="button" className="link" onClick={() => setAccount(true)}>Account settings</button>.</p>
+      {account && <SettingsMenu start="account" onClose={() => setAccount(false)} />}
       {err && <p className="error">{err}</p>}
-      <div className="row gap"><button className="btn primary small" disabled={busy || !displayName.trim() || (emailChanged && !password)}>Save</button><button type="button" className="btn ghost small" onClick={() => onDone(null)}>Cancel</button></div>
+      <div className="row gap"><button className="btn primary small" disabled={busy || !displayName.trim()}>Save</button><button type="button" className="btn ghost small" onClick={() => onDone(null)}>Cancel</button></div>
     </form>
-  );
-}
-
-/** Under the email field: whether it's confirmed, and a way to send the (optional) confirmation link. */
-function EmailStatus({ email, changed }: { email: string; changed: boolean }) {
-  const { me } = useAccount();
-  const [state, setState] = useState<'idle' | 'busy' | 'sent'>('idle');
-  const [err, setErr] = useState<string | null>(null);
-  if (!email) return <span className="muted small">Without an email, a forgotten password can’t be reset.</span>;
-  if (changed) return <span className="muted small">After you save, we’ll email a link to confirm it. Confirming is optional.</span>;
-  if (me?.emailVerified) return <span className="email-ok small">✓ Confirmed</span>;
-  const send = async () => {
-    setState('busy'); setErr(null);
-    try { await sendConfirmEmail(); setState('sent'); } catch (e: any) { setErr(e.message); setState('idle'); }
-  };
-  return (
-    <span className="muted small">
-      Not confirmed (optional).{' '}
-      {state === 'sent' ? 'Link sent. Check your inbox and spam folder.' : <button type="button" className="link" disabled={state === 'busy'} onClick={send}>Send a confirmation link</button>}
-      {err && <span className="error"> {err}</span>}
-    </span>
   );
 }
 
