@@ -10,6 +10,7 @@ import { MemoryRoomStore, newRoomCode, type RoomStore } from './rooms/store';
 import { SPECTATOR, type Settings } from '../shared/types';
 import { Accounts, type Presence } from './accounts/accounts';
 import { FileAccountStore, PgAccountStore } from './accounts/store';
+import { mailerFromEnv } from './accounts/mailer';
 import { Daily, dailyNumber, dayKey, playerKeyFor } from './daily/daily';
 import { FileDailyStore, PgDailyStore } from './daily/store';
 import { QBReaderProvider } from './questions/providers';
@@ -40,7 +41,7 @@ const store: RoomStore = new MemoryRoomStore();
 
 // Accounts live in Postgres when DATABASE_URL is set (production), otherwise in a local JSON file.
 const fileAccounts = process.env.DATABASE_URL ? null : new FileAccountStore(join(DATA_DIR, `accounts-${PORT}.json`));
-const accounts = new Accounts(fileAccounts ?? new PgAccountStore(process.env.DATABASE_URL!));
+const accounts = new Accounts(fileAccounts ?? new PgAccountStore(process.env.DATABASE_URL!), { mailer: mailerFromEnv() });
 // The daily challenge's questions and leaderboard sit next to the accounts.
 const daily = new Daily(
   process.env.DATABASE_URL ? new PgDailyStore(process.env.DATABASE_URL) : new FileDailyStore(join(DATA_DIR, `daily-${PORT}.json`)),

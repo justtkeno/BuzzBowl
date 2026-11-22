@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import express from 'express';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Accounts, hashPassword, verifyPassword } from '../src/server/accounts/accounts';
+import type { Mail } from '../src/server/accounts/mailer';
 import { FileAccountStore } from '../src/server/accounts/store';
 import { Room, TIMING, type RoomIO } from '../src/server/rooms/room';
 import { summarize, type GameRecord, type PublicProfile } from '../src/shared/accounts';
@@ -114,13 +115,174 @@ const provider = (): QuestionProvider => {
   return { nextTossup: async () => ({ ...TOSSUP, id: `t${++n}` }), nextBonus: async () => null };
 };
 
+describe('email and password reset', () => {
+  let server: Server;
+  let base: string;
+  let dir: string;
+  const mail: Mail[] = [];
+  let accounts: Accounts;
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-reset-'));
+    accounts = new Accounts(new FileAccountStore(join(dir, 'accounts.json')), { mailer: { send: async (m) => { mail.push(m); } }, publicUrl: 'https://trivio.test/' });
+    await accounts.init();
+    const app = express();
+    app.use('/api', accounts.router());
+    server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+  });
+  afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  const send = (method: string, path: string, body: unknown, cookie?: string) =>
+    fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
+  const cookieOf = (res: Response) => res.headers.get('set-cookie')!.split(';')[0];
+  const me = async (cookie: string) => (await (await fetch(`${base}/me`, { headers: { cookie } })).json()).user;
+  const tokenFrom = (m: Mail) => m.text.match(/https:\/\/trivio\.test\/reset#([\w-]+)/)![1];
+  const settle = () => new Promise((r) => setTimeout(r, 30));
+
+  it('signs up with an email, keeps it private, and logs in with it', async () => {
+    expect((await send('POST', '/signup', { username: 'bad_mail', password: 'hunter2hunter2', email: 'nope' })).status).toBe(400);
+    const res = await send('POST', '/signup', { username: 'mia', password: 'hunter2hunter2', email: ' Mia@Example.com ' });
+    expect(res.status).toBe(200);
+    expect((await me(cookieOf(res))).email).toBe('mia@example.com');
+    const dup = await send('POST', '/signup', { username: 'mia2', password: 'hunter2hunter2', email: 'MIA@example.com' });
+    expect(dup.status).toBe(409);
+    expect((await dup.json()).error).toMatch(/email/);
+    expect((await send('POST', '/login', { username: 'mia@EXAMPLE.com', password: 'hunter2hunter2' })).status).toBe(200);
+    const profile = await (await fetch(`${base}/users/mia`)).json();
+    expect(JSON.stringify(profile)).not.toContain('example.com');
+  });
+
+  it('emails a one-time reset link that logs out every other device', async () => {
+    const old = cookieOf(await send('POST', '/login', { username: 'mia', password: 'hunter2hunter2' }));
+    mail.length = 0;
+    expect((await send('POST', '/password/forgot', { login: 'nobody_here' })).status).toBe(200);
+    expect((await send('POST', '/password/forgot', { login: 'MIA' })).status).toBe(200);
+    await settle();
+    expect(mail).toHaveLength(1);
+    expect(mail[0].to).toBe('mia@example.com');
+    const token = tokenFrom(mail[0]);
+
+    expect((await send('POST', '/password/reset', { token, password: 'short' })).status).toBe(400); // doesn't use up the link
+    const res = await send('POST', '/password/reset', { token, password: 'brand-new-pass' });
+    expect(res.status).toBe(200);
+    expect(await me(cookieOf(res))).toMatchObject({ username: 'mia', emailVerified: true }); // opening the link proves the address
+    expect(await me(old)).toBeNull();
+    expect((await send('POST', '/password/reset', { token, password: 'another-pass-1' })).status).toBe(400);
+    expect((await send('POST', '/login', { username: 'mia', password: 'hunter2hunter2' })).status).toBe(401);
+    expect((await send('POST', '/login', { username: 'mia', password: 'brand-new-pass' })).status).toBe(200);
+  });
+
+  it('sends at most three reset emails an hour per account', async () => {
+    mail.length = 0;
+    for (let i = 0; i < 3; i++) await send('POST', '/password/forgot', { login: 'mia@example.com' });
+    await settle();
+    expect(mail).toHaveLength(2); // one was already sent in the last test
+  });
+
+  it('needs the current password to change the email', async () => {
+    const cookie = cookieOf(await send('POST', '/login', { username: 'mia', password: 'brand-new-pass' }));
+    expect((await send('PATCH', '/me', { email: 'thief@example.com' }, cookie)).status).toBe(403);
+    expect((await send('PATCH', '/me', { email: 'thief@example.com', password: 'wrong-password' }, cookie)).status).toBe(403);
+    const ok = await send('PATCH', '/me', { email: 'mia.new@example.com', password: 'brand-new-pass' }, cookie);
+    expect((await ok.json()).user.email).toBe('mia.new@example.com');
+    // Saving the same email again (e.g. with a bio edit) doesn't ask for the password.
+    expect((await send('PATCH', '/me', { email: 'mia.new@example.com', bio: 'hi' }, cookie)).status).toBe(200);
+  });
+});
+
+describe('confirming an email (optional)', () => {
+  let server: Server;
+  let base: string;
+  let dir: string;
+  const mail: Mail[] = [];
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-confirm-'));
+    const accounts = new Accounts(new FileAccountStore(join(dir, 'accounts.json')), { mailer: { send: async (m) => { mail.push(m); } }, publicUrl: 'https://trivio.test' });
+    await accounts.init();
+    const app = express();
+    app.use('/api', accounts.router());
+    server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+  });
+  afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  const send = (method: string, path: string, body: unknown, cookie?: string) =>
+    fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
+  const me = async (cookie: string) => (await (await fetch(`${base}/me`, { headers: { cookie } })).json()).user;
+  const settle = () => new Promise((r) => setTimeout(r, 30));
+  const confirmToken = (to: string) => mail.filter((m) => m.to === to && m.subject.includes('Confirm')).at(-1)!.text.match(/https:\/\/trivio\.test\/confirm#([\w-]+)/)![1];
+
+  it('emails a link after sign-up that confirms the address, even logged out', async () => {
+    const res = await send('POST', '/signup', { username: 'zoe', password: 'hunter2hunter2', email: 'zoe@example.com' });
+    const cookie = res.headers.get('set-cookie')!.split(';')[0];
+    expect((await res.json()).user).toMatchObject({ email: 'zoe@example.com', emailVerified: false });
+    await settle();
+    const token = confirmToken('zoe@example.com');
+    expect(await (await send('POST', '/email/confirm', { token })).json()).toMatchObject({ ok: true, username: 'zoe' });
+    expect((await me(cookie)).emailVerified).toBe(true);
+    expect((await send('POST', '/email/confirm', { token })).status).toBe(400); // one use
+    // Already confirmed: asking again sends nothing.
+    mail.length = 0;
+    expect((await send('POST', '/email/confirm/send', {}, cookie)).status).toBe(200);
+    await settle();
+    expect(mail).toHaveLength(0);
+  });
+
+  it('starts a new address unconfirmed, and an old link can’t confirm it', async () => {
+    const cookie = (await send('POST', '/login', { username: 'zoe', password: 'hunter2hunter2' })).headers.get('set-cookie')!.split(';')[0];
+    await send('PATCH', '/me', { email: 'zoe2@example.com', password: 'hunter2hunter2' }, cookie);
+    expect((await me(cookie)).emailVerified).toBe(false);
+    await settle();
+    const stale = confirmToken('zoe2@example.com');
+    await send('PATCH', '/me', { email: 'zoe3@example.com', password: 'hunter2hunter2' }, cookie);
+    expect((await send('POST', '/email/confirm', { token: stale })).status).toBe(400);
+    expect((await me(cookie)).emailVerified).toBe(false);
+  });
+
+  it('resends on request, up to three links an hour', async () => {
+    const cookie = (await send('POST', '/signup', { username: 'amy', password: 'hunter2hunter2', email: 'amy@example.com' })).headers.get('set-cookie')!.split(';')[0];
+    // One link already went out at sign-up. Changing the email also counts, so typing a new one can't spam other people.
+    expect((await send('POST', '/email/confirm/send', {}, cookie)).status).toBe(200);
+    expect((await send('POST', '/email/confirm/send', {}, cookie)).status).toBe(200);
+    expect((await send('POST', '/email/confirm/send', {}, cookie)).status).toBe(429);
+    expect((await send('POST', '/email/confirm/send', {})).status).toBe(401);
+  });
+
+  it('keeps working without confirming: resets still go out', async () => {
+    mail.length = 0;
+    await send('POST', '/password/forgot', { login: 'zoe3@example.com' });
+    await settle();
+    expect(mail.map((m) => m.subject)).toEqual(['Reset your Trivio password']);
+  });
+});
+
+describe('password reset without email set up', () => {
+  it('says so instead of pretending to send', async () => {
+    const accounts = new Accounts(new FileAccountStore(null));
+    await accounts.init();
+    const app = express();
+    app.use('/api', accounts.router());
+    const server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    const res = await fetch(`http://localhost:${(server.address() as { port: number }).port}/api/password/forgot`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login: 'x' }),
+    });
+    server.close();
+    expect(res.status).toBe(503);
+  });
+});
+
 describe('recent games', () => {
   it('labels daily challenges, including games saved before they carried the number', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'bb-recent-'));
     const store = new FileAccountStore(join(dir, 'accounts.json'));
     const accounts = new Accounts(store);
     await accounts.init();
-    await store.createUser({ id: 'u1', username: 'hao', key: 'hao', passwordHash: 'x', displayName: 'Hao', bio: '', settings: null, createdAt: 0 });
+    await store.createUser({ id: 'u1', username: 'hao', key: 'hao', passwordHash: 'x', displayName: 'Hao', bio: '', settings: null, createdAt: 0, email: null });
     const game = (at: number, points: number, extra: Partial<GameRecord> = {}): GameRecord => ({
       at, room: 'R', mode: 'ffa', sides: 1, rank: 1, standings: [], tossups: 10, points, powers: 0, tens: 0, negs: 0,
       buzzes: 0, heard: 10, correctDepthSum: 0, bestStreak: 0, bonusPoints: 0, bonusesHeard: 0, categories: {}, ...extra,

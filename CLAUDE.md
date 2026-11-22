@@ -21,7 +21,7 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - `server/rooms/store.ts`: `RoomStore` interface, in-memory implementation
 - `server/game/`: pure logic: `text.ts` (normalizing, typo tolerance), `answerLine.ts` (parsing answer lines), `answerCheck.ts`, `scoring.ts`
 - `server/questions/`: QBReader / built-in catalog (`catalog/`, original questions) / sample / upload providers
-- `server/accounts/`: sign-up, sessions, profiles, game history, friends (presence comes from `index.ts`), admin (`ADMIN_ACCOUNT_IDS`)
+- `server/accounts/`: sign-up, sessions, profiles, game history, friends (presence comes from `index.ts`), admin (`ADMIN_ACCOUNT_IDS`), optional email with password reset and optional confirming (`mailer.ts`, one-time links in the store's `tokens`). Emails are private: never put them in a profile, room state or log.
 - `shared/profile.ts`: profile visibility, pinnable stats (`PIN_STATS`) and badges (`BADGES`, worked out from saved games + daily results by `badgesFor`, nothing stored); badge rewards: profile colors (`PROFILE_COLORS`, light + dark values) and avatar frames (`AVATAR_FRAMES`), each unlocked by one badge. `PATCH /api/me` checks the badge (`Accounts.earnedBadges`), `lookFor` falls back to the defaults; drawn by `Avatar`/`tint` in `client/components/Account.tsx`
 - `shared/topics.ts`: standalone topics (`TOPICS`). Deep ones map to QBReader slices (category + subcategory or `alternateSubcategories`; QBReader also returns untagged questions for an alternate filter, so `QBReaderProvider` re-checks with `inTopic`). Fun ones use built-in questions tagged by topic id (`catalog/topics.ts`, `TOPIC_TAGS` in `catalog/index.ts` and `lightning.ts`). `TopicMix` (providers.ts) picks one picked topic or the category filter per question and falls back to built-in questions.
 - `server/daily/`: daily challenge: one 10-tossup set per day (US Eastern), stored once, leaderboard
@@ -53,7 +53,7 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - Live at https://playtrivio.onrender.com (Render free plan, service `playtrivio`, Oregon, created by hand, not from a Blueprint). `trivio.onrender.com` and `buzzbowl.onrender.com` belong to other people on Render. Auto-deploy on `main` is on.
 - `render.yaml` matches the live service's settings but no Blueprint is connected to it. Connecting one would create a second service.
 - GitHub `justtkeno/BuzzBowl`. Render auto-deploys `main`, so changes go in on a feature branch and a pull request merged into `main`.
-- Render env vars (set in the Render dashboard, never in code): `DATABASE_URL` (Neon Postgres, also holds daily-challenge tables) and `ADMIN_ACCOUNT_IDS`. `/healthz` reports `"accounts":"postgres"` when the database is connected.
+- Render env vars (set in the Render dashboard, never in code): `DATABASE_URL` (Neon Postgres, also holds daily-challenge tables), `ADMIN_ACCOUNT_IDS`, and `SMTP_URL` + `MAIL_FROM` for password-reset emails (`server/accounts/mailer.ts`; without them production can't send resets). Reset links use `PUBLIC_URL`, else Render's `RENDER_EXTERNAL_URL`, never the request's Host header. `/healthz` reports `"accounts":"postgres"` when the database is connected.
 - The free plan sleeps after ~15 minutes idle; the first visit takes 30–60 s to wake it.
 - Without `DATABASE_URL` (local or cloud sessions), accounts and the daily challenge use JSON files in `data/`, never the live database. QBReader may be unreachable from sandboxes; the built-in catalog works offline.
 
