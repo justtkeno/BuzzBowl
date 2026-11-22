@@ -74,7 +74,7 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
       <div className="modal admin-panel site-admin" role="dialog" aria-label="Site admin">
         <div className="row between">
           <h2><Icon name="shield" /> Site admin</h2>
-          <button className="btn ghost icon" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+          <button className="btn ghost icon close-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
         </div>
         <p className="muted small">
           {o ? <>{o.connections} open screen{o.connections === 1 ? '' : 's'} · {o.accounts} signed in · {live.length} active room{live.length === 1 ? '' : 's'}</> : 'Loading…'}

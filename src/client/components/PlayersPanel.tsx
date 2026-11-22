@@ -20,7 +20,7 @@ export function PlayersPanel({ s, onClose }: { s: PublicState; onClose: () => vo
       <div className="modal admin-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Manage players">
         <div className="row between">
           <h2>Players</h2>
-          <button className="btn ghost icon" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+          <button className="btn ghost icon close-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
         </div>
         <p className="muted small">Everyone sees a note in chat when you mute, kick or ban someone. A ban keeps their seat and account out of this room.</p>
 

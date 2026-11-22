@@ -106,7 +106,7 @@ export function FriendsTab({ onJoin, currentCode, hidden, disabled, canInvite }:
           <aside className="friends-drawer" ref={panel} tabIndex={-1} aria-label="Friends">
             <header className="friends-drawer-head">
               <h2>Friends</h2>
-              <button className="btn ghost small" onClick={() => setOpen(false)} aria-label="Close friends"><Icon name="close" /></button>
+              <button className="btn ghost icon close-btn" onClick={() => setOpen(false)} aria-label="Close friends"><Icon name="close" /></button>
             </header>
             {f.me ? (
               <FriendsPanel list={list} change={f.change} onJoin={join} currentCode={currentCode} disabled={disabled} newTab={!!currentCode} canInvite={canInvite} />
