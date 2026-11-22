@@ -35,6 +35,8 @@ export interface SurvivalStore {
   rankOf(row: SurvivalRow, fromDay: string | null): Promise<number>;
   /** How many runs this player has finished. */
   runs(playerKey: string): Promise<number>;
+  /** An account changed its username: follow it on this player's saved rows (the shown name too, where it was the username). */
+  rename(playerKey: string, username: string): Promise<void>;
 }
 
 /** Best first: more tossups right, then more points, then whoever got there first. */
@@ -88,6 +90,10 @@ export class FileSurvivalStore implements SurvivalStore {
     return 1 + [...this.bests(fromDay).values()].filter((r) => r.playerKey !== row.playerKey && betterRun(r, row) < 0).length;
   }
   async runs(key: string) { return this.d.counts[key] ?? 0; }
+  async rename(key: string, username: string) {
+    for (const r of this.d.runs) if (r.playerKey === key) { if (r.name === r.username) r.name = username; r.username = username; }
+    this.save();
+  }
 }
 
 const SCHEMA = `
@@ -161,5 +167,8 @@ export class PgSurvivalStore implements SurvivalStore {
   async runs(key: string) {
     const r = await this.pool.query('SELECT count(*)::int AS n FROM survival_runs WHERE player_key = $1', [key]);
     return r.rows[0].n as number;
+  }
+  async rename(key: string, username: string) {
+    await this.pool.query('UPDATE survival_runs SET name = CASE WHEN name = username THEN $2 ELSE name END, username = $2 WHERE player_key = $1', [key, username]);
   }
 }

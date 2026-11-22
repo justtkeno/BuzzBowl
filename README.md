@@ -44,7 +44,10 @@ Small things that help:
 
 ### Your settings
 
-Each device has its own **Settings** (the gear in a room's top bar, ⋯ → Settings on a phone, or Settings on the home screen): sound effects on/off and **volume**, the **buzz sound** (Classic, Soft, Chime, Pop or Wood; other players' buzzes play a lower version of yours), vibration on phones, question text size and theme. The host's room rules are separate, under **Game settings**.
+The **gear** button is on every screen: by your name on the home screen and profiles, in a room's top bar (⋯ → Settings on a phone), and on the big-screen view. It opens two choices:
+
+- **Account settings**: change your **username** (then wait 7 days before changing it again; your profile link, leaderboard entries and room seat follow the new name, and the old name is free for others), your **email** and its optional confirmation, your **password** (logs out your other devices), and **Log out**. Guests get Log in and Sign up here.
+- **Game settings**, for this device only: sound effects on/off and **volume**, the **buzz sound** (Classic, Soft, Chime, Pop or Wood; other players' buzzes play a lower version of yours), vibration on phones, question text size and theme. The host's rules for a room are separate, under **Room settings**.
 
 ### Party mode
 
@@ -105,9 +108,9 @@ Anyone can still play as a guest. **Sign up** on the home screen (username + pas
 
 Results are saved when the host ends a game, or when everyone walks away from a game with at least 3 tossups heard. Solo games count toward stats but not wins. Passwords are hashed with scrypt, sessions are an HTTP-only cookie, and login/signup are rate-limited.
 
-**Email and password reset:** the email is optional, never shown to anyone else, and can be added or changed later under *Edit profile* (that takes the current password). You can log in with it instead of the username. **Log in → Forgot password?** emails a link that works once, for an hour, and logs out every other device when used. Each account gets at most 3 reset emails an hour, and the page never says whether an account or email exists.
+**Email and password reset:** the email is optional, never shown to anyone else, and can be added or changed later in *Account settings* (that takes the current password). You can log in with it instead of the username. **Log in → Forgot password?** emails a link that works once, for an hour, and logs out every other device when used. Each account gets at most 3 reset emails an hour, and the page never says whether an account or email exists.
 
-**Confirming the email is optional.** After sign-up (or an email change), Trivio sends a link to confirm the address. Opening it, on any device, marks it ✓ Confirmed under *Edit profile*, which can also send the link again (up to 3 an hour). A new address starts unconfirmed, and links sent to an old address stop working. Using a password-reset link confirms the address too. Unconfirmed emails still get reset links, so nobody has to confirm. Emails go out over SMTP, set up as below. Without it, a local server prints the email in the terminal and a production server says resets aren't available.
+**Confirming the email is optional.** After sign-up (or an email change), Trivio sends a link to confirm the address. Opening it, on any device, marks it ✓ Confirmed in *Account settings*, which can also send the link again (up to 3 an hour). A new address starts unconfirmed, and links sent to an old address stop working. Using a password-reset link confirms the address too. Unconfirmed emails still get reset links, so nobody has to confirm. Emails go out over SMTP, set up as below. Without it, a local server prints the email in the terminal and a production server says resets aren't available.
 
 Accounts live in Postgres when `DATABASE_URL` is set, otherwise in `data/accounts-<port>.json` (fine for local use).
 

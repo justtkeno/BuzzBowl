@@ -104,6 +104,8 @@ export class Daily {
   }
 
   async result(day: string, playerKey: string) { await this.ready; return this.store.result(day, playerKey); }
+  /** An account's new username, on its past results. */
+  async rename(playerKey: string, username: string) { await this.ready; await this.store.rename(playerKey, username); }
 
   async status(playerKey: string | null, day = this.today()): Promise<DailyStatus> {
     await this.ready;

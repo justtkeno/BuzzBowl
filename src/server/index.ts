@@ -72,6 +72,17 @@ accounts.findDaily = async (accountId, at, points) => {
   return r && r.points === points ? dailyNumber(day) : null;
 };
 
+// A username change follows the account onto leaderboards and into any room it's sitting in.
+accounts.onRename = async (accountId, _from, to) => {
+  const key = playerKeyFor(accountId, null)!;
+  await Promise.all([daily.rename(key, to), survival.rename(key, to)]);
+  for (const room of store.all()) {
+    let changed = false;
+    for (const p of room.s.players) if (p.accountId === accountId) { p.username = to; changed = true; }
+    if (changed) room.broadcast();
+  }
+};
+
 /** Hook a daily room up to the leaderboard (also after a restart). */
 function attachDaily(room: Room) {
   const d = room.s.daily;

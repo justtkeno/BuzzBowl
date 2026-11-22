@@ -18,6 +18,8 @@ export interface User {
   email: string | null;
   /** The owner opened the confirmation link sent to `email`. Optional: resets work either way. */
   emailVerified?: boolean;
+  /** When the username last changed. */
+  usernameChangedAt?: number;
   /** Who can see their profile stats. Missing means public. */
   visibility?: Visibility;
   /** Stat ids pinned to the top of their profile. */
@@ -46,6 +48,8 @@ export interface AccountStore {
   userByName(username: string): Promise<User | null>;
   userByEmail(email: string): Promise<User | null>;
   updateUser(id: string, patch: UserPatch): Promise<void>;
+  /** Changes the username. False when someone else has it. */
+  renameUser(id: string, username: string, at: number): Promise<boolean>;
   /** Removes the user with their sessions and games. */
   deleteUser(id: string): Promise<void>;
   createSession(tokenHash: string, userId: string, expiresAt: number): Promise<void>;
@@ -145,6 +149,14 @@ export class FileAccountStore implements AccountStore {
     if (!u) return;
     Object.assign(u, structuredClone(patch));
     this.save();
+  }
+  async renameUser(id: string, username: string, at: number) {
+    const key = username.toLowerCase();
+    const u = this.d.users.find((x) => x.id === id);
+    if (!u || this.d.users.some((x) => x.key === key && x.id !== id)) return false;
+    Object.assign(u, { username, key, usernameChangedAt: at });
+    this.save();
+    return true;
   }
   async deleteUser(id: string) {
     this.d.users = this.d.users.filter((u) => u.id !== id);
@@ -262,6 +274,7 @@ CREATE TABLE IF NOT EXISTS friends (
 CREATE INDEX IF NOT EXISTS friends_to ON friends (to_id);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username_changed_at BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email) WHERE email IS NOT NULL;
 CREATE TABLE IF NOT EXISTS account_tokens (
   hash TEXT PRIMARY KEY,
@@ -277,7 +290,7 @@ CREATE INDEX IF NOT EXISTS account_tokens_user ON account_tokens (user_id, kind,
 interface UserRow {
   id: string; username: string; key: string; password_hash: string; display_name: string; bio: string;
   settings: Record<string, unknown> | null; created_at: string; visibility: Visibility | null; pinned: string[] | null; granted_badges: string[] | null;
-  color: string | null; frame: string | null; email: string | null; email_verified: boolean | null;
+  color: string | null; frame: string | null; email: string | null; email_verified: boolean | null; username_changed_at: string | null;
 }
 const fromRow = (r: UserRow | undefined): User | null => r ? {
   id: r.id, username: r.username, key: r.key, passwordHash: r.password_hash, displayName: r.display_name,
@@ -285,6 +298,7 @@ const fromRow = (r: UserRow | undefined): User | null => r ? {
   visibility: r.visibility ?? 'public', pinned: r.pinned ?? [], grantedBadges: r.granted_badges ?? [],
   ...(r.color ? { color: r.color } : {}), ...(r.frame ? { frame: r.frame } : {}),
   email: r.email ?? null, emailVerified: !!r.email_verified,
+  ...(r.username_changed_at ? { usernameChangedAt: Number(r.username_changed_at) } : {}),
 } : null;
 
 export class PgAccountStore implements AccountStore {
@@ -333,6 +347,16 @@ export class PgAccountStore implements AccountStore {
     const value = (k: keyof UserPatch) => (Array.isArray(patch[k]) ? JSON.stringify(patch[k]) : patch[k]);
     await this.pool.query(`UPDATE users SET ${sets} WHERE id = $1`, [id, ...keys.map(value)]);
   }
+  async renameUser(id: string, username: string, at: number) {
+    try {
+      const r = await this.pool.query('UPDATE users SET username = $2, key = $3, username_changed_at = $4 WHERE id = $1', [id, username, username.toLowerCase(), at]);
+      return !!r.rowCount;
+    } catch (e) {
+      if ((e as { code?: string }).code === '23505') return false; // the name is taken (unique key)
+      throw e;
+    }
+  }
+
   async deleteUser(id: string) {
     // sessions and games go with it (ON DELETE CASCADE).
     await this.pool.query('DELETE FROM users WHERE id = $1', [id]);

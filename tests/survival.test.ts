@@ -258,6 +258,17 @@ const opened: SurvivalStore[] = [];
 afterAll(async () => { for (const s of opened) await (s as any).pool?.end(); });
 
 describe.each(stores)('survival store (%s)', (_name, make) => {
+  it('follows an account to its new username', async () => {
+    const store = make();
+    opened.push(store);
+    await store.init();
+    const key = `a:rename-${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+    const day = '0001-01-01'; // before every board's start, so it can't show up in other tests' boards
+    await store.addRun({ playerKey: key, name: 'old_name', username: 'old_name', day, correct: 5, tossups: 8, points: 50, powers: 0, tens: 5, negs: 0, marks: '', createdAt: 1 });
+    await store.rename(key, 'new_name');
+    expect(await store.best(key, null)).toMatchObject({ name: 'new_name', username: 'new_name' });
+  });
+
   it('keeps one best run per player on each board', async () => {
     const store = make();
     opened.push(store);

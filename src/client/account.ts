@@ -90,6 +90,21 @@ export async function resetPassword(token: string, password: string) {
   reconnect();
 }
 
+/** New username (once a week). Reconnects so rooms and friends see the new name. */
+export async function changeUsername(username: string) {
+  const { user } = await api<{ user: Me }>('/me/username', { method: 'POST', body: { username } });
+  set(user);
+  reconnect();
+  return user;
+}
+
+/** New password. Other devices are logged out; this one stays in. */
+export async function changePassword(current: string, password: string) {
+  const { user } = await api<{ user: Me }>('/password/change', { method: 'POST', body: { current, password } });
+  set(user);
+  reconnect();
+}
+
 /** Emails the (optional) confirmation link again. */
 export async function sendConfirmEmail() {
   await api('/email/confirm/send', { method: 'POST' });

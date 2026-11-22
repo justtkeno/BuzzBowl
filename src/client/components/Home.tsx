@@ -11,7 +11,7 @@ import { InstallButton } from './InstallButton';
 import { Icon } from './Icon';
 import { Tutorial, markTourSeen, tourSeen } from './Tutorial';
 import { SendFeedback } from './SendFeedback';
-import { AppSettings } from './AppSettings';
+import { SettingsMenu } from './AppSettings';
 
 interface Props {
   initialCode: string | null;
@@ -98,7 +98,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
         <InstallButton />
         <button type="button" className="link small feedback-link" onClick={() => setFeedback(true)}><Icon name="chat" /> Send feedback</button>
       </div>
-      {appSettings && <AppSettings onClose={() => setAppSettings(false)} />}
+      {appSettings && <SettingsMenu onClose={() => setAppSettings(false)} />}
       {tour && <Tutorial onClose={() => { setTour(false); setTourDone(true); }} onPlay={initialCode ? undefined : () => run(() => onCreate(name.trim(), true))} />}
       {feedback && <SendFeedback where="home" name={name.trim()} onClose={() => setFeedback(false)} />}
       <FriendsTab disabled={busy || !connected} onJoin={(c) => run(() => onJoin(c, name.trim()))} />
