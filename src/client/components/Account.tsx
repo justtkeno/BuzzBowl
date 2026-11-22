@@ -90,6 +90,7 @@ export function AccountBar() {
 
 export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup'; onClose: () => void }) {
   const [tab, setTab] = useState<'login' | 'signup' | 'forgot'>(initial);
+  const { emailOn } = useAccount();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -189,7 +190,8 @@ export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup
         </label>
         {err && <p className="error">{err}</p>}
         <div className="row gap end">
-          {tab === 'login' && <button type="button" className="link grow forgot" onClick={() => setTab('forgot')}>Forgot password?</button>}
+          {tab === 'login' && emailOn && <button type="button" className="link grow forgot" onClick={() => setTab('forgot')}>Forgot password?</button>}
+          {tab === 'login' && !emailOn && <span className="grow" />}
           <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" disabled={busy || !username.trim() || !password}>{tab === 'signup' ? 'Create account' : 'Log in'}</button>
         </div>

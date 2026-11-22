@@ -140,6 +140,9 @@ export class Accounts {
     this.baseUrl = url ? url.replace(/\/+$/, '') : null;
   }
 
+  /** Whether this server can send reset and confirmation emails (SMTP set up, and a public address for links). */
+  private emailReady(req: Request) { return !!this.mailer && !!this.linkBase(req); }
+
   private linkBase(req: Request) {
     if (this.baseUrl) return this.baseUrl;
     return process.env.NODE_ENV === 'production' ? null : `${req.protocol}://${req.get('host')}`;
@@ -346,7 +349,8 @@ export class Accounts {
 
     r.get('/me', wrap(async (req, res) => {
       const u = await this.userFrom(req.headers.cookie);
-      res.json({ user: u ? toMe(u) : null });
+      // `email` tells the app whether to offer Forgot password and confirmation links at all.
+      res.json({ user: u ? toMe(u) : null, email: this.emailReady(req) });
     }));
 
     r.post('/signup', wrap(async (req, res) => {

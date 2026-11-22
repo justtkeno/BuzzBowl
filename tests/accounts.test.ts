@@ -67,6 +67,10 @@ describe('HTTP API', () => {
     fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
   const cookieOf = (res: Response) => res.headers.get('set-cookie')!.split(';')[0];
 
+  it('tells the app email is off when the server has no mailer', async () => {
+    expect((await (await fetch(`${base}/me`)).json()).email).toBe(false);
+  });
+
   it('signs up, stays logged in with the cookie, and logs out', async () => {
     const res = await post('/signup', { username: 'Alice_1', password: 'hunter2hunter2', displayName: 'Alice' });
     expect(res.status).toBe(200);
@@ -133,6 +137,10 @@ describe('email and password reset', () => {
     base = `http://localhost:${(server.address() as { port: number }).port}/api`;
   });
   afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  it('tells the app email is on when a mailer and a public address are set', async () => {
+    expect((await (await fetch(`${base}/me`)).json()).email).toBe(true);
+  });
 
   const send = (method: string, path: string, body: unknown, cookie?: string) =>
     fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });

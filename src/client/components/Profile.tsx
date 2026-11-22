@@ -246,12 +246,14 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
 
 /** Under the email field: whether it's confirmed, and a way to send the (optional) confirmation link. */
 function EmailStatus({ email, changed }: { email: string; changed: boolean }) {
-  const { me } = useAccount();
+  const { me, emailOn } = useAccount();
   const [state, setState] = useState<'idle' | 'busy' | 'sent'>('idle');
   const [err, setErr] = useState<string | null>(null);
   if (!email) return <span className="muted small">Without an email, a forgotten password can’t be reset.</span>;
+  if (me?.emailVerified && !changed) return <span className="email-ok small">✓ Confirmed</span>;
+  // Until the server can send email, there's nothing to confirm with: just keep the address.
+  if (!emailOn) return <span className="muted small">Saved for password resets.</span>;
   if (changed) return <span className="muted small">After you save, we’ll email a link to confirm it. Confirming is optional.</span>;
-  if (me?.emailVerified) return <span className="email-ok small">✓ Confirmed</span>;
   const send = async () => {
     setState('busy'); setErr(null);
     try { await sendConfirmEmail(); setState('sent'); } catch (e: any) { setErr(e.message); setState('idle'); }

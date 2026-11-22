@@ -7,13 +7,15 @@ import { prefs, socket } from './socket';
 
 let me: Me | null = null;
 let loaded = false;
+/** The server can send email (reset and confirmation links). Off until it says so. */
+let emailOn = false;
 const listeners = new Set<() => void>();
-let snap: { me: Me | null; loaded: boolean } = { me, loaded };
+let snap: { me: Me | null; loaded: boolean; emailOn: boolean } = { me, loaded, emailOn };
 
 function set(next: Me | null) {
   me = next;
   loaded = true;
-  snap = { me, loaded };
+  snap = { me, loaded, emailOn };
   listeners.forEach((l) => l());
 }
 
@@ -56,7 +58,8 @@ function adopt(u: Me) {
 
 export async function loadAccount() {
   try {
-    const { user } = await api<{ user: Me | null }>('/me');
+    const { user, email } = await api<{ user: Me | null; email?: boolean }>('/me');
+    emailOn = !!email;
     if (user) adopt(user); else set(null);
   } catch {
     set(null);
