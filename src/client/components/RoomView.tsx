@@ -23,6 +23,7 @@ import { Stage } from './Stage';
 import { Summary } from './Summary';
 import { act, roles, toast } from './util';
 import { useReadAloud } from '../speech';
+import { SendFeedback } from './SendFeedback';
 import { Icon } from './Icon';
 import { Tutorial } from './Tutorial';
 
@@ -49,6 +50,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   const [showAdmin, setShowAdmin] = useState(false);
   const [showPlayers, setShowPlayers] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [menu, setMenu] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [toastMsg, setToast] = useState<string | null>(null);
@@ -163,6 +165,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
                 {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}><Icon name="shield" /> Admin</button>}
                 {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}><Icon name="flag" /> {s.survival ? 'End run' : 'End game'}</button>}
                 <button role="menuitem" onClick={() => setShowTour(true)}><Icon name="help" /> How to play</button>
+                <button role="menuitem" onClick={() => setShowFeedback(true)}><Icon name="chat" /> Send feedback</button>
                 <button role="menuitem" onClick={leave}><Icon name="leave" /> Leave room</button>
               </div>
             </>
@@ -227,6 +230,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
       {showSettings && <SettingsPanel s={s} onClose={() => setShowSettings(false)} />}
       {showQuestions && <SettingsPanel s={s} only="questions" onClose={() => setShowQuestions(false)} />}
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
+      {showFeedback && <SendFeedback where={`room ${s.code}`} onClose={() => setShowFeedback(false)} />}
       {showAdmin && isAdmin && <AdminPanel s={s} onClose={() => setShowAdmin(false)} onPlayers={() => { setShowAdmin(false); setShowPlayers(true); }} />}
       {showPlayers && canModerate && <PlayersPanel s={s} onClose={() => setShowPlayers(false)} />}
       {/* Off screen while questions are being read, so it never gets in the way of buzzing. */}

@@ -10,6 +10,7 @@ import { FriendsTab } from './Friends';
 import { InstallButton } from './InstallButton';
 import { Icon } from './Icon';
 import { Tutorial, markTourSeen, tourSeen } from './Tutorial';
+import { SendFeedback } from './SendFeedback';
 
 interface Props {
   initialCode: string | null;
@@ -32,6 +33,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
   const [code, setCode] = useState(initialCode ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState(false);
   const { me } = useAccount();
   // Logging in fills in the account's display name.
   useEffect(() => { if (me) setName(me.displayName); setErr(null); }, [me?.id]);
@@ -88,8 +90,10 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
         <p className="muted small">Questions come from <a href="https://www.qbreader.org" target="_blank" rel="noreferrer">QBReader</a>, hundreds of built-in questions, or a packet you upload.</p>
         <button className="link how-link" onClick={() => setTour(true)}>How to play</button>
         <InstallButton />
+        <button type="button" className="link small feedback-link" onClick={() => setFeedback(true)}><Icon name="chat" /> Send feedback</button>
       </div>
       {tour && <Tutorial onClose={() => { setTour(false); setTourDone(true); }} onPlay={initialCode ? undefined : () => run(() => onCreate(name.trim(), true))} />}
+      {feedback && <SendFeedback where="home" name={name.trim()} onClose={() => setFeedback(false)} />}
       <FriendsTab disabled={busy || !connected} onJoin={(c) => run(() => onJoin(c, name.trim()))} />
     </div>
   );
