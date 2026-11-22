@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../../shared/types';
 import { TEXT_SIZE_LABEL, cycleTextSize, cycleTheme } from '../App';
 import { prefs } from '../socket';
-import { play, setSoundOn, soundOn } from '../sounds';
+import { play, setSoundOn, soundOn, BUZZ_SOUNDS, buzzSound, cycleBuzzSound, setBuzzSound, type BuzzSound } from '../sounds';
 import { AdminPanel } from './AdminPanel';
 import { Announcement } from './Announcement';
 import { PlayersPanel } from './PlayersPanel';
@@ -55,6 +55,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   const [leaving, setLeaving] = useState(false);
   const [tab, setTab] = useState<Tab>('board');
   const [sound, setSound] = useState(soundOn());
+  const [buzz, setBuzz] = useState(buzzSound());
   const flash = useFeedback(s);
   const buzzFlash = useBuzzFlash(s);
   const achievement = useAchievements(s);
@@ -138,7 +139,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         {isAdmin && <button className="btn ghost hide-sm" onClick={() => setShowAdmin(true)} title="Admin tools"><Icon name="shield" /> Admin</button>}
         <button className="btn ghost hide-sm" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
         {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Settings</button>}
-        <button className="btn ghost hide-sm" onClick={toggleSound} title={sound ? 'Turn sound effects off' : 'Turn sound effects on'} aria-label={sound ? 'Sound on' : 'Sound off'} aria-pressed={sound}>{sound ? <Icon name="volume" /> : <Icon name="mute" />}</button>
+        <SoundMenu sound={sound} onToggle={toggleSound} />
         <button className="btn ghost hide-sm" title="Switch theme (auto / dark / light)" onClick={() => setTheme(cycleTheme())}>{theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}</button>
         <button className="btn ghost hide-sm" title={`Question text size: ${TEXT_SIZE_LABEL[textSize]}`} aria-label={`Question text size: ${TEXT_SIZE_LABEL[textSize]}`} onClick={() => setTextSize(cycleTextSize())}>Aa</button>
         <button className="btn ghost hide-sm" onClick={leave}>Leave</button>
@@ -153,6 +154,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
                 {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}><Icon name="sliders" /> Settings</button>}
                 {!r.fixed && <button role="menuitem" onClick={openBigScreen}><Icon name="screen" /> Big-screen view</button>}
                 <button role="menuitem" onClick={toggleSound}>{sound ? <><Icon name="mute" /> Sound off</> : <><Icon name="volume" /> Sound on</>}</button>
+                {sound && <button role="menuitem" onClick={(e) => { e.stopPropagation(); setBuzz(cycleBuzzSound()); }}><Icon name="volume" /> Buzz sound: {BUZZ_SOUNDS[buzz]}</button>}
                 <button role="menuitem" onClick={() => setTheme(cycleTheme())}><Icon name="contrast" /> Theme: {theme}</button>
                 <button role="menuitem" onClick={(e) => { e.stopPropagation(); setTextSize(cycleTextSize()); }}><Icon name="text" /> Text size: {TEXT_SIZE_LABEL[textSize]}</button>
                 {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}><Icon name="users" /> Players</button>}
@@ -344,4 +346,36 @@ function useTopbarHeight() {
     return () => ro.disconnect();
   }, []);
   return ref;
+}
+
+/** Computers: the speaker button opens a small menu with sound on/off and the buzz sound for this device. */
+function SoundMenu({ sound, onToggle }: { sound: boolean; onToggle: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [buzz, setBuzz] = useState(buzzSound());
+  const pick = (v: BuzzSound) => { setBuzzSound(v); setBuzz(v); };
+  return (
+    <div className="menu-wrap hide-sm">
+      <button className="btn ghost" onClick={() => setOpen(!open)} title="Sound" aria-label={sound ? 'Sound on' : 'Sound off'} aria-expanded={open}>
+        {sound ? <Icon name="volume" /> : <Icon name="mute" />}
+      </button>
+      {open && (
+        <>
+          <div className="menu-back" onClick={() => setOpen(false)} />
+          <div className="menu" role="menu">
+            <button role="menuitemcheckbox" aria-checked={sound} onClick={onToggle}>{sound ? <><Icon name="mute" /> Turn sound off</> : <><Icon name="volume" /> Turn sound on</>}</button>
+            {sound && (
+              <>
+                <div className="menu-label">Buzz sound</div>
+                {(Object.keys(BUZZ_SOUNDS) as BuzzSound[]).map((v) => (
+                  <button key={v} role="menuitemradio" aria-checked={buzz === v} className={buzz === v ? 'on' : ''} onClick={() => pick(v)}>
+                    <span className="menu-check">{buzz === v && <Icon name="check" />}</span>{BUZZ_SOUNDS[v]}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

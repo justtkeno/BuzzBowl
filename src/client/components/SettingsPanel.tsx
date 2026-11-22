@@ -87,6 +87,7 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
           <h3>Scoring</h3>
           {check('powers', 'Powers', 'correct before the (*) earns extra')}
           {check('negs', 'Negs', 'wrong answers before the question ends lose points')}
+          {check('bounty', 'Bounty tossups', 'now and then a tossup is worth double for a correct answer; it’s marked before it’s read')}
           {check('bonuses', 'Bonuses', f.mode === 'teams' ? 'team that gets the tossup plays a 3-part bonus' : 'player who gets the tossup plays a bonus')}
           <div className="grid4">
             {num('powerValue', 'Power', 0, 50)}

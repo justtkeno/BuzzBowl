@@ -247,6 +247,7 @@ export function TossupCard({ s }: { s: PublicState }) {
       <div className="meta">
         <span className="tag">{s.settings.source === 'lightning' ? <><Icon name="bolt" /> Lightning {t.num}</> : `Tossup ${t.num}`}{!s.daily && !s.survival && s.settings.gameLength ? ` of ${s.settings.gameLength}` : ''}</span>
         {t.topic ? <CategoryChip category={t.topic.name} icon={t.topic.icon} /> : <CategoryChip category={t.category} sub={t.subcategory} />}
+        {t.bounty && <span className="bounty-chip" title="Bounty tossup: a correct answer scores double">×2 Bounty</span>}
         {s.voteRun && <span className="vote-run" title={`Voted topic: ${s.voteRun.name}, question ${s.voteRun.num} of ${s.voteRun.total}`}>🗳 {s.voteRun.num}/{s.voteRun.total}</span>}
         {t.difficulty ? <span className="muted">{DIFFICULTIES[t.difficulty] ?? `Level ${t.difficulty}`}</span> : null}
         {t.setName && <span className="muted hide-sm">{t.setName}{t.year ? ` (${t.year})` : ''}</span>}
