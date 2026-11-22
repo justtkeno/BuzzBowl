@@ -12,6 +12,11 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
   const setFilter = (patch: Partial<Settings['filters']>) => setF((x) => ({ ...x, filters: { ...x.filters, ...patch } }));
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const midGame = ['loading', 'reading', 'buzz', 'bonus'].includes(s.phase);
+  const tabs = only ? QUESTION_TABS : ALL_TABS;
+  const [tab, setTabState] = useState<Tab>(() => (tabs.includes(lastTab[only ?? 'all']) ? lastTab[only ?? 'all'] : tabs[0]));
+  const setTab = (t: Tab) => { lastTab[only ?? 'all'] = t; setTabState(t); };
+  const filterCount = (f.filters.topics?.length ?? 0) + f.filters.categories.length + f.filters.subcategories.length
+    + f.filters.difficulties.length + (f.filters.minYear ? 1 : 0) + (f.filters.maxYear ? 1 : 0);
 
   const save = async () => {
     try {
@@ -50,13 +55,22 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
 
   return (
     <div className="modal-back" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={only ? 'Change questions' : 'Room settings'}>
-        <div className="row between"><h2>{only ? 'Change questions' : 'Settings'}</h2><button className="btn ghost icon" onClick={onClose} aria-label="Close"><Icon name="close" /></button></div>
+      <div className="modal settings-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={only ? 'Change questions' : 'Room settings'}>
+        <div className="row between"><h2>{only ? 'Change questions' : 'Settings'}</h2><button className="btn ghost icon close-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button></div>
         {s.phase !== 'lobby' && <p className="muted small settings-note">{only
           ? `${midGame ? 'The question being read now finishes as is. ' : ''}New questions start with the next tossup, and everyone sees a note in chat.`
           : `Changes apply right away${midGame ? ', and a clock that is already running grows or shrinks to match' : ''}. Points already scored stay as they are. New questions start with the next tossup. Everyone sees a note in chat.`}</p>}
 
-        {!only && <>
+        <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+          {tabs.map((t) => (
+            <button key={t} role="tab" id={`stab-${t}`} aria-selected={tab === t} aria-controls="settings-panel" className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
+              {TAB_LABEL[t]}{t === 'topics' && filterCount > 0 && <span className="tab-dot" role="img" aria-label={`${filterCount} filter${filterCount === 1 ? '' : 's'} on`} title={`${filterCount} filter${filterCount === 1 ? '' : 's'} on`} />}
+            </button>
+          ))}
+        </div>
+
+        <div className="settings-body" role="tabpanel" id="settings-panel" aria-labelledby={`stab-${tab}`}>
+        {tab === 'game' && (
         <section>
           <h3>Format</h3>
           <div className="seg">
@@ -82,7 +96,9 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
             {num('bonusSeconds', 'Seconds per bonus part', 5, 60)}
           </div>
         </section>
+        )}
 
+        {tab === 'scoring' && (
         <section>
           <h3>Scoring</h3>
           {check('powers', 'Powers', 'correct before the (*) earns extra')}
@@ -96,7 +112,9 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
             {num('bonusPartValue', 'Bonus part', 0, 50)}
           </div>
         </section>
+        )}
 
+        {tab === 'reading' && (<>
         <section>
           <h3>Without a reader</h3>
           {check('readAloud', 'Read questions aloud', 'each device speaks the words as they appear; anyone can mute their own')}
@@ -108,10 +126,11 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
           {check('showTextToPlayers', 'Show question text to players while the reader reads', 'off = players only hear it')}
           {check('readerRules', 'Reader rules on answers', 'auto-check becomes a suggestion')}
         </section>
-        </>}
+        </>)}
 
+        {tab === 'questions' && (
         <section>
-          {!only && <h3>Questions</h3>}
+          <h3>Question source</h3>
           <div className="seg source-seg">
             <button className={f.source === 'qbreader' ? 'on' : ''} onClick={() => set('source', 'qbreader')}>QBReader</button>
             <button className={f.source === 'sample' ? 'on' : ''} title="Built-in questions: always available, even offline" onClick={() => set('source', 'sample')}>Built-in</button>
@@ -138,7 +157,11 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
             <p className="small muted">Bold and underline the required part of the answer. <code>(*)</code> marks where power ends.</p>
             <button type="button" className="link" onClick={downloadExample}>Download this example</button>
           </details>
+        </section>
+        )}
 
+        {tab === 'topics' && (
+        <section>
           <h4>Topics <small className="muted">(mix any; with topics picked, questions come only from them and any categories below)</small></h4>
           <div className="chips topic-chips">
             {TOPICS.map((t) => {
@@ -175,9 +198,12 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
             <label className="field inline"><span>From year</span><input type="number" min={1990} max={2100} placeholder="any" value={f.filters.minYear ?? ''} onChange={(e) => setFilter({ minYear: e.target.value ? Number(e.target.value) : undefined })} /></label>
             <label className="field inline"><span>To year</span><input type="number" min={1990} max={2100} placeholder="any" value={f.filters.maxYear ?? ''} onChange={(e) => setFilter({ maxYear: e.target.value ? Number(e.target.value) : undefined })} /></label>
           </div>
+          {filterCount > 0 && <button type="button" className="link clear-filters" onClick={() => setFilter({ topics: [], categories: [], subcategories: [], difficulties: [], minYear: undefined, maxYear: undefined })}>Clear all filters</button>}
         </section>
+        )}
+        </div>
 
-        <div className="row gap end">
+        <div className="row gap end settings-foot">
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" onClick={save}>{only ? 'Use these questions' : 'Save'}</button>
           {s.phase === 'lobby' && !only && <button className="btn primary" onClick={async () => { await save(); act('game:start'); }}>Save &amp; start</button>}
@@ -186,6 +212,13 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
     </div>
   );
 }
+
+type Tab = 'game' | 'scoring' | 'questions' | 'topics' | 'reading';
+const ALL_TABS: Tab[] = ['game', 'scoring', 'questions', 'topics', 'reading'];
+const QUESTION_TABS: Tab[] = ['questions', 'topics'];
+const TAB_LABEL: Record<Tab, string> = { game: 'Game', scoring: 'Scoring', questions: 'Source', topics: 'Topics', reading: 'Reading' };
+/** The tab the panel last showed (per kind of panel), so it reopens where the host left off. */
+const lastTab: Record<string, Tab> = {};
 
 const LENGTHS = [0, 10, 20, 30];
 

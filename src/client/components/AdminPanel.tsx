@@ -30,7 +30,7 @@ export function AdminPanel({ s, onClose, onPlayers }: { s: PublicState; onClose:
       <div className="modal admin-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Admin controls">
         <div className="row between">
           <h2><Icon name="shield" /> Admin</h2>
-          <button className="btn ghost icon" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+          <button className="btn ghost icon close-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
         </div>
         <p className="muted small">Only you see this panel. Seat changes and renames show a note in chat. Peeking and freezing are secret.</p>
 
