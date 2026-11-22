@@ -299,6 +299,24 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .seg button { border: 0; background: var(--surface); padding: .4rem .9rem; cursor: pointer; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .5; cursor: default; }
+/* ---------- display (text size and theme) ---------- */
+.display-options { display: flex; flex-direction: column; gap: 1rem; }
+.display-label { font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: .4rem; }
+.display-seg { display: flex; width: 100%; }
+.display-seg button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: .4rem; padding: .5rem .4rem; white-space: nowrap; }
+.display-aa { font-family: var(--serif); line-height: 1; }
+.aa-s { font-size: .8rem; } .aa-m { font-size: 1rem; } .aa-l { font-size: 1.25rem; }
+.display-preview { min-height: 0; margin-top: .6rem; padding: .6rem .75rem; border-radius: 10px; background: var(--surface-2); line-height: 1.5; }
+.display-note { margin: .4rem 0 0; }
+.menu.display-menu { width: 320px; padding: .8rem .9rem .9rem; cursor: default; }
+.display-head { font-weight: 700; margin-bottom: .7rem; }
+/* Inside the pop-up, the choice buttons keep the segmented look (not the menu-item look). */
+.menu.display-menu .seg button { background: var(--surface); color: var(--text); border-radius: 0; text-align: center; padding: .5rem .4rem; font-size: inherit; }
+.menu.display-menu .seg button:hover:not(.on) { background: var(--surface-2); }
+.menu.display-menu .seg button.on { background: var(--accent); color: var(--accent-ink); }
+.modal.display-modal { width: min(420px, 100%); display: flex; flex-direction: column; gap: .9rem; }
+.display-modal > .row.between:first-child { position: static; margin: 0; padding: 0; border: 0; }
+
 /* ---------- how to play ---------- */
 .modal.tutorial { display: flex; flex-direction: column; width: min(460px, 100%); height: min(640px, calc(100vh - 32px)); height: min(640px, calc(100dvh - var(--modal-gap))); overflow: hidden; }
 .tutorial > .row.between:first-child { position: static; margin: 0 0 .4rem; padding: 0; border: 0; }

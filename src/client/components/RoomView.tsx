@@ -1,7 +1,7 @@
 import { Logo } from './Logo';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../../shared/types';
-import { TEXT_SIZE_LABEL, cycleTextSize, cycleTheme } from '../App';
+import { DisplayMenu, DisplayPanel } from './Display';
 import { prefs } from '../socket';
 import { play, setSoundOn, soundOn, BUZZ_SOUNDS, buzzSound, cycleBuzzSound, setBuzzSound, type BuzzSound } from '../sounds';
 import { AdminPanel } from './AdminPanel';
@@ -54,8 +54,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   const [menu, setMenu] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [toastMsg, setToast] = useState<string | null>(null);
-  const [theme, setTheme] = useState(prefs.theme());
-  const [textSize, setTextSize] = useState(prefs.textSize());
+  const [showDisplay, setShowDisplay] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [tab, setTab] = useState<Tab>('board');
   const [sound, setSound] = useState(soundOn());
@@ -144,8 +143,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         <button className="btn ghost hide-sm" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
         {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Settings</button>}
         <SoundMenu sound={sound} onToggle={toggleSound} />
-        <button className="btn ghost hide-sm" title="Switch theme (auto / dark / light)" onClick={() => setTheme(cycleTheme())}>{theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}</button>
-        <button className="btn ghost hide-sm" title={`Question text size: ${TEXT_SIZE_LABEL[textSize]}`} aria-label={`Question text size: ${TEXT_SIZE_LABEL[textSize]}`} onClick={() => setTextSize(cycleTextSize())}>Aa</button>
+        <DisplayMenu />
         <button className="btn ghost hide-sm" onClick={leave}>Leave</button>
         <div className="menu-wrap show-sm">
           <button className="btn ghost menu-btn" aria-label="More" aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯</button>
@@ -159,8 +157,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
                 {!r.fixed && <button role="menuitem" onClick={openBigScreen}><Icon name="screen" /> Big-screen view</button>}
                 <button role="menuitem" onClick={toggleSound}>{sound ? <><Icon name="mute" /> Sound off</> : <><Icon name="volume" /> Sound on</>}</button>
                 {sound && <button role="menuitem" onClick={(e) => { e.stopPropagation(); setBuzz(cycleBuzzSound()); }}><Icon name="volume" /> Buzz sound: {BUZZ_SOUNDS[buzz]}</button>}
-                <button role="menuitem" onClick={() => setTheme(cycleTheme())}><Icon name="contrast" /> Theme: {theme}</button>
-                <button role="menuitem" onClick={(e) => { e.stopPropagation(); setTextSize(cycleTextSize()); }}><Icon name="text" /> Text size: {TEXT_SIZE_LABEL[textSize]}</button>
+                <button role="menuitem" onClick={() => setShowDisplay(true)}><Icon name="text" /> Display: text size &amp; theme</button>
                 {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}><Icon name="users" /> Players</button>}
                 {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}><Icon name="shield" /> Admin</button>}
                 {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}><Icon name="flag" /> {s.survival ? 'End run' : 'End game'}</button>}
@@ -227,6 +224,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         </div>
       )}
       {showTour && <Tutorial onClose={() => setShowTour(false)} />}
+      {showDisplay && <DisplayPanel onClose={() => setShowDisplay(false)} />}
       {showSettings && <SettingsPanel s={s} onClose={() => setShowSettings(false)} />}
       {showQuestions && <SettingsPanel s={s} only="questions" onClose={() => setShowQuestions(false)} />}
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
