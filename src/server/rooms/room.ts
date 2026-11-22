@@ -1177,7 +1177,9 @@ export class Room {
       return this.broadcast();
     }
     if (!q) {
-      this.s.message = 'No more unread questions match these filters. Widen the filters or upload a packet.';
+      this.s.message = this.s.settings.source === 'upload'
+        ? 'No more unread questions in the uploaded packet match these filters. Clear the filters, or switch to QBReader or Built-in questions.'
+        : 'No more unread questions match these filters. Widen the filters or upload a packet.';
       this.s.phase = this.s.tossupNum ? 'tossupEnd' : 'lobby';
       if (this.s.tossup) this.s.tossup.bonusTeam = null;
       return this.broadcast();
