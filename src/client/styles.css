@@ -1,4 +1,6 @@
 :root {
+  /* Room under the status bar. A bit more in the iPhone home-screen app, where iOS shades the strip just below it. */
+  --safe-top: env(safe-area-inset-top, 0px);
   --bg: #f6f5f2;
   --surface: #ffffff;
   --surface-2: #efede8;
@@ -45,10 +47,10 @@ h2 { margin: 0 0 .5rem; font-size: 1.3rem; }
 h3 { margin: 1.2rem 0 .5rem; font-size: 1rem; }
 h4 { margin: 1rem 0 .4rem; font-size: .9rem; }
 input, select, button, textarea { font: inherit; color: inherit; }
-input[type='text'], input:not([type]), input[type='number'], select {
+input[type='text'], input:not([type]), input[type='number'], select, textarea {
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .65rem; min-width: 0;
 }
-input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; border-radius: 4px; padding: 2px 4px; opacity: .6; margin-left: .35rem; }
 
 .row { display: flex; align-items: center; }
@@ -108,7 +110,8 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 
 /* ---------- home ---------- */
 /* minmax(0, 1fr): the card never grows past the screen to fit long content. */
-.home { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); }
+html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
+.home { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: max(16px, var(--safe-top)) 16px max(16px, env(safe-area-inset-bottom)); }
 .home-card { width: min(440px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 1.75rem; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: .9rem; }
 .brand { display: flex; align-items: center; gap: .55rem; font-weight: 750; font-size: 1.35rem; letter-spacing: -.02em; }
 .brand.small { font-size: 1rem; }
@@ -122,7 +125,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 
 /* ---------- room layout ---------- */
 /* The top bar leaves room for the status bar and notch in a home-screen app (the insets are 0 in a browser tab). */
-.topbar { display: flex; align-items: center; gap: .5rem; padding: max(.55rem, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) .55rem max(16px, env(safe-area-inset-left)); border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
+.topbar { display: flex; align-items: center; gap: .5rem; padding: max(.55rem, var(--safe-top)) max(16px, env(safe-area-inset-right)) .55rem max(16px, env(safe-area-inset-left)); border-bottom: 1px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 5; flex-wrap: wrap; }
 .phase { font-size: .8rem; padding: .15rem .6rem; border-radius: 999px; background: var(--surface-2); }
 .phase-reading { background: var(--accent-soft); }
 .phase-buzz { background: var(--accent); color: var(--accent-ink); }
@@ -270,18 +273,27 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 /* ---------- modals ---------- */
 /* Room a panel leaves above and below itself: 16px, or more for the status bar and home indicator in a
    home-screen app, so a panel's title and close button never end up under the clock. */
-:root { --modal-gap: calc(max(16px, env(safe-area-inset-top)) + max(16px, env(safe-area-inset-bottom))); }
+:root { --modal-gap: calc(max(16px, var(--safe-top)) + max(16px, env(safe-area-inset-bottom))); }
 /* Close buttons on panels: a clear round button in full text color, easy to spot and to hit. */
 .btn.close-btn { flex: none; width: 36px; height: 36px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
 .btn.close-btn:hover { background: var(--border); }
 .btn.close-btn .ic { width: 18px; height: 18px; stroke-width: 2.2; margin: 0; }
-.modal-back { position: fixed; inset: 0; background: rgb(0 0 0 / 45%); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); z-index: 20; }
+.modal-back { position: fixed; inset: 0; background: rgb(0 0 0 / 45%); display: grid; place-items: center; padding: max(16px, var(--safe-top)) 16px max(16px, env(safe-area-inset-bottom)); z-index: 20; }
 /* dvh: on phone browsers 100vh includes the area behind the address bar, which hid the top (and the ✕). */
 .modal { background: var(--surface); border-radius: 16px; padding: 1.25rem 1.4rem; width: min(680px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - var(--modal-gap)); overflow: auto; overscroll-behavior: contain; box-shadow: var(--shadow); }
 /* The title row (with ✕) stays pinned while a long panel scrolls. */
 .modal > .row.between:first-child { position: sticky; top: -1.25rem; z-index: 3; margin: -1.25rem -1.4rem .4rem; padding: 1rem 1.4rem .5rem; background: var(--surface); border-bottom: 1px solid transparent; }
 .modal > .row.between:first-child h2 { margin: 0; }
 .modal.wide { width: min(860px, 100%); }
+.modal.feedback-modal { width: min(480px, 100%); }
+.feedback-modal form { display: flex; flex-direction: column; gap: .6rem; }
+.feedback-modal textarea { width: 100%; resize: vertical; min-height: 7rem; font: inherit; }
+.feedback-link { display: inline-flex; align-items: center; gap: .35rem; margin-top: .6rem; color: var(--muted); }
+.feedback-link .ic { width: 15px; height: 15px; }
+.site-feedback { list-style: none; padding: 0; margin: 0 0 .8rem; display: grid; gap: .6rem; }
+.site-feedback li { border: 1px solid var(--border); border-radius: 10px; padding: .55rem .7rem; }
+.site-feedback li.done { opacity: .55; }
+.site-feedback p { margin: .25rem 0 .4rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .modal section { border-top: 1px solid var(--border); margin-top: .9rem; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex-wrap: wrap; }
 .seg button { border: 0; background: var(--surface); padding: .4rem .9rem; cursor: pointer; }
@@ -435,7 +447,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
   .grid4 { grid-template-columns: 1fr 1fr; }
   .hide-sm { display: none; }
   .topbar .phase-lobby { display: none; }
-  .topbar { gap: .25rem; padding: max(.4rem, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) .4rem max(12px, env(safe-area-inset-left)); }
+  .topbar { gap: .25rem; padding: max(.4rem, var(--safe-top)) max(12px, env(safe-area-inset-right)) .4rem max(12px, env(safe-area-inset-left)); }
   .topbar .btn { padding: .3rem .5rem; font-size: .85rem; }
   .topbar .chip, .topbar .phase { font-size: .8rem; }
   .qtext { font-size: calc(1.12rem * var(--qscale, 1)); }
@@ -466,7 +478,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .invite-sub, .invite-or { color: var(--muted); font-size: clamp(1rem, 2.2vw, 1.4rem); margin: 0; }
 .invite-or b { color: var(--text); }
 .invite-code { font: 700 clamp(3rem, 11vw, 7rem)/1 var(--font); letter-spacing: .12em; color: var(--accent); }
-.invite-close { position: fixed; top: calc(16px + env(safe-area-inset-top)); right: calc(16px + env(safe-area-inset-right)); }
+.invite-close { position: fixed; top: calc(16px + var(--safe-top)); right: calc(16px + env(safe-area-inset-right)); }
 @media (max-width: 520px) {
   .invite-box { flex-direction: column; align-items: stretch; text-align: left; }
   .invite-box .qr { align-self: center; }
@@ -626,7 +638,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 
 /* ---------- big-screen spectator view ---------- */
 .watch { min-height: 100vh; display: flex; flex-direction: column; font-size: clamp(16px, 1.4vw, 22px); }
-.watch-top { display: flex; align-items: center; gap: 1.5rem; padding: max(.8rem, env(safe-area-inset-top)) 2rem .8rem; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.watch-top { display: flex; align-items: center; gap: 1.5rem; padding: max(.8rem, var(--safe-top)) 2rem .8rem; background: var(--surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .watch-join { font-size: 1.1em; color: var(--muted); }
 .watch-join b { color: var(--text); }
 .watch-code { color: var(--accent); letter-spacing: .1em; }
@@ -650,7 +662,7 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .wb-pts { font-size: 1.8em; font-weight: 800; }
 @media (max-width: 860px) {
   .watch-main { grid-template-columns: 1fr; padding: 1rem 12px; }
-  .watch-top { padding: max(.6rem, env(safe-area-inset-top)) 12px .6rem; gap: .6rem; }
+  .watch-top { padding: max(.6rem, var(--safe-top)) 12px .6rem; gap: .6rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   .buzzer, .buzzflash, .buzzflash-label, .achievement, .delta, .hl, .cd-low, .answerbox.prompted, .bm-dot { animation: none !important; }
@@ -658,10 +670,10 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 @media (max-width: 860px) { .show-sm { display: flex; } }
 @media (max-width: 860px) {
   /* One 48px row of buttons, plus room for the status bar in a home-screen app (env() is 0 in a browser tab). */
-  .topbar { flex-wrap: nowrap; height: calc(48px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); padding-bottom: 0; }
+  .topbar { flex-wrap: nowrap; height: calc(48px + var(--safe-top)); padding-top: var(--safe-top); padding-bottom: 0; }
   .topbar .phase { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 40vw; }
   .topbar .chip { white-space: nowrap; flex: none; }
-  .mobile-strip { top: var(--topbar-h, calc(48px + env(safe-area-inset-top))); }
+  .mobile-strip { top: var(--topbar-h, calc(48px + var(--safe-top))); }
 }
 
 /* ---------- bots ---------- */
