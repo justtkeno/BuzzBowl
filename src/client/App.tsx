@@ -202,19 +202,15 @@ export function useTheme() {
 
 export const TEXT_SIZE_LABEL = { s: 'Small', m: 'Medium', l: 'Large' } as const;
 
-/** Small → medium → large question text, saved on this device. */
-export function cycleTextSize() {
-  const order = ['s', 'm', 'l'] as const;
-  const next = order[(order.indexOf(prefs.textSize()) + 1) % order.length];
-  prefs.setTextSize(next);
+/** Pick a question text size for this device (the Display panel). */
+export function setTextSizeChoice(t: 's' | 'm' | 'l') {
+  prefs.setTextSize(t);
   window.dispatchEvent(new Event('qb-theme'));
-  return next;
 }
 
-export function cycleTheme() {
-  const order = ['auto', 'dark', 'light'] as const;
-  const next = order[(order.indexOf(prefs.theme()) + 1) % order.length];
-  prefs.setTheme(next);
+/** Pick a theme for this device: auto follows the system's light or dark setting. */
+export function setThemeChoice(t: 'auto' | 'light' | 'dark') {
+  prefs.setTheme(t);
   window.dispatchEvent(new Event('qb-theme'));
-  return next;
 }
+
