@@ -178,6 +178,9 @@ function Player() {
   );
 }
 
+/** The top bar's color (--surface) in each theme. */
+const LIGHT_BAR = '#ffffff', DARK_BAR = '#1d1c1a';
+
 export function useTheme() {
   useEffect(() => {
     const apply = () => {
@@ -185,6 +188,11 @@ export function useTheme() {
       if (t === 'auto') document.documentElement.removeAttribute('data-theme');
       else document.documentElement.setAttribute('data-theme', t);
       document.documentElement.setAttribute('data-text', prefs.textSize());
+      // The phone's status bar matches the top bar, in the theme the player picked.
+      const light = t === 'dark' ? DARK_BAR : LIGHT_BAR, dark = t === 'light' ? LIGHT_BAR : DARK_BAR;
+      document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
+        m.content = /dark/.test(m.media) ? dark : light;
+      });
     };
     apply();
     window.addEventListener('qb-theme', apply);

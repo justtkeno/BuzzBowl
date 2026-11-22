@@ -28,6 +28,7 @@ const PATHS = {
   pin: <path d="M12 16.5V21M8.5 3.5h7M9.7 3.5v5.2L6.5 13h11l-3.2-4.3V3.5" />,
   share: <path d="M12 3.5v11M8 7.5l4-4 4 4M6.5 11v8.5h11V11" />,
   next: <path d="M9 6l6 6-6 6" />,
+  chat: <path d="M4 5.5h16v10.5h-9l-4.5 3.5V16H4z" />,
   skip: <path d="M6 5.5 15 12l-9 6.5zM18.5 5.5v13" />,
 } satisfies Record<string, JSX.Element>;
 

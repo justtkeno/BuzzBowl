@@ -15,6 +15,8 @@ import { FileDailyStore, PgDailyStore } from './daily/store';
 import { QBReaderProvider } from './questions/providers';
 import { ReportError, Reports } from './reports/reports';
 import { FileReportStore, PgReportStore } from './reports/store';
+import { Feedback, FeedbackError } from './feedback/feedback';
+import { FileFeedbackStore, PgFeedbackStore } from './feedback/store';
 import { Survival } from './survival/survival';
 import { FileSurvivalStore, PgSurvivalStore } from './survival/store';
 
@@ -45,6 +47,7 @@ const daily = new Daily(
 // Players' reports of questions with a problem, for site admins to review.
 const reportStore = process.env.DATABASE_URL ? new PgReportStore(process.env.DATABASE_URL) : new FileReportStore(join(DATA_DIR, `reports-${PORT}.json`));
 const reports = new Reports(reportStore);
+const feedback = new Feedback(process.env.DATABASE_URL ? new PgFeedbackStore(process.env.DATABASE_URL) : new FileFeedbackStore(join(DATA_DIR, `feedback-${PORT}.json`)));
 
 // Survival runs and their leaderboards, stored the same way.
 const survival = new Survival(
@@ -228,7 +231,7 @@ setInterval(() => saveRooms(), 3000).unref();
 // Bots watch every room a few times a second and buzz / answer when their moment comes.
 setInterval(() => { for (const room of store.all()) botsFor(room).tick(); }, 100).unref();
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); reportStore.flush(); process.exit(0); });
+  process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); reportStore.flush(); feedback.flush(); process.exit(0); });
 }
 
 /** Last invite per sender and friend, so nobody can spam someone with invites. */
@@ -475,6 +478,27 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Player feedback, newest first.
+  socket.on('site:feedback', async (ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    try {
+      ack({ ok: true, items: await feedback.list() });
+    } catch (e) {
+      console.error('site:feedback failed:', e);
+      ack({ ok: false, error: 'Could not load feedback.' });
+    }
+  });
+
+  socket.on('site:feedbackDone', async (id: unknown, done: unknown, ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    try {
+      ack((await feedback.setDone(id, done)) ? { ok: true } : { ok: false, error: 'That feedback is gone.' });
+    } catch (e) {
+      console.error('site:feedbackDone failed:', e);
+      ack({ ok: false, error: 'Could not update the feedback.' });
+    }
+  });
+
   // Close every open report of one question, as fixed (resolved) or not a problem (dismissed).
   socket.on('site:resolveReport', async (p: { source?: unknown; questionId?: unknown; status?: unknown } | undefined, ack: Ack) => {
     if (typeof ack !== 'function') return;
@@ -486,6 +510,23 @@ io.on('connection', (socket) => {
     } catch (e) {
       if (!(e instanceof ReportError)) console.error('site:resolveReport failed:', e);
       ack({ ok: false, error: e instanceof ReportError ? e.message : 'Could not update the reports.' });
+    }
+  });
+
+  // "Send feedback" from anywhere in the app, signed in or not.
+  socket.on('feedback:send', async (p: { kind?: unknown; message?: unknown; where?: unknown; device?: unknown; name?: unknown } | undefined, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    const a = accounts.of(socket);
+    const { code, playerId } = socket.data as SocketData;
+    const seat = code ? store.get(code)?.s.players.find((x) => x.id === playerId) : undefined;
+    const from = a?.username ?? seat?.name ?? String(p?.name ?? '');
+    const ip = String(socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '').split(',')[0].trim();
+    try {
+      await feedback.submit(p ?? {}, from, a?.username ?? null, [`s:${socket.id}`, a ? `a:${a.id}` : `ip:${ip}`]);
+      ack({ ok: true });
+    } catch (e) {
+      if (!(e instanceof FeedbackError)) console.error('feedback:send failed:', e);
+      ack({ ok: false, error: e instanceof FeedbackError ? e.message : 'Could not send your feedback.' });
     }
   });
 
@@ -603,6 +644,6 @@ setInterval(() => {
   }
 }, 60_000).unref();
 
-Promise.all([accounts.init(), daily.ready, reports.ready, survival.ready]).finally(() => {
+Promise.all([accounts.init(), daily.ready, reports.ready, feedback.ready, survival.ready]).finally(() => {
   http.listen(PORT, () => console.log(`Quiz bowl server on http://localhost:${PORT} (accounts: ${accounts.ready ? accounts.kind : 'off'})`));
 });

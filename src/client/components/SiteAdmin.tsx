@@ -3,6 +3,7 @@ import type { Mode, Phase } from '../../shared/types';
 import { adminUnlockBadges, useAccount } from '../account';
 import { call } from '../socket';
 import { REPORT_REASONS, type ReportGroup } from '../../shared/reports';
+import { FEEDBACK_KINDS, type FeedbackItem } from '../../shared/feedback';
 import { Icon } from './Icon';
 
 interface RoomRow {
@@ -29,9 +30,12 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [shown, setShown] = useState<Set<string>>(new Set());
   const [reports, setReports] = useState<{ total: number; groups: ReportGroup[] } | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackItem[] | null>(null);
+  const [showDone, setShowDone] = useState(false);
 
   const loadReports = () => call<{ total: number; groups: ReportGroup[] }>('site:reports').then(setReports, (e) => setErr(e.message));
-  const load = () => Promise.all([call<Overview & { ok: true }>('site:overview').then(setO, (e) => setErr(e.message)), loadReports()]);
+  const loadFeedback = () => call<{ items: FeedbackItem[] }>('site:feedback').then((r) => setFeedback(r.items), (e) => setErr(e.message));
+  const load = () => Promise.all([call<Overview & { ok: true }>('site:overview').then(setO, (e) => setErr(e.message)), loadReports(), loadFeedback()]);
   useEffect(() => {
     void load();
     const t = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, REFRESH_MS);
@@ -60,6 +64,10 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
     const r = await call<{ closed: number }>('site:resolveReport', { source: g.source, questionId: g.questionId, status });
     await loadReports();
     return `${status === 'resolved' ? 'Resolved' : 'Dismissed'} ${r.closed} report${r.closed === 1 ? '' : 's'}.`;
+  });
+  const markFeedback = (f: FeedbackItem, done: boolean) => void run(async () => {
+    await call('site:feedbackDone', f.id, done);
+    await loadFeedback();
   });
   const badges = (unlock: boolean) => me && run(async () => {
     await adminUnlockBadges(me.username, unlock);
@@ -118,6 +126,25 @@ export function SiteAdminPanel({ onClose }: { onClose: () => void }) {
                 <button className="btn small ok" disabled={busy} onClick={() => closeReports(g, 'resolved')}>Resolve</button>
                 <button className="btn small ghost" disabled={busy} onClick={() => closeReports(g, 'dismissed')}>Dismiss</button>
               </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="row between">
+          <h3>Feedback{feedback ? ` (${feedback.filter((f) => !f.done).length})` : ''}</h3>
+          {!!feedback?.some((f) => f.done) && <button className="btn small ghost" onClick={() => setShowDone(!showDone)}>{showDone ? 'Hide done' : 'Show done'}</button>}
+        </div>
+        {feedback && !feedback.some((f) => showDone || !f.done) && <p className="muted small">No new feedback.</p>}
+        <ul className="site-feedback">
+          {feedback?.filter((f) => showDone || !f.done).map((f) => (
+            <li key={f.id} className={f.done ? 'done' : ''}>
+              <div className="muted small">
+                <b>{FEEDBACK_KINDS.find((k) => k.id === f.kind)?.label ?? f.kind}</b>
+                {' · '}{f.username ? <a href={`/u/${f.username}`} target="_blank" rel="noreferrer">@{f.username}</a> : `${f.from} (guest)`}
+                {' · '}{f.where}{f.device ? ` · ${f.device}` : ''} · {ago(f.createdAt).replace('active now', 'just now')}
+              </div>
+              <p className="small">{f.message}</p>
+              <button className={`btn small ${f.done ? 'ghost' : 'ok'}`} disabled={busy} onClick={() => markFeedback(f, !f.done)}>{f.done ? 'Not done' : 'Done'}</button>
             </li>
           ))}
         </ul>
