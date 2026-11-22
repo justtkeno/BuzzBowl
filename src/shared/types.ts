@@ -52,7 +52,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   mode: 'ffa',
-  wpm: 150,
+  wpm: 200,
   answerSeconds: 10,
   bonusSeconds: 20,
   deadSeconds: 5,
