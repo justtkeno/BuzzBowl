@@ -1,6 +1,6 @@
 import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
-import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, type GameRecord, type PublicProfile } from '../../shared/accounts';
+import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, EMAIL_RE, type GameRecord, type PublicProfile } from '../../shared/accounts';
 import { adminDeleteAccount, adminResetProfile, fetchProfile, updateMe, useAccount } from '../account';
 import { useTheme } from '../App';
 import { AccountBar, CreatorBadge } from './Account';
@@ -93,15 +93,20 @@ function CopyLink() {
 }
 
 function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfile | null) => void }) {
+  const { me } = useAccount();
   const [displayName, setDisplayName] = useState(p.displayName);
   const [bio, setBio] = useState(p.bio);
+  const [email, setEmail] = useState(me?.email ?? '');
+  const [password, setPassword] = useState('');
+  const emailChanged = email.trim().toLowerCase() !== (me?.email ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
-      const u = await updateMe({ displayName, bio });
+      if (emailChanged && email.trim() && !EMAIL_RE.test(email.trim())) throw new Error('That email address doesn’t look right.');
+      const u = await updateMe({ displayName, bio, ...(emailChanged ? { email: email.trim(), password } : {}) });
       onDone({ ...p, displayName: u.displayName, bio: u.bio });
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -111,8 +116,16 @@ function EditProfile({ p, onDone }: { p: PublicProfile; onDone: (p: PublicProfil
       <label className="field"><span>Bio <span className="muted">({bio.length}/{BIO_MAX})</span></span>
         <textarea value={bio} maxLength={BIO_MAX} rows={2} placeholder="Favorite categories, team, school…" onChange={(e) => setBio(e.target.value)} />
       </label>
+      <label className="field"><span>Email <span className="muted">(only you see this; used to reset your password)</span></span>
+        <input type="email" value={email} maxLength={254} autoComplete="email" autoCapitalize="off" spellCheck={false} placeholder="you@example.com" onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      {emailChanged && (
+        <label className="field"><span>Current password <span className="muted">(needed to change your email)</span></span>
+          <input type="password" value={password} autoComplete="current-password" onChange={(e) => setPassword(e.target.value)} />
+        </label>
+      )}
       {err && <p className="error">{err}</p>}
-      <div className="row gap"><button className="btn primary small" disabled={busy || !displayName.trim()}>Save</button><button type="button" className="btn ghost small" onClick={() => onDone(null)}>Cancel</button></div>
+      <div className="row gap"><button className="btn primary small" disabled={busy || !displayName.trim() || (emailChanged && !password)}>Save</button><button type="button" className="btn ghost small" onClick={() => onDone(null)}>Cancel</button></div>
     </form>
   );
 }

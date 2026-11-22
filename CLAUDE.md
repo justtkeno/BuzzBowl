@@ -21,7 +21,7 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - `server/rooms/store.ts`: `RoomStore` interface, in-memory implementation
 - `server/game/`: pure logic: `text.ts` (normalizing, typo tolerance), `answerLine.ts` (parsing answer lines), `answerCheck.ts`, `scoring.ts`
 - `server/questions/`: QBReader / built-in catalog (`catalog/`, original questions) / sample / upload providers
-- `server/accounts/`: sign-up, sessions, profiles, game history, admin (`ADMIN_ACCOUNT_IDS`)
+- `server/accounts/`: sign-up, sessions, profiles, game history, admin (`ADMIN_ACCOUNT_IDS`), optional email + password reset (`mailer.ts`). Emails are private: never put them in a profile, room state or log.
 - `server/daily/`: daily challenge: one 10-tossup set per day (US Eastern), stored once, leaderboard
 - `client/components/`: `Stage.tsx` (main play view), `RoomView`, `Lobby`, `SettingsPanel`, `Scoreboard`, `Review`, `Rulings`, `Summary`, `Chat`, `ReaderQueue` (reader's Up next), `Daily`, `Account`/`Profile`, `AdminPanel`, `Spectate` (big-screen view at `/watch/CODE`, server viewer id `SPECTATOR`), `ScoreGraph`, `Feedback` (result/buzz flashes and sounds)
 - `client/install.ts` + `public/manifest.webmanifest` + `public/sw.js`: install as an app. The service worker must never intercept `/socket.io`, `/api` or `/healthz`.
@@ -42,7 +42,7 @@ TypeScript throughout, Node 20+. Server: Express + Socket.IO, run with `tsx`. Cl
 - Live at https://playtrivio.onrender.com (Render free plan, service `playtrivio`, Oregon, created by hand, not from a Blueprint). `trivio.onrender.com` and `buzzbowl.onrender.com` belong to other people on Render. Auto-deploy on `main` is on.
 - `render.yaml` matches the live service's settings but no Blueprint is connected to it. Connecting one would create a second service.
 - GitHub `justtkeno/BuzzBowl`. Render auto-deploys `main`, so changes go in on a feature branch and a pull request merged into `main`.
-- Render env vars (set in the Render dashboard, never in code): `DATABASE_URL` (Neon Postgres, also holds daily-challenge tables) and `ADMIN_ACCOUNT_IDS`. `/healthz` reports `"accounts":"postgres"` when the database is connected.
+- Render env vars (set in the Render dashboard, never in code): `DATABASE_URL` (Neon Postgres, also holds daily-challenge tables), `ADMIN_ACCOUNT_IDS`, and `SMTP_URL` + `MAIL_FROM` for password-reset emails (`server/accounts/mailer.ts`; without them production can't send resets). Reset links use `PUBLIC_URL`, else Render's `RENDER_EXTERNAL_URL`, never the request's Host header. `/healthz` reports `"accounts":"postgres"` when the database is connected.
 - The free plan sleeps after ~15 minutes idle; the first visit takes 30–60 s to wake it.
 - Without `DATABASE_URL` (local or cloud sessions), accounts and the daily challenge use JSON files in `data/`, never the live database. QBReader may be unreachable from sandboxes; the built-in catalog works offline.
 

@@ -62,8 +62,8 @@ export async function loadAccount() {
   }
 }
 
-export async function signup(username: string, password: string, displayName: string) {
-  const { user } = await api<{ user: Me }>('/signup', { method: 'POST', body: { username, password, displayName, settings: prefs.settings() ?? null } });
+export async function signup(username: string, password: string, displayName: string, email: string) {
+  const { user } = await api<{ user: Me }>('/signup', { method: 'POST', body: { username, password, displayName, email, settings: prefs.settings() ?? null } });
   prefs.setName(user.displayName);
   adopt(user);
   reconnect();
@@ -76,13 +76,26 @@ export async function login(username: string, password: string) {
   reconnect();
 }
 
+/** Emails a reset link to the account's address, if it has one. The answer is the same either way. */
+export async function forgotPassword(login: string) {
+  await api('/password/forgot', { method: 'POST', body: { login } });
+}
+
+/** Sets a new password with the token from the emailed link, and logs in. */
+export async function resetPassword(token: string, password: string) {
+  const { user } = await api<{ user: Me }>('/password/reset', { method: 'POST', body: { token, password } });
+  prefs.setName(user.displayName);
+  adopt(user);
+  reconnect();
+}
+
 export async function logout() {
   await api('/logout', { method: 'POST' }).catch(() => {});
   set(null);
   reconnect();
 }
 
-export async function updateMe(patch: { displayName?: string; bio?: string }) {
+export async function updateMe(patch: { displayName?: string; bio?: string; email?: string; password?: string }) {
   const { user } = await api<{ user: Me }>('/me', { method: 'PATCH', body: patch });
   set(user);
   return user;

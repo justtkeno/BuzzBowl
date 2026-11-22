@@ -1,10 +1,10 @@
 /* Accounts: login dialog, account bar, verified badge, profile page. Uses the tokens from styles.css. */
 
-input[type='password'], textarea {
+input[type='password'], input[type='email'], textarea {
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .65rem; min-width: 0;
 }
 textarea { resize: vertical; width: 100%; }
-input[type='password']:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input[type='password']:focus-visible, input[type='email']:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 a.btn { display: inline-block; text-decoration: none; color: inherit; }
 a.btn.primary { color: var(--accent-ink); }
@@ -24,6 +24,8 @@ a.btn.primary { color: var(--accent-ink); }
 .account-dialog { width: min(420px, 100%); display: flex; flex-direction: column; gap: .85rem; }
 .account-dialog .tabs { margin: -.25rem -.4rem .1rem; }
 .account-dialog p { margin: 0; }
+.account-dialog h2 { margin: 0; }
+.account-dialog .forgot { text-align: left; }
 
 /* ---------- profile page ---------- */
 .profile-page { min-height: 100vh; }
@@ -69,7 +71,7 @@ a.btn.primary { color: var(--accent-ink); }
 .standings .you { color: var(--text); font-weight: 600; }
 
 @media (max-width: 520px) {
-  input[type='password'], textarea { font-size: 16px; } /* stops iOS zooming in */
+  input[type='password'], input[type='email'], textarea { font-size: 16px; } /* stops iOS zooming in */
   .tile.best { grid-column: span 1; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tile.best { grid-column: 1 / -1; }

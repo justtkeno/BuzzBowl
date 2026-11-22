@@ -65,13 +65,15 @@ Everyone sees a note in chat when one of these happens. None of them are availab
 
 ### Accounts and profiles
 
-Anyone can still play as a guest. **Sign up** on the home screen (username + password) to get:
+Anyone can still play as a guest. **Sign up** on the home screen (username + password, plus an optional email for password resets) to get:
 
 - a public profile at `/u/<username>` with games, wins, points per game and per tossup, powers/tens/negs, buzz accuracy and depth, best game, a per-subject breakdown with your **best subject**, and recent games
 - a green check next to your name in rooms (links to your profile), and your seat back if you rejoin from another device
 - your display name and room settings remembered on any device
 
-Results are saved when the host ends a game, or when everyone walks away from a game with at least 3 tossups heard. Solo games count toward stats but not wins. Passwords are hashed with scrypt, sessions are an HTTP-only cookie, and login/signup are rate-limited. There is no email password reset.
+Results are saved when the host ends a game, or when everyone walks away from a game with at least 3 tossups heard. Solo games count toward stats but not wins. Passwords are hashed with scrypt, sessions are an HTTP-only cookie, and login/signup are rate-limited.
+
+**Email and password reset:** the email is optional, never shown to anyone else, and can be added or changed later under *Edit profile* (that takes the current password). You can log in with it instead of the username. **Log in → Forgot password?** emails a link that works once, for an hour, and logs out every other device when used. Each account gets at most 3 reset emails an hour, and the page never says whether an account or email exists. Emails go out over SMTP, set up as below. Without it, a local server prints the email in the terminal and a production server says resets aren't available.
 
 Accounts live in Postgres when `DATABASE_URL` is set, otherwise in `data/accounts-<port>.json` (fine for local use).
 
@@ -137,6 +139,13 @@ tests/                       Vitest unit tests (answer checking, scoring, room f
 **Render**: push this folder to GitHub, then in Render choose *New → Blueprint* and select the repo. `render.yaml` sets it up (build `npm ci && npm run build`, start `npm run serve`). Free instances sleep when idle, so the first visit after a while takes ~30 s.
 
 **Accounts need a database** on Render's free plan, because its disk is wiped on every deploy and restart. A free [Neon](https://neon.tech) Postgres works: create a project, copy its connection string (`postgresql://…`), and in Render open the service → *Environment* → add `DATABASE_URL` with that value. The server creates its tables on startup; `/healthz` shows `"accounts":"postgres"` when it's connected. Without `DATABASE_URL` the live site still runs, but accounts are lost on each restart.
+
+**Password-reset emails** need an SMTP account. In Render → *Environment*, add `SMTP_URL` and `MAIL_FROM`:
+
+- **Gmail** (simplest, up to ~500 emails a day): turn on 2-step verification for the Google account, create an *App password* at myaccount.google.com/apppasswords, then set `SMTP_URL` to `smtps://YOUR_ADDRESS%40gmail.com:APP_PASSWORD@smtp.gmail.com:465` (the `@` in the address becomes `%40`; remove the spaces from the app password) and `MAIL_FROM` to `Trivio <YOUR_ADDRESS@gmail.com>`.
+- **Brevo** (free, 300 a day, no domain needed): verify a sender address, create an SMTP key, then set `SMTP_URL` to `smtp://LOGIN:SMTP_KEY@smtp-relay.brevo.com:587` and `MAIL_FROM` to `Trivio <that verified address>`.
+
+Reset links point at Render's own URL for the service (`RENDER_EXTERNAL_URL`). On a custom domain or another host, set `PUBLIC_URL` (e.g. `https://trivio.example.com`).
 
 **Fly.io**: install `flyctl`, then from this folder:
 

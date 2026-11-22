@@ -5,6 +5,9 @@ import type { CategoryStats, Mode } from './types';
 export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 export const PASSWORD_MIN = 8;
 export const BIO_MAX = 200;
+/** Loose on purpose: something@something.tld. */
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_MAX = 254;
 
 /** The logged-in user, as they see themselves. */
 export interface Me {
@@ -12,6 +15,8 @@ export interface Me {
   username: string;
   displayName: string;
   bio: string;
+  /** For password resets only. Never shown to anyone else. */
+  email: string | null;
   createdAt: number;
   /** Site admin (the creator): can take the host seat in any room and moderate accounts. */
   admin: boolean;

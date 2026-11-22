@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../shared/types';
 import { Home } from './components/Home';
+import { ResetPassword } from './components/Account';
 import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
@@ -18,6 +19,7 @@ export function App() {
   if (watch) return <Spectate code={watch} />;
   const profile = profileName();
   if (profile) return <Profile username={profile} />;
+  if (location.pathname === '/reset') return <ResetPassword />;
   return <Player />;
 }
 

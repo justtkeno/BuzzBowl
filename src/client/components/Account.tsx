@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { PASSWORD_MIN, USERNAME_RE } from '../../shared/accounts';
-import { login, logout, signup, useAccount } from '../account';
+import { EMAIL_RE, PASSWORD_MIN, USERNAME_RE } from '../../shared/accounts';
+import { forgotPassword, login, logout, resetPassword, signup, useAccount } from '../account';
+import { useTheme } from '../App';
 import '../accounts.css';
 
 /** Small check mark next to a logged-in player's name, linking to their profile. Admins get a creator badge too. */
@@ -58,15 +59,17 @@ export function AccountBar() {
 }
 
 export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup'; onClose: () => void }) {
-  const [tab, setTab] = useState(initial);
+  const [tab, setTab] = useState<'login' | 'signup' | 'forgot'>(initial);
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
   const first = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { first.current?.focus(); setErr(null); }, [tab]);
+  useEffect(() => { first.current?.focus(); setErr(null); setSent(false); }, [tab]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -76,14 +79,17 @@ export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const u = username.trim();
+    const em = email.trim();
     if (tab === 'signup') {
       if (!USERNAME_RE.test(u)) return setErr('Usernames are 3–20 letters, numbers or underscores.');
+      if (em && !EMAIL_RE.test(em)) return setErr('That email address doesn’t look right.');
       if (password.length < PASSWORD_MIN) return setErr(`Passwords need at least ${PASSWORD_MIN} characters.`);
     }
     setBusy(true);
     setErr(null);
     try {
-      if (tab === 'signup') await signup(u, password, displayName.trim() || u);
+      if (tab === 'forgot') { await forgotPassword(u); setSent(true); return; }
+      if (tab === 'signup') await signup(u, password, displayName.trim() || u, em);
       else await login(u, password);
       onClose();
     } catch (e: any) {
@@ -92,6 +98,36 @@ export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup
       setBusy(false);
     }
   };
+
+  if (tab === 'forgot') {
+    return (
+      <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        <form className="modal account-dialog" onSubmit={submit} aria-label="Reset your password">
+          <h2>Reset your password</h2>
+          {sent ? (
+            <>
+              <p>If that account has an email address, a reset link is on its way. It works for an hour. Check your spam folder too.</p>
+              <p className="muted small">No email on the account? Then it can’t be reset. You can make a new account.</p>
+              <div className="row gap end"><button type="button" className="btn primary" onClick={() => setTab('login')}>Back to log in</button></div>
+            </>
+          ) : (
+            <>
+              <p className="muted small">We’ll email a link to the address on your account.</p>
+              <label className="field">
+                <span>Username or email</span>
+                <input ref={first} value={username} maxLength={254} autoComplete="username" autoCapitalize="off" spellCheck={false} onChange={(e) => setUsername(e.target.value)} />
+              </label>
+              {err && <p className="error">{err}</p>}
+              <div className="row gap end">
+                <button type="button" className="btn ghost" onClick={() => setTab('login')}>Back</button>
+                <button className="btn primary" disabled={busy || !username.trim()}>Send reset link</button>
+              </div>
+            </>
+          )}
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-back" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -102,13 +138,19 @@ export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup
         </div>
         {tab === 'signup' && <p className="muted small">An account keeps your stats from every game on a public profile, puts a check mark by your name, and remembers your name and room settings on any device.</p>}
         <label className="field">
-          <span>Username</span>
-          <input ref={first} value={username} maxLength={20} autoComplete="username" autoCapitalize="off" spellCheck={false} onChange={(e) => setUsername(e.target.value)} placeholder={tab === 'signup' ? 'letters, numbers, _' : ''} />
+          <span>{tab === 'signup' ? 'Username' : 'Username or email'}</span>
+          <input ref={first} value={username} maxLength={tab === 'signup' ? 20 : 254} autoComplete="username" autoCapitalize="off" spellCheck={false} onChange={(e) => setUsername(e.target.value)} placeholder={tab === 'signup' ? 'letters, numbers, _' : ''} />
         </label>
         {tab === 'signup' && (
           <label className="field">
             <span>Display name <span className="muted">(what others see in games; optional)</span></span>
             <input value={displayName} maxLength={24} onChange={(e) => setDisplayName(e.target.value)} placeholder={username || 'e.g. Alex'} />
+          </label>
+        )}
+        {tab === 'signup' && (
+          <label className="field">
+            <span>Email <span className="muted">(optional, to reset a forgotten password; never shown)</span></span>
+            <input type="email" value={email} maxLength={254} autoComplete="email" autoCapitalize="off" spellCheck={false} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
           </label>
         )}
         <label className="field">
@@ -117,10 +159,60 @@ export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup
         </label>
         {err && <p className="error">{err}</p>}
         <div className="row gap end">
+          {tab === 'login' && <button type="button" className="link grow forgot" onClick={() => setTab('forgot')}>Forgot password?</button>}
           <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" disabled={busy || !username.trim() || !password}>{tab === 'signup' ? 'Create account' : 'Log in'}</button>
         </div>
-        {tab === 'signup' && <p className="muted small">There’s no email reset yet, so pick a password you’ll remember.</p>}
+        {tab === 'signup' && !email.trim() && <p className="muted small">Without an email, a forgotten password can’t be reset. You can add one later on your profile.</p>}
+      </form>
+    </div>
+  );
+}
+
+/** The page an emailed reset link opens (/reset#token). */
+export function ResetPassword() {
+  useTheme();
+  const [token] = useState(() => location.hash.slice(1));
+  const [password, setPassword] = useState('');
+  const [again, setAgain] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    document.title = 'Reset password · Trivio';
+    // Keep the token out of the address bar and history once it's read.
+    if (token) history.replaceState(null, '', '/reset');
+  }, [token]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < PASSWORD_MIN) return setErr(`Passwords need at least ${PASSWORD_MIN} characters.`);
+    if (password !== again) return setErr('The two passwords don’t match.');
+    setBusy(true); setErr(null);
+    try { await resetPassword(token, password); setDone(true); } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="modal-back reset-page">
+      <form className="modal account-dialog" onSubmit={submit} aria-label="Choose a new password">
+        <h2>Choose a new password</h2>
+        {!token ? (
+          <><p>This link is missing its code. Open the link from the email again, or ask for a new one from Log in → Forgot password.</p><a className="btn primary" href="/">Go to Trivio</a></>
+        ) : done ? (
+          <><p>Your password is changed and you’re logged in. Any other devices were logged out.</p><a className="btn primary" href="/">Go to Trivio</a></>
+        ) : (
+          <>
+            <label className="field"><span>New password</span>
+              <input type="password" autoFocus value={password} autoComplete="new-password" placeholder={`at least ${PASSWORD_MIN} characters`} onChange={(e) => setPassword(e.target.value)} />
+            </label>
+            <label className="field"><span>Type it again</span>
+              <input type="password" value={again} autoComplete="new-password" onChange={(e) => setAgain(e.target.value)} />
+            </label>
+            {err && <p className="error">{err}</p>}
+            <div className="row gap end"><a className="btn ghost" href="/">Cancel</a><button className="btn primary" disabled={busy || !password || !again}>Save password</button></div>
+          </>
+        )}
       </form>
     </div>
   );
