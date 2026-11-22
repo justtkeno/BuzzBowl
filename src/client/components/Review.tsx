@@ -11,7 +11,7 @@ export function Review({ s, onClose }: { s: PublicState; onClose: () => void }) 
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Question review">
-        <div className="row between"><h2>Review questions</h2><button className="btn ghost icon" onClick={onClose} aria-label="Close"><Icon name="close" /></button></div>
+        <div className="row between"><h2>Review questions</h2><button className="btn ghost icon close-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button></div>
         {s.review.length === 0 && <p className="muted">Finished tossups show up here with full text, answer lines and where everyone buzzed.</p>}
         {s.review.map((q) => (
           <div key={q.num} className={`review-item ${open === q.num ? 'open' : ''}`}>

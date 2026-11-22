@@ -56,7 +56,7 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal settings-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={only ? 'Change questions' : 'Room settings'}>
-        <div className="row between"><h2>{only ? 'Change questions' : 'Settings'}</h2><button className="btn ghost icon" onClick={onClose} aria-label="Close"><Icon name="close" /></button></div>
+        <div className="row between"><h2>{only ? 'Change questions' : 'Settings'}</h2><button className="btn ghost icon close-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button></div>
         {s.phase !== 'lobby' && <p className="muted small settings-note">{only
           ? `${midGame ? 'The question being read now finishes as is. ' : ''}New questions start with the next tossup, and everyone sees a note in chat.`
           : `Changes apply right away${midGame ? ', and a clock that is already running grows or shrinks to match' : ''}. Points already scored stay as they are. New questions start with the next tossup. Everyone sees a note in chat.`}</p>}
