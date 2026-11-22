@@ -24,6 +24,7 @@ import { Summary } from './Summary';
 import { act, roles, toast } from './util';
 import { useReadAloud } from '../speech';
 import { Icon } from './Icon';
+import { Tutorial } from './Tutorial';
 
 interface Props {
   state: PublicState; chat: ChatMessage[]; connected: boolean;
@@ -42,6 +43,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   useReadAloud(s);
   const topbar = useTopbarHeight();
   const [showSettings, setShowSettings] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const [showQuestions, setShowQuestions] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
@@ -160,6 +162,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
                 {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}><Icon name="users" /> Players</button>}
                 {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}><Icon name="shield" /> Admin</button>}
                 {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}><Icon name="flag" /> {s.survival ? 'End run' : 'End game'}</button>}
+                <button role="menuitem" onClick={() => setShowTour(true)}><Icon name="help" /> How to play</button>
                 <button role="menuitem" onClick={leave}><Icon name="leave" /> Leave room</button>
               </div>
             </>
@@ -220,6 +223,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
           </div>
         </div>
       )}
+      {showTour && <Tutorial onClose={() => setShowTour(false)} />}
       {showSettings && <SettingsPanel s={s} onClose={() => setShowSettings(false)} />}
       {showQuestions && <SettingsPanel s={s} only="questions" onClose={() => setShowQuestions(false)} />}
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
