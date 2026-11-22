@@ -11,6 +11,7 @@ import { InstallButton } from './InstallButton';
 import { Icon } from './Icon';
 import { Tutorial, markTourSeen, tourSeen } from './Tutorial';
 import { SendFeedback } from './SendFeedback';
+import { AppSettings } from './AppSettings';
 
 interface Props {
   initialCode: string | null;
@@ -28,6 +29,7 @@ interface Props {
 
 export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily, onSurvival, dailyOpen, survivalOpen }: Props) {
   const [tour, setTour] = useState(false);
+  const [appSettings, setAppSettings] = useState(false);
   const [tourDone, setTourDone] = useState(tourSeen);
   const [name, setName] = useState(() => prefs.name() || randomName());
   const [code, setCode] = useState(initialCode ?? '');
@@ -88,10 +90,15 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
         {!connected && <p className="warn">Connecting to server…</p>}
         {(err || error) && <p className="error">{err || error}</p>}
         <p className="muted small">Questions come from <a href="https://www.qbreader.org" target="_blank" rel="noreferrer">QBReader</a>, hundreds of built-in questions, or a packet you upload.</p>
-        <button className="link how-link" onClick={() => setTour(true)}>How to play</button>
+        <div className="home-links">
+          <button className="link" onClick={() => setTour(true)}>How to play</button>
+          <span aria-hidden="true">·</span>
+          <button className="link" onClick={() => setAppSettings(true)}>Settings</button>
+        </div>
         <InstallButton />
         <button type="button" className="link small feedback-link" onClick={() => setFeedback(true)}><Icon name="chat" /> Send feedback</button>
       </div>
+      {appSettings && <AppSettings onClose={() => setAppSettings(false)} />}
       {tour && <Tutorial onClose={() => { setTour(false); setTourDone(true); }} onPlay={initialCode ? undefined : () => run(() => onCreate(name.trim(), true))} />}
       {feedback && <SendFeedback where="home" name={name.trim()} onClose={() => setFeedback(false)} />}
       <FriendsTab disabled={busy || !connected} onJoin={(c) => run(() => onJoin(c, name.trim()))} />

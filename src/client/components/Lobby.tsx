@@ -44,9 +44,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
           <h3>Format</h3>
           <ul className="facts">
             <li>{s.settings.mode === 'teams' ? 'Teams (up to 4 each)' : party ? 'Party (free-for-all)' : 'Free-for-all'}</li>
-            {(s.settings.readAloud || s.settings.topicVote) && (
-              <li>{[s.settings.readAloud && 'Read aloud', s.settings.topicVote && 'players vote on topics'].filter(Boolean).join(' · ')}</li>
-            )}
+            {s.settings.topicVote && <li>Players vote on topics</li>}
             <li>{s.settings.powers ? `Powers ${s.settings.powerValue}` : 'No powers'} · {s.settings.tenValue} · {s.settings.negs ? `negs ${s.settings.negValue}` : 'no negs'}{s.settings.bounty ? ' · bounty tossups' : ''}</li>
             <li>{s.settings.bonuses ? `Bonuses on (${s.settings.bonusSeconds}s per part)` : 'Tossups only'}</li>
             <li>{s.settings.gameLength ? `${s.settings.gameLength} tossups` : 'No set length'} · {s.settings.wpm} wpm · {s.settings.answerSeconds}s to answer</li>
@@ -55,8 +53,8 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
           {r.isController && (
             <div className="row gap wrap">
               <button className="btn" onClick={onSettings}>Change settings</button>
-              <button className={`btn ${party ? 'ghost' : ''}`} onClick={() => act('settings:update', party ? { readAloud: false, topicVote: false } : { mode: 'ffa', readAloud: true, topicVote: true })}
-                title="Free-for-all, the app reads each question out loud, and players vote on the next topic">
+              <button className={`btn ${party ? 'ghost' : ''}`} onClick={() => act('settings:update', party ? { topicVote: false } : { mode: 'ffa', topicVote: true })}
+                title="Free-for-all, and players vote on the next topic">
                 {party ? 'Turn off party mode' : 'Party mode'}
               </button>
             </div>
@@ -68,9 +66,9 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
           {reader ? (
             <p><b>{reader.name}</b> will read the questions aloud and run the game{r.isReader ? ' (that’s you!)' : ''}.{r.isReader && <span className="muted small"> You can change settings and questions at any time, set up teams and captains, rule on answers and protests, and pause or end the match.</span>}</p>
           ) : (
-            <p className="muted">No reader: the app reads each tossup {s.settings.readAloud ? 'out loud and ' : ''}on screen at {s.settings.wpm} wpm. A reader sees every question ahead of time, reads it out loud (in person or on a call), controls the pace, rules on answers, and decides when to move on.</p>
+            <p className="muted">No reader: the app shows each tossup word by word at {s.settings.wpm} wpm. A reader sees every question ahead of time, reads it out loud (in person or on a call), controls the pace, rules on answers, and decides when to move on.</p>
           )}
-          {reader && (s.settings.readAloud || s.settings.topicVote) && <p className="muted small">While someone holds the reader seat, they read instead of the app and there’s no topic vote.</p>}
+          {reader && s.settings.topicVote && <p className="muted small">While someone holds the reader seat, there’s no topic vote.</p>}
           {!s.readerId && <button className="btn" onClick={() => act('reader:set', r.me)}>Be the reader</button>}
           {r.isReader && <button className="btn ghost" onClick={() => act('reader:set', null)}>Leave reader seat</button>}
           {r.isHost && reader && !r.isReader && <button className="btn ghost" onClick={() => act('reader:set', null)}>Remove reader</button>}

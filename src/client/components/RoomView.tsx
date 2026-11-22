@@ -1,9 +1,9 @@
 import { Logo } from './Logo';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../../shared/types';
-import { DisplayMenu, DisplayPanel } from './Display';
+import { AppSettings } from './AppSettings';
 import { prefs } from '../socket';
-import { play, setSoundOn, soundOn, BUZZ_SOUNDS, buzzSound, cycleBuzzSound, setBuzzSound, type BuzzSound } from '../sounds';
+
 import { AdminPanel } from './AdminPanel';
 import { Announcement } from './Announcement';
 import { PlayersPanel } from './PlayersPanel';
@@ -22,7 +22,6 @@ import { SettingsPanel } from './SettingsPanel';
 import { Stage } from './Stage';
 import { Summary } from './Summary';
 import { act, roles, toast } from './util';
-import { useReadAloud } from '../speech';
 import { SendFeedback } from './SendFeedback';
 import { Icon } from './Icon';
 import { Tutorial } from './Tutorial';
@@ -41,7 +40,6 @@ const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n 
 
 export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, onJoinRoom, onSurvival }: Props) {
   const r = roles(s);
-  useReadAloud(s);
   const topbar = useTopbarHeight();
   const [showSettings, setShowSettings] = useState(false);
   const [showTour, setShowTour] = useState(false);
@@ -54,15 +52,12 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   const [menu, setMenu] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [toastMsg, setToast] = useState<string | null>(null);
-  const [showDisplay, setShowDisplay] = useState(false);
+  const [showAppSettings, setShowAppSettings] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [tab, setTab] = useState<Tab>('board');
-  const [sound, setSound] = useState(soundOn());
-  const [buzz, setBuzz] = useState(buzzSound());
   const flash = useFeedback(s);
   const buzzFlash = useBuzzFlash(s);
   const achievement = useAchievements(s);
-  const toggleSound = () => { setSoundOn(!sound); setSound(!sound); if (!sound) play('correct'); };
   const midGame = s.phase !== 'lobby' && s.phase !== 'gameOver';
   // Phones shouldn't dim or lock while a question is being read.
   useWakeLock(midGame && !s.paused);
@@ -141,9 +136,8 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         {canModerate && <button className="btn ghost hide-sm" onClick={() => setShowPlayers(true)} title="Kick, ban or mute players"><Icon name="users" /> Players</button>}
         {isAdmin && <button className="btn ghost hide-sm" onClick={() => setShowAdmin(true)} title="Admin tools"><Icon name="shield" /> Admin</button>}
         <button className="btn ghost hide-sm" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
-        {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Settings</button>}
-        <SoundMenu sound={sound} onToggle={toggleSound} />
-        <DisplayMenu />
+        {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Game settings</button>}
+        <button className="btn ghost hide-sm" onClick={() => setShowAppSettings(true)} title="Your settings: sound, volume, text size, theme" aria-label="Your settings"><Icon name="gear" /></button>
         <button className="btn ghost hide-sm" onClick={leave}>Leave</button>
         <div className="menu-wrap show-sm">
           <button className="btn ghost menu-btn" aria-label="More" aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯</button>
@@ -153,11 +147,9 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
               <div className="menu" role="menu" onClick={() => setMenu(false)}>
                 {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}><Icon name="qr" /> Invite (QR code)</button>}
                 <button role="menuitem" onClick={() => setShowReview(true)}><Icon name="list" /> Review questions{s.review.length ? ` (${s.review.length})` : ''}</button>
-                {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}><Icon name="sliders" /> Settings</button>}
+                {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}><Icon name="sliders" /> Game settings</button>}
                 {!r.fixed && <button role="menuitem" onClick={openBigScreen}><Icon name="screen" /> Big-screen view</button>}
-                <button role="menuitem" onClick={toggleSound}>{sound ? <><Icon name="mute" /> Sound off</> : <><Icon name="volume" /> Sound on</>}</button>
-                {sound && <button role="menuitem" onClick={(e) => { e.stopPropagation(); setBuzz(cycleBuzzSound()); }}><Icon name="volume" /> Buzz sound: {BUZZ_SOUNDS[buzz]}</button>}
-                <button role="menuitem" onClick={() => setShowDisplay(true)}><Icon name="text" /> Display: text size &amp; theme</button>
+                <button role="menuitem" onClick={() => setShowAppSettings(true)}><Icon name="gear" /> Settings <span className="menu-hint">sound, text size, theme</span></button>
                 {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}><Icon name="users" /> Players</button>}
                 {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}><Icon name="shield" /> Admin</button>}
                 {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}><Icon name="flag" /> {s.survival ? 'End run' : 'End game'}</button>}
@@ -224,7 +216,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         </div>
       )}
       {showTour && <Tutorial onClose={() => setShowTour(false)} />}
-      {showDisplay && <DisplayPanel onClose={() => setShowDisplay(false)} />}
+      {showAppSettings && <AppSettings onClose={() => setShowAppSettings(false)} />}
       {showSettings && <SettingsPanel s={s} onClose={() => setShowSettings(false)} />}
       {showQuestions && <SettingsPanel s={s} only="questions" onClose={() => setShowQuestions(false)} />}
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
@@ -354,34 +346,3 @@ function useTopbarHeight() {
   return ref;
 }
 
-/** Computers: the speaker button opens a small menu with sound on/off and the buzz sound for this device. */
-function SoundMenu({ sound, onToggle }: { sound: boolean; onToggle: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [buzz, setBuzz] = useState(buzzSound());
-  const pick = (v: BuzzSound) => { setBuzzSound(v); setBuzz(v); };
-  return (
-    <div className="menu-wrap hide-sm">
-      <button className="btn ghost" onClick={() => setOpen(!open)} title="Sound" aria-label={sound ? 'Sound on' : 'Sound off'} aria-expanded={open}>
-        {sound ? <Icon name="volume" /> : <Icon name="mute" />}
-      </button>
-      {open && (
-        <>
-          <div className="menu-back" onClick={() => setOpen(false)} />
-          <div className="menu" role="menu">
-            <button role="menuitemcheckbox" aria-checked={sound} onClick={onToggle}>{sound ? <><Icon name="mute" /> Turn sound off</> : <><Icon name="volume" /> Turn sound on</>}</button>
-            {sound && (
-              <>
-                <div className="menu-label">Buzz sound</div>
-                {(Object.keys(BUZZ_SOUNDS) as BuzzSound[]).map((v) => (
-                  <button key={v} role="menuitemradio" aria-checked={buzz === v} className={buzz === v ? 'on' : ''} onClick={() => pick(v)}>
-                    <span className="menu-check">{buzz === v && <Icon name="check" />}</span>{BUZZ_SOUNDS[v]}
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}

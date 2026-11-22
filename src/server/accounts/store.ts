@@ -14,6 +14,10 @@ export interface User {
   bio: string;
   settings: Record<string, unknown> | null;
   createdAt: number;
+  /** Lowercased, unique. Only used for account email (password resets, confirming it); never shown to others. */
+  email: string | null;
+  /** The owner opened the confirmation link sent to `email`. Optional: resets work either way. */
+  emailVerified?: boolean;
   /** Who can see their profile stats. Missing means public. */
   visibility?: Visibility;
   /** Stat ids pinned to the top of their profile. */
@@ -28,7 +32,10 @@ export interface User {
 /** A friend request from `from` to `to`; once accepted, the two are friends. */
 export interface FriendLink { from: string; to: string; accepted: boolean; at: number }
 
-export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges' | 'color' | 'frame'>>;
+/** A one-time emailed link: a password reset, or confirming an email address (`email` is the address it was sent to). */
+export interface AccountToken { hash: string; userId: string; kind: 'reset' | 'confirm'; email: string | null; expiresAt: number; createdAt: number }
+
+export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges' | 'color' | 'frame' | 'email' | 'emailVerified' | 'passwordHash'>>;
 
 /** Where accounts live. Postgres in production, a JSON file for local development and tests. */
 export interface AccountStore {
@@ -37,6 +44,7 @@ export interface AccountStore {
   createUser(u: User): Promise<User | null>;
   userById(id: string): Promise<User | null>;
   userByName(username: string): Promise<User | null>;
+  userByEmail(email: string): Promise<User | null>;
   updateUser(id: string, patch: UserPatch): Promise<void>;
   /** Removes the user with their sessions and games. */
   deleteUser(id: string): Promise<void>;
@@ -44,6 +52,13 @@ export interface AccountStore {
   /** The user id for a live session, or null. */
   session(tokenHash: string): Promise<string | null>;
   deleteSession(tokenHash: string): Promise<void>;
+  /** Logs the user out everywhere (after a password reset). */
+  deleteSessionsOf(userId: string): Promise<void>;
+  createToken(t: AccountToken): Promise<void>;
+  /** How many links of this kind were made for this user since `since`. */
+  countTokens(userId: string, kind: AccountToken['kind'], since: number): Promise<number>;
+  /** Uses up a link: who it was for, if it was live and of this kind, else null. Either way it can't be used again. */
+  takeToken(tokenHash: string, kind: AccountToken['kind']): Promise<{ userId: string; email: string | null } | null>;
   addGames(entries: { userId: string; game: GameRecord }[]): Promise<void>;
   /** Newest first. */
   games(userId: string, limit: number): Promise<GameRecord[]>;
@@ -65,12 +80,13 @@ interface FileData {
   users: User[];
   sessions: { hash: string; userId: string; expiresAt: number }[];
   games: { userId: string; game: GameRecord }[];
+  tokens: AccountToken[];
   friends: FriendLink[];
 }
 
 export class FileAccountStore implements AccountStore {
   readonly kind = 'file';
-  private d: FileData = { users: [], sessions: [], games: [], friends: [] };
+  private d: FileData = { users: [], sessions: [], games: [], tokens: [], friends: [] };
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private file: string | null) {}
@@ -78,7 +94,8 @@ export class FileAccountStore implements AccountStore {
   async init() {
     if (!this.file || !existsSync(this.file)) return;
     try {
-      this.d = { users: [], sessions: [], games: [], friends: [], ...JSON.parse(readFileSync(this.file, 'utf8')) };
+      this.d = { users: [], sessions: [], games: [], tokens: [], friends: [], ...JSON.parse(readFileSync(this.file, 'utf8')) };
+      for (const u of this.d.users) u.email ??= null;
     } catch (e) {
       console.error(`Could not read ${this.file}:`, e);
     }
@@ -99,6 +116,8 @@ export class FileAccountStore implements AccountStore {
       mkdirSync(dirname(this.file), { recursive: true });
       const now = Date.now();
       this.d.sessions = this.d.sessions.filter((s) => s.expiresAt > now);
+      // Used and expired links stay a day so they still count toward the hourly limit.
+      this.d.tokens = this.d.tokens.filter((t) => t.createdAt > now - 7 * 86_400_000);
       writeFileSync(`${this.file}.tmp`, JSON.stringify(this.d));
       renameSync(`${this.file}.tmp`, this.file);
     } catch (e) {
@@ -107,7 +126,7 @@ export class FileAccountStore implements AccountStore {
   }
 
   async createUser(u: User) {
-    if (this.d.users.some((x) => x.key === u.key)) return null;
+    if (this.d.users.some((x) => x.key === u.key || (u.email && x.email === u.email))) return null;
     this.d.users.push(structuredClone(u));
     this.save();
     return u;
@@ -116,6 +135,10 @@ export class FileAccountStore implements AccountStore {
   async userByName(username: string) {
     const key = username.toLowerCase();
     return structuredClone(this.d.users.find((u) => u.key === key) ?? null);
+  }
+  async userByEmail(email: string) {
+    const e = email.toLowerCase();
+    return structuredClone(this.d.users.find((u) => u.email === e) ?? null);
   }
   async updateUser(id: string, patch: UserPatch) {
     const u = this.d.users.find((x) => x.id === id);
@@ -127,6 +150,7 @@ export class FileAccountStore implements AccountStore {
     this.d.users = this.d.users.filter((u) => u.id !== id);
     this.d.sessions = this.d.sessions.filter((s) => s.userId !== id);
     this.d.games = this.d.games.filter((g) => g.userId !== id);
+    this.d.tokens = this.d.tokens.filter((t) => t.userId !== id);
     this.d.friends = this.d.friends.filter((f) => f.from !== id && f.to !== id);
     this.save();
   }
@@ -141,6 +165,26 @@ export class FileAccountStore implements AccountStore {
   async deleteSession(hash: string) {
     this.d.sessions = this.d.sessions.filter((s) => s.hash !== hash);
     this.save();
+  }
+  async deleteSessionsOf(userId: string) {
+    this.d.sessions = this.d.sessions.filter((s) => s.userId !== userId);
+    this.save();
+  }
+  async createToken(t: AccountToken) {
+    this.d.tokens.push({ ...t });
+    this.save();
+  }
+  async countTokens(userId: string, kind: AccountToken['kind'], since: number) {
+    return this.d.tokens.filter((t) => t.userId === userId && t.kind === kind && t.createdAt >= since).length;
+  }
+  async takeToken(hash: string, kind: AccountToken['kind']) {
+    const t = this.d.tokens.find((x) => x.hash === hash && x.kind === kind);
+    if (!t) return null;
+    // Spent, but kept (expired) until it ages out so it still counts toward the rate limit.
+    const live = t.expiresAt > Date.now();
+    t.expiresAt = Math.min(t.expiresAt, Date.now());
+    this.save();
+    return live ? { userId: t.userId, email: t.email } : null;
   }
   async addGames(entries: { userId: string; game: GameRecord }[]) {
     this.d.games.push(...structuredClone(entries));
@@ -216,18 +260,31 @@ CREATE TABLE IF NOT EXISTS friends (
   PRIMARY KEY (from_id, to_id)
 );
 CREATE INDEX IF NOT EXISTS friends_to ON friends (to_id);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email) WHERE email IS NOT NULL;
+CREATE TABLE IF NOT EXISTS account_tokens (
+  hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  email TEXT,
+  expires_at BIGINT NOT NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS account_tokens_user ON account_tokens (user_id, kind, created_at);
 `;
 
 interface UserRow {
   id: string; username: string; key: string; password_hash: string; display_name: string; bio: string;
   settings: Record<string, unknown> | null; created_at: string; visibility: Visibility | null; pinned: string[] | null; granted_badges: string[] | null;
-  color: string | null; frame: string | null;
+  color: string | null; frame: string | null; email: string | null; email_verified: boolean | null;
 }
 const fromRow = (r: UserRow | undefined): User | null => r ? {
   id: r.id, username: r.username, key: r.key, passwordHash: r.password_hash, displayName: r.display_name,
   bio: r.bio, settings: r.settings, createdAt: Number(r.created_at),
   visibility: r.visibility ?? 'public', pinned: r.pinned ?? [], grantedBadges: r.granted_badges ?? [],
   ...(r.color ? { color: r.color } : {}), ...(r.frame ? { frame: r.frame } : {}),
+  email: r.email ?? null, emailVerified: !!r.email_verified,
 } : null;
 
 export class PgAccountStore implements AccountStore {
@@ -244,13 +301,14 @@ export class PgAccountStore implements AccountStore {
   async init() {
     await this.pool.query(SCHEMA);
     await this.pool.query('DELETE FROM sessions WHERE expires_at < $1', [Date.now()]);
+    await this.pool.query('DELETE FROM account_tokens WHERE created_at < $1', [Date.now() - 7 * 86_400_000]);
   }
 
   async createUser(u: User) {
     const r = await this.pool.query(
-      `INSERT INTO users (id, username, key, password_hash, display_name, bio, settings, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (key) DO NOTHING`,
-      [u.id, u.username, u.key, u.passwordHash, u.displayName, u.bio, u.settings, u.createdAt],
+      `INSERT INTO users (id, username, key, password_hash, display_name, bio, settings, created_at, email)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
+      [u.id, u.username, u.key, u.passwordHash, u.displayName, u.bio, u.settings, u.createdAt, u.email],
     );
     return r.rowCount ? u : null;
   }
@@ -260,8 +318,14 @@ export class PgAccountStore implements AccountStore {
   async userByName(username: string) {
     return fromRow((await this.pool.query<UserRow>('SELECT * FROM users WHERE key = $1', [username.toLowerCase()])).rows[0]);
   }
+  async userByEmail(email: string) {
+    return fromRow((await this.pool.query<UserRow>('SELECT * FROM users WHERE email = $1', [email.toLowerCase()])).rows[0]);
+  }
   async updateUser(id: string, patch: UserPatch) {
-    const cols: Record<keyof UserPatch, string> = { displayName: 'display_name', bio: 'bio', settings: 'settings', visibility: 'visibility', pinned: 'pinned', grantedBadges: 'granted_badges', color: 'color', frame: 'frame' };
+    const cols: Record<keyof UserPatch, string> = {
+      displayName: 'display_name', bio: 'bio', settings: 'settings', visibility: 'visibility', pinned: 'pinned', grantedBadges: 'granted_badges',
+      color: 'color', frame: 'frame', email: 'email', emailVerified: 'email_verified', passwordHash: 'password_hash',
+    };
     const keys = (Object.keys(patch) as (keyof UserPatch)[]).filter((k) => k in cols);
     if (!keys.length) return;
     const sets = keys.map((k, i) => `${cols[k]} = $${i + 2}`).join(', ');
@@ -282,6 +346,24 @@ export class PgAccountStore implements AccountStore {
   }
   async deleteSession(hash: string) {
     await this.pool.query('DELETE FROM sessions WHERE hash = $1', [hash]);
+  }
+  async deleteSessionsOf(userId: string) {
+    await this.pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]);
+  }
+  async createToken(t: AccountToken) {
+    await this.pool.query('INSERT INTO account_tokens (hash, user_id, kind, email, expires_at, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
+      [t.hash, t.userId, t.kind, t.email, t.expiresAt, t.createdAt]);
+  }
+  async countTokens(userId: string, kind: AccountToken['kind'], since: number) {
+    const r = await this.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM account_tokens WHERE user_id = $1 AND kind = $2 AND created_at >= $3', [userId, kind, since]);
+    return r.rows[0].n;
+  }
+  async takeToken(hash: string, kind: AccountToken['kind']) {
+    // Spend it atomically; the row stays (expired) so it still counts toward the rate limit.
+    const now = Date.now();
+    const r = await this.pool.query<{ user_id: string; email: string | null }>(
+      'UPDATE account_tokens SET expires_at = $3 WHERE hash = $1 AND kind = $2 AND expires_at > $3 RETURNING user_id, email', [hash, kind, now]);
+    return r.rows[0] ? { userId: r.rows[0].user_id, email: r.rows[0].email } : null;
   }
   async addGames(entries: { userId: string; game: GameRecord }[]) {
     for (const e of entries) {

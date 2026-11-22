@@ -10,6 +10,7 @@ import { MemoryRoomStore, newRoomCode, type RoomStore } from './rooms/store';
 import { SPECTATOR, type Settings } from '../shared/types';
 import { Accounts, type Presence } from './accounts/accounts';
 import { FileAccountStore, PgAccountStore } from './accounts/store';
+import { mailerFromEnv } from './accounts/mailer';
 import { Daily, dailyNumber, dayKey, playerKeyFor } from './daily/daily';
 import { FileDailyStore, PgDailyStore } from './daily/store';
 import { QBReaderProvider } from './questions/providers';
@@ -19,6 +20,8 @@ import { Feedback, FeedbackError } from './feedback/feedback';
 import { FileFeedbackStore, PgFeedbackStore } from './feedback/store';
 import { Survival } from './survival/survival';
 import { FileSurvivalStore, PgSurvivalStore } from './survival/store';
+import { Stats } from './stats/stats';
+import { FileStatsStore, PgStatsStore } from './stats/store';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -38,7 +41,7 @@ const store: RoomStore = new MemoryRoomStore();
 
 // Accounts live in Postgres when DATABASE_URL is set (production), otherwise in a local JSON file.
 const fileAccounts = process.env.DATABASE_URL ? null : new FileAccountStore(join(DATA_DIR, `accounts-${PORT}.json`));
-const accounts = new Accounts(fileAccounts ?? new PgAccountStore(process.env.DATABASE_URL!));
+const accounts = new Accounts(fileAccounts ?? new PgAccountStore(process.env.DATABASE_URL!), { mailer: mailerFromEnv() });
 // The daily challenge's questions and leaderboard sit next to the accounts.
 const daily = new Daily(
   process.env.DATABASE_URL ? new PgDailyStore(process.env.DATABASE_URL) : new FileDailyStore(join(DATA_DIR, `daily-${PORT}.json`)),
@@ -47,6 +50,8 @@ const daily = new Daily(
 // Players' reports of questions with a problem, for site admins to review.
 const reportStore = process.env.DATABASE_URL ? new PgReportStore(process.env.DATABASE_URL) : new FileReportStore(join(DATA_DIR, `reports-${PORT}.json`));
 const reports = new Reports(reportStore);
+// Owner stats: anonymous game summaries and daily visitor counts.
+const stats = new Stats(process.env.DATABASE_URL ? new PgStatsStore(process.env.DATABASE_URL) : new FileStatsStore(join(DATA_DIR, `stats-${PORT}.json`)));
 const feedback = new Feedback(process.env.DATABASE_URL ? new PgFeedbackStore(process.env.DATABASE_URL) : new FileFeedbackStore(join(DATA_DIR, `feedback-${PORT}.json`)));
 
 // Survival runs and their leaderboards, stored the same way.
@@ -166,6 +171,9 @@ function roomIO(code: string): RoomIO {
     gameOver(records) {
       accounts.record(records);
     },
+    gameSummary(summary) {
+      void stats.recordGame(summary);
+    },
     remove(playerId) {
       detach(code, playerId);
     },
@@ -231,7 +239,7 @@ setInterval(() => saveRooms(), 3000).unref();
 // Bots watch every room a few times a second and buzz / answer when their moment comes.
 setInterval(() => { for (const room of store.all()) botsFor(room).tick(); }, 100).unref();
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); reportStore.flush(); feedback.flush(); process.exit(0); });
+  process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); reportStore.flush(); feedback.flush(); stats.flush(); process.exit(0); });
 }
 
 /** Last invite per sender and friend, so nobody can spam someone with invites. */
@@ -326,7 +334,9 @@ io.on('connection', (socket) => {
   socket.on('daily:status', async ({ key }: { key?: string } = {}, ack: Ack) => {
     if (typeof ack !== 'function') return;
     try {
-      const status = await daily.status(playerKeyFor(accounts.of(socket)?.id, key));
+      const playerKey = playerKeyFor(accounts.of(socket)?.id, key);
+      void stats.visit(playerKey); // the home screen asks for this on every visit
+      const status = await daily.status(playerKey);
       ack({ ok: true, status });
     } catch (e) {
       console.error('daily:status failed:', e);
@@ -475,6 +485,17 @@ io.on('connection', (socket) => {
     } catch (e) {
       console.error('site:reports failed:', e);
       ack({ ok: false, error: 'Could not load question reports.' });
+    }
+  });
+
+  // Owner stats: visitors and games per day, popular modes.
+  socket.on('site:stats', async (ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    try {
+      ack({ ok: true, stats: await stats.view() });
+    } catch (e) {
+      console.error('site:stats failed:', e);
+      ack({ ok: false, error: 'Could not load stats.' });
     }
   });
 

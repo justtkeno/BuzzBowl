@@ -9,7 +9,6 @@ import { ScoreGraph } from './ScoreGraph';
 import { AnimatedScore } from './Scoreboard';
 import { BonusCard, QuestionSkeleton, TossupCard } from './Stage';
 import { colorFor } from './util';
-import { useReadAloud } from '../speech';
 import { Icon } from './Icon';
 
 /**
@@ -21,7 +20,6 @@ export function Spectate({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [connected, setConnected] = useState(socket.connected);
   useTheme();
-  useReadAloud(s);
 
   useEffect(() => {
     const watch = () => call<{ state: PublicState }>('room:watch', { code }).then((r) => { setS(r.state); setError(null); }, (e) => setError(e.message));

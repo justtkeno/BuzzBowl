@@ -280,7 +280,7 @@ const WAYS: { icon: IconName; name: string; what: string }[] = [
   { icon: 'play', name: 'Solo practice', what: 'just you (add bots to race against)' },
   { icon: 'flag', name: 'Daily challenge', what: 'the same 10 tossups for everyone, once a day' },
   { icon: 'bolt', name: 'Survival', what: 'keep going until you miss three' },
-  { icon: 'volume', name: 'Party mode', what: 'no reader needed: questions read aloud, players vote on topics' },
+  { icon: 'users', name: 'Party mode', what: 'everyone for themselves, and players vote on the next topic' },
 ];
 function WaysList() {
   return (

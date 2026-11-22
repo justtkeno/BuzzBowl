@@ -3,13 +3,14 @@ import { promisify } from 'node:util';
 import express, { type Request, type Response } from 'express';
 import type { Socket } from 'socket.io';
 import {
-  BIO_MAX, FRIENDS_MAX, PASSWORD_MIN, USERNAME_RE, summarize,
+  BIO_MAX, EMAIL_MAX, EMAIL_RE, FRIENDS_MAX, PASSWORD_MIN, USERNAME_RE, summarize,
   type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type ProfileView, type PublicProfile,
 } from '../../shared/accounts';
 import {
   BADGES, BADGE_BY_ID, VISIBILITIES, badgesFor, cleanPinned, colorById, earnedIds, frameById, isColor, isFrame, isUnlocked, lookFor,
   type Reward, type Visibility,
 } from '../../shared/profile';
+import type { Mailer } from './mailer';
 import type { AccountStore, FriendLink, User, UserPatch } from './store';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
@@ -19,6 +20,12 @@ const SESSION_DAYS = 60;
 /** Profiles are built from at most this many recent games. */
 const PROFILE_GAMES = 1000;
 const RECENT_GAMES = 15;
+/** A password-reset link works this long. */
+const RESET_MINUTES = 60;
+/** An email-confirmation link works this long. */
+const CONFIRM_MINUTES = 7 * 24 * 60;
+/** At most this many emails of each kind (reset, confirm) per account per hour. */
+const LINKS_PER_HOUR = 3;
 
 /** Who a socket is logged in as. */
 export interface SocketAccount { id: string; username: string; admin: boolean }
@@ -89,10 +96,13 @@ function readCookie(header: string | undefined, name: string): string | null {
 }
 
 const cleanName = (s: unknown) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
+const cleanEmail = (s: unknown) => String(s ?? '').trim().toLowerCase();
+const badEmail = (e: string) => e.length > EMAIL_MAX || !EMAIL_RE.test(e);
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export function toMe(u: User): Me {
   return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u), ...(isAdmin(u) ? { adminLocked } : {}), settings: u.settings,
-    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u) };
+    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u), email: u.email, emailVerified: !!u.email && !!u.emailVerified };
 }
 
 /** Tiny in-memory limiter for login/signup attempts, per IP. */
@@ -120,7 +130,59 @@ export class Accounts {
   /** Set by the server, which knows the sockets and rooms: where each of these accounts is right now. */
   presence: (accountIds: string[]) => Map<string, Presence> = () => new Map();
 
-  constructor(private store: AccountStore) {}
+  private mailer: Mailer | null;
+  /** Where reset links point. Never taken from request headers in production (they can be forged). */
+  private baseUrl: string | null;
+
+  constructor(private store: AccountStore, opts: { mailer?: Mailer | null; publicUrl?: string } = {}) {
+    this.mailer = opts.mailer ?? null;
+    const url = opts.publicUrl ?? process.env.PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL;
+    this.baseUrl = url ? url.replace(/\/+$/, '') : null;
+  }
+
+  private linkBase(req: Request) {
+    if (this.baseUrl) return this.baseUrl;
+    return process.env.NODE_ENV === 'production' ? null : `${req.protocol}://${req.get('host')}`;
+  }
+
+  /** Make a one-time link and email it. Quietly does nothing past the hourly limit. Returns whether it went out. */
+  private async sendLink(u: User, kind: 'reset' | 'confirm', base: string) {
+    if (!u.email || !this.mailer) return false;
+    if ((await this.store.countTokens(u.id, kind, Date.now() - 3600_000)) >= LINKS_PER_HOUR) return false;
+    const token = randomBytes(32).toString('base64url');
+    const minutes = kind === 'reset' ? RESET_MINUTES : CONFIRM_MINUTES;
+    const now = Date.now();
+    await this.store.createToken({ hash: sha256(token), userId: u.id, kind, email: u.email, expiresAt: now + minutes * 60_000, createdAt: now });
+    // In the fragment, so the token never reaches server logs or other sites.
+    const link = `${base}/${kind}#${token}`;
+    const name = escapeHtml(u.displayName), user = escapeHtml(u.username), href = escapeHtml(link);
+    const mail = kind === 'reset'
+      ? {
+        subject: 'Reset your Trivio password',
+        text: `Hi ${u.displayName},\n\nSomeone (hopefully you) asked to reset the password for @${u.username} on Trivio. `
+          + `Open this link within an hour to pick a new one:\n\n${link}\n\nIf it wasn’t you, ignore this email. Your password stays the same.\n`,
+        html: `<p>Hi ${name},</p><p>Someone (hopefully you) asked to reset the password for <b>@${user}</b> on Trivio. `
+          + `Open this link within an hour to pick a new one:</p><p><a href="${href}">Reset your password</a></p>`
+          + `<p style="color:#777">If it wasn’t you, ignore this email. Your password stays the same.</p>`,
+      }
+      : {
+        subject: 'Confirm your email for Trivio',
+        text: `Hi ${u.displayName},\n\nThis address was added to the Trivio account @${u.username}, so password-reset links can reach you. `
+          + `Confirm it here (optional, works for a week):\n\n${link}\n\nIf this isn’t your account, ignore this email.\n`,
+        html: `<p>Hi ${name},</p><p>This address was added to the Trivio account <b>@${user}</b>, so password-reset links can reach you. `
+          + `Confirm it here (optional, works for a week):</p><p><a href="${href}">Confirm your email</a></p>`
+          + `<p style="color:#777">If this isn’t your account, ignore this email.</p>`,
+      };
+    await this.mailer.send({ to: u.email, ...mail });
+    return true;
+  }
+
+  /** Send a confirmation in the background (after sign-up or an email change). Never throws. */
+  private confirmLater(u: User, req: Request) {
+    const base = this.linkBase(req);
+    if (!u.email || !base) return;
+    this.sendLink(u, 'confirm', base).catch((e) => console.error('Could not send a confirmation email:', e?.message ?? e));
+  }
 
   /** Extra profile sections from elsewhere (the daily challenge, survival), added when a profile is shown. */
   profileExtras?: (user: { id: string }) => Promise<Partial<PublicProfile>>;
@@ -292,24 +354,31 @@ export class Accounts {
       const username = String(req.body?.username ?? '').trim();
       const password = String(req.body?.password ?? '');
       const displayName = cleanName(req.body?.displayName) || username;
+      const email = cleanEmail(req.body?.email) || null;
       if (!USERNAME_RE.test(username)) return res.status(400).json({ error: 'Usernames are 3–20 letters, numbers or underscores.' });
+      if (email && badEmail(email)) return res.status(400).json({ error: 'That email address doesn’t look right.' });
       if (password.length < PASSWORD_MIN) return res.status(400).json({ error: `Passwords need at least ${PASSWORD_MIN} characters.` });
       if (password.length > 200) return res.status(400).json({ error: 'That password is too long.' });
       const settings = req.body?.settings && typeof req.body.settings === 'object' ? req.body.settings : null;
       const user: User = {
         id: newId(), username, key: username.toLowerCase(), passwordHash: await hashPassword(password),
-        displayName, bio: '', settings, createdAt: Date.now(),
+        displayName, bio: '', settings, createdAt: Date.now(), email,
       };
-      if (!(await this.store.createUser(user))) return res.status(409).json({ error: 'That username is taken.' });
+      if (!(await this.store.createUser(user))) {
+        const nameTaken = !!(await this.store.userByName(username));
+        return res.status(409).json({ error: nameTaken ? 'That username is taken.' : 'That email is already on another account.' });
+      }
       await this.startSession(req, res, user.id);
+      this.confirmLater(user, req);
       res.json({ user: toMe(user) });
     }));
 
     r.post('/login', wrap(async (req, res) => {
       if (limited(req, res)) return;
+      // Username or email.
       const username = String(req.body?.username ?? '').trim();
       const password = String(req.body?.password ?? '');
-      const u = username ? await this.store.userByName(username) : null;
+      const u = !username ? null : username.includes('@') ? await this.store.userByEmail(username) : await this.store.userByName(username);
       if (!u || !(await verifyPassword(password, u.passwordHash))) return res.status(401).json({ error: 'Wrong username or password.' });
       await this.startSession(req, res, u.id);
       res.json({ user: toMe(u) });
@@ -334,6 +403,19 @@ export class Accounts {
       }
       if ('bio' in b) patch.bio = String(b.bio ?? '').trim().slice(0, BIO_MAX);
       if ('settings' in b) patch.settings = b.settings && typeof b.settings === 'object' ? b.settings : null;
+      if ('email' in b) {
+        const email = cleanEmail(b.email) || null;
+        if (email !== u.email) {
+          // Whoever controls the email controls the account, so changing it takes the password.
+          if (limited(req, res)) return;
+          if (email && badEmail(email)) return res.status(400).json({ error: 'That email address doesn’t look right.' });
+          if (!(await verifyPassword(String(b.password ?? ''), u.passwordHash))) return res.status(403).json({ error: 'Enter your current password to change your email.' });
+          const other = email ? await this.store.userByEmail(email) : null;
+          if (other && other.id !== u.id) return res.status(409).json({ error: 'That email is already on another account.' });
+          patch.email = email;
+          patch.emailVerified = false;
+        }
+      }
       if ('visibility' in b) {
         if (!VISIBILITIES.includes(b.visibility)) return res.status(400).json({ error: 'Pick who can see your profile.' });
         patch.visibility = b.visibility;
@@ -350,7 +432,68 @@ export class Accounts {
         if (locked) return res.status(403).json({ error: `Earn the ${BADGE_BY_ID.get(locked.badge!)?.name ?? locked.badge} badge to unlock ${locked.name}.` });
       }
       await this.store.updateUser(u.id, patch);
+      if (patch.email) this.confirmLater({ ...u, ...patch }, req);
       res.json({ user: toMe({ ...u, ...patch }) });
+    }));
+
+    // ---------- password reset ----------
+
+    r.post('/password/forgot', wrap(async (req, res) => {
+      if (limited(req, res)) return;
+      const base = this.linkBase(req);
+      if (!this.mailer || !base) return res.status(503).json({ error: 'Password reset by email isn’t set up on this server yet.' });
+      const who = String(req.body?.login ?? '').trim();
+      const u = !who ? null : who.includes('@') ? await this.store.userByEmail(who) : await this.store.userByName(who);
+      // Same answer either way, so this can't be used to find out who has an account or which email they use.
+      res.json({ ok: true });
+      if (u) this.sendLink(u, 'reset', base).catch((e) => console.error('Could not send a password-reset email:', e?.message ?? e));
+    }));
+
+    r.post('/password/reset', wrap(async (req, res) => {
+      if (limited(req, res)) return;
+      const token = String(req.body?.token ?? '');
+      const password = String(req.body?.password ?? '');
+      // Check the new password first so a typo doesn't use up the link.
+      if (password.length < PASSWORD_MIN) return res.status(400).json({ error: `Passwords need at least ${PASSWORD_MIN} characters.` });
+      if (password.length > 200) return res.status(400).json({ error: 'That password is too long.' });
+      const t = token ? await this.store.takeToken(sha256(token), 'reset') : null;
+      const u = t ? await this.store.userById(t.userId) : null;
+      if (!u) return res.status(400).json({ error: 'That reset link has expired or was already used. Ask for a new one.' });
+      // Opening a link sent to the address proves it's theirs, so this confirms it too.
+      const confirms = !!u.email && t!.email === u.email;
+      await this.store.updateUser(u.id, { passwordHash: await hashPassword(password), ...(confirms ? { emailVerified: true } : {}) });
+      if (confirms) u.emailVerified = true;
+      await this.store.deleteSessionsOf(u.id); // logs out every device, including one someone else had
+      await this.startSession(req, res, u.id);
+      console.log(`@${u.username} reset their password`);
+      res.json({ user: toMe(u) });
+    }));
+
+    // ---------- confirming an email (optional) ----------
+
+    /** Opened from the emailed link, on any device, logged in or not. */
+    r.post('/email/confirm', wrap(async (req, res) => {
+      if (limited(req, res)) return;
+      const token = String(req.body?.token ?? '');
+      const t = token ? await this.store.takeToken(sha256(token), 'confirm') : null;
+      const u = t ? await this.store.userById(t.userId) : null;
+      if (!u || !u.email || u.email !== t!.email) {
+        return res.status(400).json({ error: 'That link has expired, was already used, or is for an email the account no longer uses. You can send a new one from Edit profile.' });
+      }
+      if (!u.emailVerified) await this.store.updateUser(u.id, { emailVerified: true });
+      res.json({ ok: true, username: u.username });
+    }));
+
+    /** Send the confirmation link again. */
+    r.post('/email/confirm/send', wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) return res.status(401).json({ error: 'Log in first.' });
+      if (!u.email) return res.status(400).json({ error: 'Add an email first.' });
+      if (u.emailVerified) return res.json({ ok: true });
+      const base = this.linkBase(req);
+      if (!this.mailer || !base) return res.status(503).json({ error: 'Email isn’t set up on this server yet.' });
+      if (!(await this.sendLink(u, 'confirm', base))) return res.status(429).json({ error: 'A few links were already sent this hour. Check your inbox and spam folder, or try again later.' });
+      res.json({ ok: true });
     }));
 
     r.get('/users/:username', wrap(async (req, res) => {

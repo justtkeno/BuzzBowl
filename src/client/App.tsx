@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../shared/types';
 import { Home } from './components/Home';
+import { ConfirmEmail, ResetPassword } from './components/Account';
 import { InviteBanner } from './components/Friends';
 import { Announcement } from './components/Announcement';
 import { WakeScreen } from './components/WakeScreen';
@@ -26,6 +27,8 @@ function Page() {
   if (watch) return <Spectate code={watch} />;
   const profile = profileName();
   if (profile) return <Profile username={profile} />;
+  if (location.pathname === '/reset') return <ResetPassword />;
+  if (location.pathname === '/confirm') return <ConfirmEmail />;
   return <Player />;
 }
 

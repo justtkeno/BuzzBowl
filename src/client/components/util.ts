@@ -53,8 +53,14 @@ export function colorFor(id: string, order?: string[]) {
   return PALETTE[h % PALETTE.length];
 }
 
-/** Short haptic tap on phones that support it. */
+/** Vibration for this device: on unless turned off in Settings. */
+export const vibrationOn = () => { try { return localStorage.getItem('qb:vibrate') !== 'off'; } catch { return true; } };
+export function setVibrationOn(on: boolean) { try { localStorage.setItem('qb:vibrate', on ? 'on' : 'off'); } catch { /* private mode */ } }
+export const canVibrate = () => typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
+
+/** Short haptic tap on phones that support it (unless turned off in Settings). */
 export function vibrate(pattern: number | number[]) {
+  if (!vibrationOn()) return;
   try { navigator.vibrate?.(pattern); } catch { /* not supported */ }
 }
 
