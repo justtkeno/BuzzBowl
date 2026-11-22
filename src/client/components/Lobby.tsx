@@ -47,7 +47,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
             {(s.settings.readAloud || s.settings.topicVote) && (
               <li>{[s.settings.readAloud && 'Read aloud', s.settings.topicVote && 'players vote on topics'].filter(Boolean).join(' · ')}</li>
             )}
-            <li>{s.settings.powers ? `Powers ${s.settings.powerValue}` : 'No powers'} · {s.settings.tenValue} · {s.settings.negs ? `negs ${s.settings.negValue}` : 'no negs'}</li>
+            <li>{s.settings.powers ? `Powers ${s.settings.powerValue}` : 'No powers'} · {s.settings.tenValue} · {s.settings.negs ? `negs ${s.settings.negValue}` : 'no negs'}{s.settings.bounty ? ' · bounty tossups' : ''}</li>
             <li>{s.settings.bonuses ? `Bonuses on (${s.settings.bonusSeconds}s per part)` : 'Tossups only'}</li>
             <li>{s.settings.gameLength ? `${s.settings.gameLength} tossups` : 'No set length'} · {s.settings.wpm} wpm · {s.settings.answerSeconds}s to answer</li>
             <li>{sourceLabel}{f.categories.length ? ` · ${f.categories.join(', ')}` : ' · all categories'}</li>

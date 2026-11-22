@@ -16,7 +16,7 @@ export function Review({ s, onClose }: { s: PublicState; onClose: () => void }) 
         {s.review.map((q) => (
           <div key={q.num} className={`review-item ${open === q.num ? 'open' : ''}`}>
             <button className="review-head" onClick={() => setOpen(open === q.num ? null : q.num)}>
-              <span className="tag">TU {q.num}</span>
+              <span className="tag">TU {q.num}</span>{q.bounty && <span className="bounty-chip">×2</span>}
               <span className="grow"><CategoryChip category={q.category} sub={q.subcategory} /></span>
               <span dangerouslySetInnerHTML={{ __html: q.answerHtml.split('[')[0] }} />
             </button>

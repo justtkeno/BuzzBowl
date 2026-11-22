@@ -1,6 +1,6 @@
 import {
   CATEGORIES, DEFAULT_SETTINGS, SPECTATOR, SURVIVAL_LIVES, VOTE_SECONDS, buzzWindowSeconds,
-  type AnswerKey, type BotSkill, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
+  type AnswerKey, type BotSkill, type BuzzKind, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
   type Filters, type Ruling, type ScorePoint, type Settings, type Verdict,
 } from '../../shared/types';
 import { checkAnswerDetailed, matchesAlt } from '../game/answerCheck';
@@ -35,6 +35,12 @@ export class ActionError extends Error {}
 const fail = (msg: string): never => { throw new ActionError(msg); };
 
 /** How each setting reads in the chat note when the host changes it mid-match. */
+/** The bounty dice. Tests swap `next` to make bounties predictable. */
+export const bountyRandom = { next: () => Math.random() };
+
+/** A bounty tossup doubles what a correct answer earns; negs and zeros stay as they are. */
+const withBounty = (r: { points: number; kind: BuzzKind }, bounty: boolean) => (bounty && r.points > 0 ? { ...r, points: r.points * 2 } : r);
+
 const SETTING_LABELS: [keyof Settings, string, string][] = [
   ['wpm', 'reading speed', ' wpm'],
   ['answerSeconds', 'answer time', ' s'],
@@ -49,6 +55,7 @@ const SETTING_LABELS: [keyof Settings, string, string][] = [
   ['bonusPartValue', 'bonus part value', ''],
   ['showTextToPlayers', 'question text for players', ''],
   ['readerRules', 'reader rulings', ''],
+  ['bounty', 'bounty tossups', ''],
 ];
 
 export const TIMING = {
@@ -100,6 +107,8 @@ interface LiveTossup {
   bonusTeam: string | null;
   /** Where the question came from (a question report names it). Missing in rooms saved before reports. */
   source?: string;
+  /** Bounty tossup: correct answers score double. */
+  bounty?: boolean;
 }
 
 interface LiveBuzz {
@@ -157,6 +166,8 @@ export interface RoomState {
   bonusNum: number;
   message: string | null;
   lastActive: number;
+  /** Number of the last bounty tossup, so bounties stay spread out. */
+  lastBounty?: number | null;
   /** Whole-game pause by the host or reader: every timer is frozen. */
   paused: boolean;
   pausedAt: number | null;
@@ -720,7 +731,7 @@ export class Room {
     if (patch.bonusSeconds !== undefined) s.bonusSeconds = clamp(patch.bonusSeconds, 5, 60, s.bonusSeconds);
     if (patch.deadSeconds !== undefined) s.deadSeconds = clamp(patch.deadSeconds, 1, 30, s.deadSeconds);
     if (patch.gameLength !== undefined) s.gameLength = clamp(patch.gameLength, 0, 500, s.gameLength);
-    for (const k of ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules', 'readAloud', 'topicVote'] as const) {
+    for (const k of ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules', 'readAloud', 'topicVote', 'bounty'] as const) {
       if (typeof patch[k] === 'boolean') s[k] = patch[k]!;
     }
     if (!s.topicVote && this.s.vote) this.cancelVote();
@@ -887,7 +898,7 @@ export class Room {
   }
 
   private resetScores() {
-    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], reported: {}, tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null, vote: null, nextCategory: null, voteRun: null });
+    Object.assign(this.s, { rulings: [], adjustments: [], heard: [], protests: [], review: [], reported: {}, tossupNum: 0, bonusNum: 0, tossup: null, bonus: null, buzz: null, vote: null, nextCategory: null, voteRun: null, lastBounty: null });
   }
 
   // ---------- question reports ----------
@@ -1119,6 +1130,19 @@ export class Room {
     }
   }
 
+  /**
+   * Whether tossup `num` is a bounty: never the first, at least 3 tossups after the last one, then a 1 in 4
+   * chance each time, and always by 8 tossups after the last. Never in the daily challenge or survival.
+   */
+  private rollBounty(num: number) {
+    if (!this.s.settings.bounty || this.s.daily || this.s.survival || num < 2) return false;
+    const gap = num - (this.s.lastBounty ?? 0);
+    if (gap < 4) return false;
+    if (gap < 8 && bountyRandom.next() >= 0.25) return false;
+    this.s.lastBounty = num;
+    return true;
+  }
+
   private async loadTossup() {
     // Every way to the next tossup (Next, a closed vote, a skipped or finished bonus) ends here after the last one.
     if (this.lengthReached()) return this.finishGame();
@@ -1163,6 +1187,7 @@ export class Room {
     this.s.tossup = {
       num: ++this.s.tossupNum, q, words, powerIndex, revealed: 0, revealTimes: [], locked: new Set(), markers: [],
       paused: false, ended: false, bonusTeam: null, source: this.s.daily ? 'daily' : this.s.settings.source,
+      ...(this.rollBounty(this.s.tossupNum) ? { bounty: true } : {}), // tossupNum is this tossup's number by now
     };
     this.s.phase = 'reading';
     this.broadcast();
@@ -1363,13 +1388,14 @@ export class Room {
       return this.broadcast();
     }
     const correct = verdict === 'correct';
-    const { points, kind } = scoreTossup(correct, b.wordIndex, t.words.length, t.powerIndex, this.s.settings);
+    const { points, kind } = withBounty(scoreTossup(correct, b.wordIndex, t.words.length, t.powerIndex, this.s.settings), !!t.bounty);
     const p = this.player(b.playerId);
     this.s.rulings.push({
       id: rid(), type: 'tossup', num: t.num, playerId: b.playerId, playerName: p?.name ?? '?', teamId: b.teamId,
       category: t.q.category, given, correct, overridden: false, points, kind,
       wordIndex: b.wordIndex, totalWords: t.words.length, powerIndex: t.powerIndex,
       ...(correct && correctedTo ? { correctedTo } : {}),
+      ...(t.bounty ? { bounty: true } : {}),
     });
     marker.result = kind;
     if (correct && correctedTo) marker.correctedTo = correctedTo;
@@ -1405,6 +1431,7 @@ export class Room {
       num: t.num, category: t.q.category, subcategory: t.q.subcategory, setName: t.q.setName,
       words: t.words, powerIndex: t.powerIndex, answerHtml: safeAnswerHtml(t.q.answer), buzzes: t.markers,
       ref: { id: t.q.id, source: t.source ?? (this.s.daily ? 'daily' : this.s.settings.source) },
+      ...(t.bounty ? { bounty: true } : {}),
     });
     if (this.s.review.length > 100) this.s.review.pop();
     t.bonusTeam = winnerTeam && this.s.settings.bonuses && this.s.settings.source !== 'lightning' ? winnerTeam : null;
@@ -1638,7 +1665,7 @@ export class Room {
   }
 
   private rescoreTossupRuling(r: Ruling) {
-    const scored = scoreTossup(r.correct, r.wordIndex ?? 0, r.totalWords ?? 0, r.powerIndex ?? null, this.s.settings);
+    const scored = withBounty(scoreTossup(r.correct, r.wordIndex ?? 0, r.totalWords ?? 0, r.powerIndex ?? null, this.s.settings), !!r.bounty);
     // A cancelled correct answer scores nothing (it isn't a neg).
     const { points, kind } = r.voidedBy ? { points: 0, kind: 'zero' as const } : scored;
     r.points = points;
@@ -1906,6 +1933,7 @@ export class Room {
         deadline: t.deadline,
         lockedTeamIds: [...t.locked],
         bonusTeamId: t.ended ? t.bonusTeam : null,
+        ...(t.bounty ? { bounty: true } : {}),
       },
       buzz: s.buzz && {
         playerId: s.buzz.playerId, playerName: this.player(s.buzz.playerId)?.name ?? '?', wordIndex: s.buzz.wordIndex,

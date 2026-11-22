@@ -11,6 +11,25 @@ export function setSoundOn(on: boolean) {
   window.dispatchEvent(new Event('qb-sound'));
 }
 
+/** Buzz sounds a player can pick for this device. All short and quiet; other players' buzzes play a lower version. */
+export const BUZZ_SOUNDS = { classic: 'Classic', soft: 'Soft', chime: 'Chime', pop: 'Pop', wood: 'Wood' } as const;
+export type BuzzSound = keyof typeof BUZZ_SOUNDS;
+export const buzzSound = (): BuzzSound => {
+  const v = store.get('qb:buzzSound');
+  return v && v in BUZZ_SOUNDS ? (v as BuzzSound) : 'classic';
+};
+export function setBuzzSound(v: BuzzSound) {
+  store.set('qb:buzzSound', v);
+  play('buzzMine'); // preview
+}
+/** Next buzz sound in the list (the phone menu cycles through them). */
+export function cycleBuzzSound(): BuzzSound {
+  const order = Object.keys(BUZZ_SOUNDS) as BuzzSound[];
+  const next = order[(order.indexOf(buzzSound()) + 1) % order.length];
+  setBuzzSound(next);
+  return next;
+}
+
 let ctx: AudioContext | null = null;
 function audio(): AudioContext | null {
   if (!soundOn()) return null;
@@ -61,10 +80,8 @@ export function play(cue: Cue) {
       tone(a, 659.25, 0.09, 0.16, 'sine', 0.04);
       break;
     case 'buzzMine':
-      tone(a, 880, 0, 0.16, 'square', 0.05);
-      break;
     case 'buzzOther':
-      tone(a, 520, 0, 0.16, 'square', 0.045);
+      buzz(a, cue === 'buzzMine');
       break;
     case 'tick': // faint clock tick for the last seconds of an answer
       tone(a, 1000, 0, 0.04, 'sine', 0.015);
@@ -72,6 +89,31 @@ export function play(cue: Cue) {
     case 'streak': // two soft high notes
       tone(a, 880, 0, 0.14, 'sine', 0.035);
       tone(a, 1318.5, 0.08, 0.2, 'sine', 0.035);
+      break;
+  }
+}
+
+/** The chosen buzz sound. Other players' buzzes are pitched lower and a little quieter, so you can tell them apart. */
+function buzz(a: AudioContext, mine: boolean) {
+  const k = mine ? 1 : 0.6;
+  const v = mine ? 1 : 0.85;
+  switch (buzzSound()) {
+    case 'classic': // the original short square beep
+      tone(a, 880 * k, 0, 0.16, 'square', 0.05 * v);
+      break;
+    case 'soft': // rounded sine bloop
+      tone(a, 700 * k, 0, 0.2, 'sine', 0.07 * v, 820 * k);
+      break;
+    case 'chime': // small bell: a note and its faint fifth
+      tone(a, 1046.5 * k, 0, 0.4, 'sine', 0.045 * v);
+      tone(a, 1568 * k, 0.005, 0.28, 'sine', 0.018 * v);
+      break;
+    case 'pop': // quick pitch drop, like a bubble
+      tone(a, 950 * k, 0, 0.09, 'sine', 0.08 * v, 320 * k);
+      break;
+    case 'wood': // short low knock
+      tone(a, 440 * k, 0, 0.07, 'triangle', 0.1 * v, 330 * k);
+      tone(a, 880 * k, 0, 0.03, 'triangle', 0.03 * v);
       break;
   }
 }

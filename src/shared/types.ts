@@ -46,6 +46,8 @@ export interface Settings {
   topicVote: boolean;
   /** Tossups in a game; the game ends after the last one (and its bonus). 0 = no limit. */
   gameLength: number;
+  /** Now and then a tossup is a bounty: worth double for a correct answer (negs stay the same). Marked before it's read. */
+  bounty: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -68,6 +70,7 @@ export const DEFAULT_SETTINGS: Settings = {
   readAloud: false,
   topicVote: false,
   gameLength: 0,
+  bounty: false,
 };
 
 export type Phase =
@@ -188,6 +191,8 @@ export interface PublicTossup {
   lockedTeamIds: string[];
   /** Team that will play a bonus when the reader moves on (set once the tossup ends). */
   bonusTeamId: string | null;
+  /** A bounty tossup: a correct answer scores double. Known from the start, so players see it before reading. */
+  bounty?: boolean;
 }
 
 export interface PublicBuzz {
@@ -250,6 +255,8 @@ export interface Ruling {
   tossup?: number;
   /** A correct answer cancelled because an earlier buzz on the same tossup was ruled correct afterwards (protest or override). Holds that ruling's id; the points come back if it's reversed again. */
   voidedBy?: string;
+  /** Scored on a bounty tossup: correct answers count double. */
+  bounty?: boolean;
 }
 
 export interface Protest {
@@ -272,6 +279,7 @@ export interface ReviewItem {
   buzzes: BuzzMarker[];
   /** The question's own id and source, so a player's report can name it. */
   ref?: { id: string; source: string };
+  bounty?: boolean;
 }
 
 export interface PublicState {
