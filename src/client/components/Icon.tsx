@@ -28,6 +28,7 @@ const PATHS = {
   pin: <path d="M12 16.5V21M8.5 3.5h7M9.7 3.5v5.2L6.5 13h11l-3.2-4.3V3.5" />,
   share: <path d="M12 3.5v11M8 7.5l4-4 4 4M6.5 11v8.5h11V11" />,
   next: <path d="M9 6l6 6-6 6" />,
+  help: <><circle cx="12" cy="12" r="8.5" /><path d="M9.6 9.6a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2-2.4 3.5" /><circle className="ic-fill" cx="12" cy="16.8" r="1" /></>,
   skip: <path d="M6 5.5 15 12l-9 6.5zM18.5 5.5v13" />,
 } satisfies Record<string, JSX.Element>;
 

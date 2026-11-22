@@ -287,6 +287,52 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .seg button { border: 0; background: var(--surface); padding: .4rem .9rem; cursor: pointer; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .5; cursor: default; }
+/* ---------- how to play ---------- */
+.modal.tutorial { display: flex; flex-direction: column; width: min(460px, 100%); height: min(640px, calc(100vh - 32px)); height: min(640px, calc(100dvh - var(--modal-gap))); overflow: hidden; }
+.tutorial > .row.between:first-child { position: static; margin: 0 0 .4rem; padding: 0; border: 0; }
+.tut-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; animation: fade-in .2s ease-out; }
+.tut-card { display: flex; flex-direction: column; align-items: center; text-align: center; padding: .5rem .25rem; }
+.tut-card h3 { margin: .9rem 0 .4rem; font-size: 1.15rem; }
+.tut-card p { margin: 0; color: var(--muted); line-height: 1.55; max-width: 34ch; }
+.tut-art { width: 100%; max-width: 260px; display: grid; place-items: center; padding: .6rem 0 0; }
+.tut-art svg { width: 100%; height: auto; }
+.ta-line, .ta-text, .ta-faint, .ta-accent, .ta-power { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.ta-line { stroke: var(--border); stroke-width: 2; }
+.ta-text { stroke: var(--text); stroke-width: 5; }
+.ta-faint { stroke: var(--border); stroke-width: 5; }
+.ta-accent { stroke: var(--accent); stroke-width: 3; }
+.ta-power { stroke: var(--power); stroke-width: 2; }
+.ta-accent-fill { fill: var(--accent); }
+.ta-faint-fill { fill: var(--surface-2); }
+.ta-power-fill { fill: var(--power-soft); }
+.ta-label { fill: var(--accent-ink); font: 800 15px/1 var(--font); letter-spacing: .08em; }
+.ta-small { fill: var(--text); font: 700 11px/1 var(--font); }
+.ta-power-text { fill: var(--power); }
+.ta-tiny { fill: var(--muted); font: 500 8.5px/1 var(--font); }
+.tut-big-icon { width: 56px; height: 56px; color: var(--ok); stroke-width: 1.6; }
+.tut-ways { list-style: none; margin: .9rem 0 0; padding: 0; display: flex; flex-direction: column; gap: .55rem; text-align: left; width: 100%; }
+.tut-ways li { display: flex; gap: .6rem; align-items: flex-start; font-size: .92rem; color: var(--muted); }
+.tut-ways li b { color: var(--text); font-weight: 600; }
+.tut-ways .ic { color: var(--accent); margin-top: .15rem; }
+.tut-foot { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding-top: .75rem; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.tut-dots { display: flex; gap: .35rem; }
+.tut-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 50%; background: var(--border); cursor: pointer; }
+.tut-dots button.on { background: var(--accent); width: 18px; border-radius: 4px; }
+.tut-practice { display: flex; flex-direction: column; gap: .7rem; padding: .2rem 0 .4rem; }
+.tut-hint { margin: 0; padding: .5rem .75rem; border-radius: 10px; background: var(--accent-soft); font-size: .9rem; }
+.tut-q { box-shadow: none; }
+.tut-q .qtext { min-height: 7em; font-size: 1.08rem; }
+.tut-q .qtext .power { font-weight: 700; }
+.tut-buzzer { position: static !important; flex: 1; min-height: 64px !important; font-size: 1.5rem !important; }
+.tut-result { display: flex; flex-direction: column; gap: .45rem; padding: .7rem .8rem; border-radius: 10px; border: 1px solid var(--border); font-size: .92rem; color: var(--muted); }
+.tut-result b { font-size: 1.05rem; color: var(--text); }
+.tut-result.r-power b { color: var(--power); } .tut-result.r-ten b { color: var(--ok); } .tut-result.r-neg b { color: var(--bad); }
+.tour-nudge { display: flex; align-items: center; justify-content: space-between; gap: .4rem; margin-top: -.3rem; padding: .35rem .3rem .35rem .75rem; border: 1px solid var(--border); border-radius: 10px; }
+.tour-nudge .link { font-size: .9rem; text-align: left; }
+.tour-nudge .btn.icon { padding: .25rem .35rem; color: var(--muted); }
+.how-link { align-self: center; font-size: .88rem; }
+@media (prefers-reduced-motion: reduce) { .tut-body { animation: none; } }
+
 /* Settings tabs: a quiet underline row; scrolls sideways if a phone is too narrow for all five. */
 .settings-tabs { display: flex; flex: none; justify-content: space-between; gap: .1rem; margin: .2rem -.2rem .4rem; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
 .settings-tabs::-webkit-scrollbar { display: none; }

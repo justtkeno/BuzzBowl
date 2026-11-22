@@ -9,6 +9,7 @@ import { SurvivalCard } from './Survival';
 import { FriendsTab } from './Friends';
 import { InstallButton } from './InstallButton';
 import { Icon } from './Icon';
+import { Tutorial, markTourSeen, tourSeen } from './Tutorial';
 
 interface Props {
   initialCode: string | null;
@@ -25,6 +26,8 @@ interface Props {
 }
 
 export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily, onSurvival, dailyOpen, survivalOpen }: Props) {
+  const [tour, setTour] = useState(false);
+  const [tourDone, setTourDone] = useState(tourSeen);
   const [name, setName] = useState(() => prefs.name() || randomName());
   const [code, setCode] = useState(initialCode ?? '');
   const [busy, setBusy] = useState(false);
@@ -46,6 +49,12 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
         <AccountBar />
         <div className="brand"><Logo /> Trivio</div>
         <p className="muted">Pyramidal tossups, real buzzer races, powers, negs and bonuses. Play in real time with friends or drill alone.</p>
+        {!tourDone && (
+          <div className="tour-nudge">
+            <button className="link" onClick={() => setTour(true)}>New to quiz bowl? Take the 1-minute tour</button>
+            <button className="btn ghost icon" aria-label="Dismiss" onClick={() => { markTourSeen(); setTourDone(true); }}><Icon name="close" /></button>
+          </div>
+        )}
 
         <label className="field">
           <span>Display name</span>
@@ -77,8 +86,10 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
         {!connected && <p className="warn">Connecting to server…</p>}
         {(err || error) && <p className="error">{err || error}</p>}
         <p className="muted small">Questions come from <a href="https://www.qbreader.org" target="_blank" rel="noreferrer">QBReader</a>, hundreds of built-in questions, or a packet you upload.</p>
+        <button className="link how-link" onClick={() => setTour(true)}>How to play</button>
         <InstallButton />
       </div>
+      {tour && <Tutorial onClose={() => { setTour(false); setTourDone(true); }} onPlay={initialCode ? undefined : () => run(() => onCreate(name.trim(), true))} />}
       <FriendsTab disabled={busy || !connected} onJoin={(c) => run(() => onJoin(c, name.trim()))} />
     </div>
   );
