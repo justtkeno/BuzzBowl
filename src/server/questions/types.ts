@@ -9,6 +9,10 @@ export interface Tossup {
   answer: string;
   category: string;
   subcategory: string;
+  /** QBReader's alternate subcategory (Astronomy, Film, Economics, …). */
+  alternate?: string;
+  /** Topic ids (shared/topics.ts) for questions that belong to a topic outside QBReader's categories. */
+  topics?: string[];
   difficulty?: number;
   setName?: string;
   year?: number;
@@ -21,6 +25,8 @@ export interface Bonus {
   answers: string[];
   category: string;
   subcategory: string;
+  alternate?: string;
+  topics?: string[];
   difficulty?: number;
   setName?: string;
   year?: number;
@@ -52,10 +58,18 @@ export function normalizeTossup(raw: any): Tossup | null {
     answer,
     category: str(raw.category) || 'Uncategorized',
     subcategory: str(raw.subcategory) || str(raw.category) || 'Uncategorized',
+    ...extras(raw),
     difficulty: num(raw.difficulty),
     setName: str(raw.set?.name) || str(raw.setName) || undefined,
     year: num(raw.set?.year) ?? num(raw.year),
   };
+}
+
+/** QBReader's alternate subcategory, and topic tags in uploaded packets. */
+function extras(raw: any): { alternate?: string; topics?: string[] } {
+  const alternate = str(raw.alternate_subcategory) || str(raw.alternateSubcategory) || undefined;
+  const topics = Array.isArray(raw.topics) ? raw.topics.map(str).filter(Boolean).slice(0, 10) : undefined;
+  return { ...(alternate ? { alternate } : {}), ...(topics?.length ? { topics } : {}) };
 }
 
 export function normalizeBonus(raw: any): Bonus | null {
@@ -74,6 +88,7 @@ export function normalizeBonus(raw: any): Bonus | null {
     answers,
     category: str(raw.category) || 'Uncategorized',
     subcategory: str(raw.subcategory) || str(raw.category) || 'Uncategorized',
+    ...extras(raw),
     difficulty: num(raw.difficulty),
     setName: str(raw.set?.name) || str(raw.setName) || undefined,
     year: num(raw.set?.year) ?? num(raw.year),

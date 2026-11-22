@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CATEGORIES, DIFFICULTIES, VOTE_SECONDS, type PublicState, type Settings } from '../../shared/types';
+import { TOPICS } from '../../shared/topics';
 import { call } from '../socket';
 import { act, toast } from './util';
 import { Icon } from './Icon';
@@ -8,10 +9,6 @@ import { Icon } from './Icon';
 export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: () => void; only?: 'questions' }) {
   const [f, setF] = useState<Settings>(structuredClone(s.settings));
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setF((x) => ({ ...x, [k]: v }));
-  /** Quick picks inside Pop Culture: tapping one plays only that topic (along with any other categories picked). */
-  const FUN_TOPICS = [
-    { sub: 'Video Games', icon: '🎮' }, { sub: 'Music', icon: '🎵' }, { sub: 'Movies', icon: '🎬' }, { sub: 'Television', icon: '📺' }, { sub: 'Sports', icon: '🏅' },
-  ];
   const setFilter = (patch: Partial<Settings['filters']>) => setF((x) => ({ ...x, filters: { ...x.filters, ...patch } }));
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const midGame = ['loading', 'reading', 'buzz', 'bonus'].includes(s.phase);
@@ -141,17 +138,13 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
             <button type="button" className="link" onClick={downloadExample}>Download this example</button>
           </details>
 
-          <h4>Fun topics <small className="muted">(Pop Culture)</small></h4>
-          <div className="chips">
-            {FUN_TOPICS.map(({ sub, icon }) => {
-              const on = f.filters.categories.includes('Pop Culture') && f.filters.subcategories.includes(sub);
+          <h4>Topics <small className="muted">(mix any; with topics picked, questions come only from them and any categories below)</small></h4>
+          <div className="chips topic-chips">
+            {TOPICS.map((t) => {
+              const on = (f.filters.topics ?? []).includes(t.id);
               return (
-                <button key={sub} className={`chip ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => setF((x) => {
-                  const subs = toggle(x.filters.subcategories, sub);
-                  const anyPop = subs.some((sc) => CATEGORIES['Pop Culture'].includes(sc));
-                  const cats = x.filters.categories.filter((c) => c !== 'Pop Culture');
-                  return { ...x, filters: { ...x.filters, subcategories: subs, categories: anyPop ? [...cats, 'Pop Culture'] : cats } };
-                })}>{icon} {sub}</button>
+                <button key={t.id} className={`chip ${on ? 'on' : ''}`} aria-pressed={on} title={t.sources.length ? undefined : 'Built-in questions'}
+                  onClick={() => setFilter({ topics: toggle(f.filters.topics ?? [], t.id) })}>{t.icon} {t.name}</button>
               );
             })}
           </div>

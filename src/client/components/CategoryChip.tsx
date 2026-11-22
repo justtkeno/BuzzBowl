@@ -12,10 +12,10 @@ export function categoryHue(category: string): number {
   return h;
 }
 
-export function CategoryChip({ category, sub }: { category: string; sub?: string }) {
+export function CategoryChip({ category, sub, icon }: { category: string; sub?: string; icon?: string }) {
   return (
     <span className="cat-chip" style={{ ['--h' as string]: categoryHue(category) }}>
-      <span className="cat-dot" aria-hidden="true" />{category}{sub && sub !== category ? <span className="cat-sub"> · {sub}</span> : null}
+      {icon ? <span aria-hidden="true">{icon}</span> : <span className="cat-dot" aria-hidden="true" />}{category}{sub && sub !== category ? <span className="cat-sub"> · {sub}</span> : null}
     </span>
   );
 }
