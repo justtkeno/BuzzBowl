@@ -110,3 +110,56 @@ describe('correction labels', () => {
     expect(checkAnswerDetailed('cuban misile crisis', 'Cuban <b><u>Missile</u></b> <b><u>Crisis</u></b> of October 1962').correctedTo).toBe('Missile Crisis');
   });
 });
+
+describe('underlined parts and abbreviations', () => {
+  // How QBReader packets write it: bold around the whole answer, the required parts underlined.
+  const DC = '<b><u>Washington</u>, <u>District of Columbia</u></b> [accept either underlined part]';
+  it.each([
+    ['Washington dc', 'correct'],
+    ['Washington D.C.', 'correct'],
+    ['washington', 'correct'], // "either underlined part"
+    ['District of Columbia', 'correct'],
+    ['DC', 'correct'],
+    ['d.c.', 'correct'],
+    ['washington district of columbia', 'correct'],
+    ['columbia', 'incorrect'],
+    ['seattle washington', 'incorrect'],
+    ['washington state', 'incorrect'],
+  ])('"%s" for Washington, D.C. is %s', (given, verdict) => {
+    expect(checkAnswer(given, DC)).toBe(verdict);
+  });
+
+  it('treats "either underlined part" as an instruction, not an answer', () => {
+    const line = parseAnswerLine(DC);
+    expect(line.accept.map((a) => a.display)).toEqual(['Washington, District of Columbia', 'Washington', 'District of Columbia']);
+  });
+
+  it('uses the underline, not the bold around it, as the required part', () => {
+    expect(parseAnswerLine('<b>Battle of <u>Hastings</u></b>').accept[0].required).toEqual(['hastings']);
+    expect(checkAnswer('hastings', '<b>Battle of <u>Hastings</u></b>')).toBe('correct');
+    // Bold alone still marks the required part.
+    expect(parseAnswerLine('<b>Kierkegaard</b>, Soren').accept[0].required).toEqual(['kierkegaard']);
+  });
+
+  it('without the instruction, several underlined parts still all count', () => {
+    expect(checkAnswer('cuban missile crisis', 'Cuban <b><u>Missile</u></b> <b><u>Crisis</u></b> of October 1962')).toBe('correct');
+    expect(checkAnswer('cuban missile', 'Cuban <b><u>Missile</u></b> <b><u>Crisis</u></b> of October 1962')).toBe('incorrect');
+  });
+
+  it.each([
+    ['FDR', 'Franklin Delano <b><u>Roosevelt</u></b>', 'correct'], // three words: initials always work
+    ['fdr', 'Franklin Delano <b><u>Roosevelt</u></b>', 'correct'],
+    ['USSR', '<b><u>Union of Soviet Socialist Republics</u></b>', 'correct'],
+    ['US', '<b><u>United States</u></b>', 'correct'], // two words: only typed as an abbreviation
+    ['U.S.', '<b><u>United States</u></b>', 'correct'],
+    ['us', '<b><u>United States</u></b>', 'incorrect'],
+    ['lt', 'Leo <b><u>Tolstoy</u></b>', 'incorrect'],
+    ['ww', '<b><u>World War</u></b> II', 'incorrect'],
+  ])('initials: "%s" for %s is %s', (given, line, verdict) => {
+    expect(checkAnswer(given, line)).toBe(verdict);
+  });
+
+  it('an abbreviation is not shown as a corrected typo', () => {
+    expect(checkAnswerDetailed('Washington DC', DC)).toEqual({ verdict: 'correct' });
+  });
+});
