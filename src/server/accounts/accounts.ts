@@ -530,7 +530,14 @@ export class Accounts {
       if (u.emailVerified) return res.json({ ok: true });
       const base = this.linkBase(req);
       if (!this.mailer || !base) return res.status(503).json({ error: 'Email isn’t set up on this server yet.' });
-      if (!(await this.sendLink(u, 'confirm', base))) return res.status(429).json({ error: 'A few links were already sent this hour. Check your inbox and spam folder, or try again later.' });
+      let sent: boolean;
+      try {
+        sent = await this.sendLink(u, 'confirm', base);
+      } catch (e: any) {
+        console.error('Could not send a confirmation email:', e?.message ?? e);
+        return res.status(502).json({ error: 'The email couldn’t be sent right now. Try again in a few minutes.' });
+      }
+      if (!sent) return res.status(429).json({ error: 'A few links were already sent this hour. Check your inbox and spam folder, or try again later.' });
       res.json({ ok: true });
     }));
 
