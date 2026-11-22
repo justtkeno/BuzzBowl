@@ -280,6 +280,24 @@ kbd { font: 11px/1 ui-monospace, monospace; border: 1px solid currentColor; bord
 .seg button { border: 0; background: var(--surface); padding: .4rem .9rem; cursor: pointer; }
 .seg button.on { background: var(--accent); color: var(--accent-ink); }
 .seg button:disabled { opacity: .5; cursor: default; }
+/* Settings tabs: a quiet underline row; scrolls sideways if a phone is too narrow for all five. */
+.settings-tabs { display: flex; flex: none; justify-content: space-between; gap: .1rem; margin: .2rem -.2rem .4rem; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.settings-tabs::-webkit-scrollbar { display: none; }
+.settings-tabs button { flex: none; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: .5rem .3rem; font-size: .88rem; color: var(--muted); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: .35rem; }
+.settings-tabs button:hover { color: var(--text); }
+.settings-tabs button.on { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+.settings-tabs button { position: relative; }
+/* Filters are on: a small dot in the tab's corner (takes no width, so all five tabs still fit). */
+.tab-dot { position: absolute; top: .45rem; right: .05rem; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+/* The settings panel keeps one height: title and tabs stay on top, Save stays at the bottom, and only the
+   tab's content scrolls, so switching tabs never moves anything. */
+.modal.settings-modal { display: flex; flex-direction: column; height: min(720px, calc(100vh - 32px)); height: min(720px, calc(100dvh - 32px)); overflow: hidden; }
+.settings-modal > .row.between:first-child { position: static; margin: 0 0 .3rem; padding: 0; border: 0; }
+.settings-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -1.4rem; padding: 0 1.4rem .5rem; }
+.settings-body > section:first-child { border-top: 0; margin-top: 0; }
+.settings-foot { padding-top: .75rem; border-top: 1px solid var(--border); margin-top: 0; }
+.settings-body > section:first-child h3:first-child, .settings-body > section:first-child h4:first-child { margin-top: .2rem; }
+.clear-filters { margin-top: .6rem; }
 .game-length { margin: .7rem 0 .2rem; }
 .game-length .chips { align-items: center; }
 .length-other { width: 5.5rem; cursor: text; text-align: center; font: inherit; font-size: .85rem; color: inherit; }
