@@ -367,6 +367,30 @@ describe('when sending fails', () => {
   });
 });
 
+describe('admin account tools', () => {
+  it('searches usernames (prefix matches first), counts accounts, and logs someone out everywhere', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bb-admintools-'));
+    const store = new FileAccountStore(join(dir, 'accounts.json'));
+    const accounts = new Accounts(store);
+    await accounts.init();
+    const now = Date.now();
+    const mk = (id: string, username: string, extra: Record<string, unknown> = {}) =>
+      store.createUser({ id, username, key: username.toLowerCase(), passwordHash: 'x', displayName: username, bio: '', settings: null, createdAt: now, email: null, ...extra });
+    await mk('1', 'quizzer');
+    await mk('2', 'Bob_quiz', { email: 'bob@example.com', emailVerified: true });
+    await mk('3', 'carl', { email: 'carl@example.com', createdAt: now - 30 * 86_400_000 });
+    expect((await accounts.adminSearch('QUIZ')).map((u) => u.username)).toEqual(['quizzer', 'Bob_quiz']);
+    expect((await accounts.adminSearch('@carl'))[0]).toMatchObject({ username: 'carl', email: true, emailVerified: false });
+    expect(JSON.stringify(await accounts.adminSearch('o'))).not.toContain('@example.com'); // never the address itself
+    expect(await accounts.adminCounts()).toEqual({ total: 3, withEmail: 2, confirmed: 1, newSince: 2 });
+    await store.createSession('h1', '3', now + 60_000);
+    expect(await accounts.adminLogout('carl')).toBe('3');
+    expect(await store.session('h1')).toBeNull();
+    expect(await accounts.adminLogout('nobody')).toBeNull();
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('password reset without email set up', () => {
   it('says so instead of pretending to send', async () => {
     const accounts = new Accounts(new FileAccountStore(null));

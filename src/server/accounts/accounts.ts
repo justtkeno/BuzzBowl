@@ -193,6 +193,48 @@ export class Accounts {
     this.sendLink(u, 'confirm', base).catch((e) => console.error('Could not send a confirmation email:', e?.message ?? e));
   }
 
+  // ---------- site admin ----------
+
+  /** How account email goes out: gmail, smtp, console, or off. */
+  get mailKind() { return this.mailer ? this.mailer.kind ?? 'custom' : 'off'; }
+
+  /** Accounts matching a search, for the admin panel. Emails stay private: only whether one is set and confirmed. */
+  async adminSearch(query: string) {
+    const q = String(query ?? '').trim().replace(/^@/, '').slice(0, 20);
+    if (!this.ready || !q) return [];
+    return (await this.store.searchUsers(q, 25)).map((u) => ({
+      id: u.id, username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u),
+      email: !!u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null,
+    }));
+  }
+
+  async adminCounts() {
+    if (!this.ready) return null;
+    return this.store.userCounts(Date.now() - 7 * 86_400_000);
+  }
+
+  /** Ends every session of an account. Returns its id (so live sockets can be dropped too), or null. */
+  async adminLogout(username: string) {
+    const u = this.ready ? await this.store.userByName(String(username ?? '')) : null;
+    if (!u) return null;
+    if (isAdmin(u)) throw new Error('Admin accounts can’t be logged out from here.');
+    await this.store.deleteSessionsOf(u.id);
+    console.log(`Admin logged out @${u.username} everywhere`);
+    return u.id;
+  }
+
+  /** Sends a test email to this admin's own address. Throws with the reason when it can't. */
+  async testEmail(accountId: string) {
+    const u = await this.store.userById(accountId);
+    if (!u?.email) throw new Error('Add an email to your account first (gear → Account settings).');
+    if (!this.mailer) throw new Error('Email isn’t set up on this server.');
+    await this.mailer.send({
+      to: u.email, subject: 'Trivio test email',
+      text: `This is a test from the Trivio admin panel, sent ${new Date().toUTCString()}. If you can read it, account emails work.\n`,
+      html: `<p>This is a test from the Trivio admin panel, sent ${new Date().toUTCString()}.</p><p>If you can read it, account emails work.</p>`,
+    });
+  }
+
   /** Called after a username change, so other stores (leaderboards, live rooms) can follow. Never throws to the caller. */
   onRename?: (accountId: string, from: string, to: string) => Promise<void>;
   /** Extra profile sections from elsewhere (the daily challenge, survival), added when a profile is shown. */

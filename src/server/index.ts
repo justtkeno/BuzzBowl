@@ -8,7 +8,7 @@ import { ActionError, Room, type RoomIO } from './rooms/room';
 import { botsFor } from './rooms/bots';
 import { MemoryRoomStore, newRoomCode, type RoomStore } from './rooms/store';
 import { SPECTATOR, type Settings } from '../shared/types';
-import { Accounts, type Presence } from './accounts/accounts';
+import { Accounts, adminLocked, type Presence } from './accounts/accounts';
 import { FileAccountStore, PgAccountStore } from './accounts/store';
 import { mailerFromEnv } from './accounts/mailer';
 import { Daily, dailyNumber, dayKey, playerKeyFor } from './daily/daily';
@@ -545,6 +545,128 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ---------- site admin: people, trolls, server ----------
+
+  /** Screens that a site-wide troll may reach: not this admin, not anyone mid-daily or mid-survival. */
+  const reachable = (s: Socket) => {
+    if (s.id === socket.id) return false;
+    const d = s.data as SocketData;
+    const room = d.code && d.playerId ? store.get(d.code) : undefined;
+    return !(room && playingSolo(room));
+  };
+  /** A key for one person online: their account, or (guests) their screen. */
+  const personKey = (s: Socket) => { const a = accounts.of(s); return a ? `a:${a.id}` : `s:${s.id}`; };
+  const screensOf = (key: string) => [...io.sockets.sockets.values()].filter((s) => personKey(s) === key);
+
+  // Everyone on the site right now: one row per account (all their screens) or per guest screen.
+  socket.on('site:online', (ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    const people = new Map<string, { key: string; name: string; username: string | null; admin: boolean; screens: number; rooms: string[]; busy: boolean }>();
+    for (const s of io.sockets.sockets.values()) {
+      const a = accounts.of(s);
+      const d = s.data as SocketData;
+      const room = d.code ? store.get(d.code) : undefined;
+      const seat = room?.s.players.find((p) => p.id === d.playerId);
+      const key = personKey(s);
+      const row = people.get(key) ?? { key, name: seat?.name ?? a?.username ?? 'Guest', username: a?.username ?? null, admin: !!a?.admin, screens: 0, rooms: [], busy: false };
+      row.screens++;
+      if (seat && room && !row.rooms.includes(room.s.code)) { row.rooms.push(room.s.code); row.name = seat.name; }
+      if (d.watching && d.code && !row.rooms.includes(`watching ${d.code}`)) row.rooms.push(`watching ${d.code}`);
+      if (room && d.playerId && playingSolo(room)) row.busy = true;
+      people.set(key, row);
+    }
+    const list = [...people.values()].sort((a, b) => Number(!!b.username) - Number(!!a.username) || b.rooms.length - a.rooms.length || a.name.localeCompare(b.name));
+    ack({ ok: true, people: list });
+  });
+
+  // A private big message on one person's screens (account or guest screen).
+  socket.on('site:whisper', (p: { key?: unknown; text?: unknown } | undefined, ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    const text = String(p?.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    if (!text) return ack({ ok: false, error: 'Type a message first.' });
+    const screens = screensOf(String(p?.key ?? '')).filter(reachable);
+    if (!screens.length) return ack({ ok: false, error: 'They’re not online, or they’re in the middle of a daily challenge or survival run.' });
+    for (const s of screens) s.emit('announce', { text, at: Date.now() });
+    ack({ ok: true, sent: screens.length });
+  });
+
+  // Shake one person's screens (key), or every screen on the site (no key).
+  socket.on('site:shake', (key: unknown, ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    const screens = (key ? screensOf(String(key)) : [...io.sockets.sockets.values()]).filter(reachable);
+    for (const s of screens) s.emit('shake', { at: Date.now() });
+    ack({ ok: true, sent: screens.length });
+  });
+
+  // A big message to everyone in one room (players and big screens).
+  socket.on('site:roomAnnounce', (p: { code?: unknown; text?: unknown } | undefined, ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    const room = store.get(String(p?.code ?? ''));
+    if (!room) return ack({ ok: false, error: 'That room is gone.' });
+    if (playingSolo(room)) return ack({ ok: false, error: 'They’re in the middle of a daily challenge or survival run.' });
+    const text = String(p?.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    if (!text) return ack({ ok: false, error: 'Type a message first.' });
+    io.to(room.s.code).emit('announce', { text, at: Date.now() });
+    ack({ ok: true });
+  });
+
+  // Account search for the Players tab.
+  socket.on('site:users', async (query: unknown, ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    try {
+      const users = await accounts.adminSearch(String(query ?? ''));
+      const online = new Set([...io.sockets.sockets.values()].map((s) => accounts.of(s)?.id).filter(Boolean));
+      ack({ ok: true, users: users.map(({ id, ...u }) => ({ ...u, online: online.has(id), key: `a:${id}` })) });
+    } catch (e) {
+      console.error('site:users failed:', e);
+      ack({ ok: false, error: 'Could not search accounts.' });
+    }
+  });
+
+  // Log an account out on every device, and drop its open screens back to guest.
+  socket.on('site:logoutUser', async (username: unknown, ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    try {
+      const id = await accounts.adminLogout(String(username ?? ''));
+      if (!id) return ack({ ok: false, error: 'No account with that username.' });
+      const screens = screensOf(`a:${id}`);
+      for (const s of screens) s.disconnect(true);
+      ack({ ok: true, screens: screens.length });
+    } catch (e: any) {
+      ack({ ok: false, error: e?.message ?? 'Could not log them out.' });
+    }
+  });
+
+  // Server facts for the Server tab.
+  socket.on('site:server', async (ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    const mem = process.memoryUsage();
+    ack({
+      ok: true,
+      server: {
+        uptime: Math.round(process.uptime()), node: process.version, memoryMb: Math.round(mem.rss / 1_048_576),
+        commit: (process.env.RENDER_GIT_COMMIT ?? '').slice(0, 7) || null, accounts: accounts.ready ? accounts.kind : 'off', mail: accounts.mailKind,
+        publicUrl: process.env.PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL ?? null, adminLocked,
+        rooms: [...store.all()].length, connections: io.sockets.sockets.size,
+        users: await accounts.adminCounts().catch(() => null),
+      },
+    });
+  });
+
+  // Send a test email to this admin's own address.
+  socket.on('site:testEmail', async (ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    const admin = siteAdmin(ack);
+    if (!admin) return;
+    try {
+      await accounts.testEmail(admin.id);
+      ack({ ok: true });
+    } catch (e: any) {
+      console.error('Test email failed:', e?.message ?? e);
+      ack({ ok: false, error: e?.message ?? 'The email couldn’t be sent.' });
+    }
+  });
+
   // "Send feedback" from anywhere in the app, signed in or not.
   socket.on('feedback:send', async (p: { kind?: unknown; message?: unknown; where?: unknown; device?: unknown; name?: unknown } | undefined, ack: Ack) => {
     if (typeof ack !== 'function') return;
@@ -631,6 +753,10 @@ io.on('connection', (socket) => {
   socket.on('admin:freeze', handle(socket, (r, p, target, mode) => r.freeze(p, String(target), mode === 'always' || mode === 'tossup' ? mode : 'off')));
   socket.on('admin:rename', handle(socket, (r, p, target, name) => r.adminRename(p, String(target), name)));
   socket.on('admin:announce', handle(socket, (r, p, text) => r.announce(p, text)));
+  socket.on('admin:slow', handle(socket, (r, p, target, on) => r.setSlowed(p, String(target), !!on)));
+  socket.on('admin:whisper', handle(socket, (r, p, target, text) => r.whisper(p, String(target), text)));
+  socket.on('admin:shake', handle(socket, (r, p, target) => r.shake(p, target ? String(target) : null)));
+  socket.on('admin:forceBuzz', handle(socket, (r, p, target) => r.forceBuzz(p, String(target))));
   socket.on('player:kick', handle(socket, (r, p, target, ban) => r.kick(p, String(target), !!ban)));
   socket.on('player:mute', handle(socket, (r, p, target, muted) => r.mute(p, String(target), !!muted)));
   socket.on('player:rebuzz', handle(socket, (r, p, target) => r.allowRebuzz(p, String(target))));

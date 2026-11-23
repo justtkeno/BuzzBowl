@@ -10,7 +10,11 @@
 import nodemailer from 'nodemailer';
 
 export interface Mail { to: string; subject: string; text: string; html?: string }
-export interface Mailer { send(mail: Mail): Promise<void> }
+export interface Mailer {
+  send(mail: Mail): Promise<void>;
+  /** How mail goes out, for the admin panel. */
+  kind?: 'gmail' | 'smtp' | 'console';
+}
 
 export function mailerFromEnv(env = process.env): Mailer | null {
   const from = env.MAIL_FROM || 'Trivio <no-reply@localhost>';
@@ -19,13 +23,13 @@ export function mailerFromEnv(env = process.env): Mailer | null {
   }
   if (env.SMTP_URL) {
     const transport = nodemailer.createTransport(env.SMTP_URL);
-    return { send: async (m) => { await transport.sendMail({ from, ...m }); } };
+    return { kind: 'smtp', send: async (m) => { await transport.sendMail({ from, ...m }); } };
   }
   if (env.NODE_ENV === 'production') {
     console.warn('No GMAIL_* or SMTP_URL settings, so account emails (password resets) are off.');
     return null;
   }
-  return { send: async (m) => { console.log(`\n--- email to ${m.to}: ${m.subject}\n${m.text}\n---\n`); } };
+  return { kind: 'console', send: async (m) => { console.log(`\n--- email to ${m.to}: ${m.subject}\n${m.text}\n---\n`); } };
 }
 
 /** Sends through the Gmail API with an OAuth refresh token. Only HTTPS, so hosts that block SMTP don't matter. */
@@ -50,6 +54,7 @@ export function gmailApiMailer(o: { clientId: string; clientSecret: string; refr
   };
 
   return {
+    kind: 'gmail',
     async send(m) {
       const { message } = await composer.sendMail({ from: o.from, ...m });
       const raw = (message as Buffer).toString('base64url');

@@ -11,8 +11,19 @@ export function Announcement() {
       clearTimeout(h);
       h = setTimeout(() => setMsg(null), 6000);
     };
+    // An admin's "shake": the whole page wobbles for a moment.
+    let sh: ReturnType<typeof setTimeout> | undefined;
+    const shake = () => {
+      const el = document.documentElement;
+      el.classList.remove('troll-shake');
+      void el.offsetWidth; // restart the animation if it's already running
+      el.classList.add('troll-shake');
+      clearTimeout(sh);
+      sh = setTimeout(() => el.classList.remove('troll-shake'), 900);
+    };
     socket.on('announce', on);
-    return () => { socket.off('announce', on); clearTimeout(h); };
+    socket.on('shake', shake);
+    return () => { socket.off('announce', on); socket.off('shake', shake); clearTimeout(h); clearTimeout(sh); };
   }, []);
   if (!msg) return null;
   return (

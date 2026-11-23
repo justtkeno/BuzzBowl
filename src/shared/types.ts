@@ -319,7 +319,7 @@ export interface PublicState {
   upcoming?: UpcomingTossup[];
   upcomingLoading?: boolean;
   /** Admin only: their own troll settings. Never sent to anyone else. */
-  admin?: { peek: boolean; frozen: { id: string; always: boolean }[] };
+  admin?: { peek: boolean; frozen: { id: string; always: boolean }[]; slowed: string[] };
   /** Admin only, while peeking: the answers of the question being read. */
   peek?: { tossup?: string; bonus?: string[] };
 }
