@@ -18,7 +18,11 @@ describe('title rules', () => {
 
   it('offers granted titles first, then one per earned badge, and resolves only titles still owned', () => {
     const opts = titleOptions(['special:developer', 'custom:Founder'], new Set(['debut', 'firstPower']));
-    expect(opts.map((o) => `${o.from}:${o.name}`)).toEqual(['special:Developer', 'custom:Founder', 'badge:Debut', 'badge:First power']);
+    expect(opts.map((o) => `${o.from}:${o.name}`)).toEqual(['special:Developer', 'custom:Founder', 'level:Rookie', 'badge:Debut', 'badge:First power']);
+    // Level titles open up as the level is reached.
+    expect(titleOptions([], new Set(), 12).filter((o) => o.from === 'level').map((o) => o.name)).toEqual(['Rookie', 'Buzzer', 'Scholar']);
+    expect(titleName('level:10', [], new Set(), 9)).toBeNull();
+    expect(titleName('level:10', [], new Set(), 10)).toBe('Scholar');
     expect(titleName('special:developer', ['special:developer'], new Set())).toBe('Developer');
     expect(titleName('special:vip', ['special:developer'], new Set())).toBeNull(); // not given
     expect(titleName('badge:champion', [], new Set(['debut']))).toBeNull(); // not earned
@@ -61,7 +65,7 @@ describe('titles over the API', () => {
     expect(r.titles).toEqual(['special:vip', 'special:early-tester', 'custom:Quiz Legend']);
 
     const t = await (await req('GET', '/me/titles', undefined, mia)).json();
-    expect(t.options.map((o: { name: string }) => o.name)).toEqual(['VIP', 'Early Tester', 'Quiz Legend']);
+    expect(t.options.map((o: { name: string }) => o.name)).toEqual(['VIP', 'Early Tester', 'Quiz Legend', 'Rookie']);
     expect(t.equipped).toBeNull();
 
     expect((await req('PATCH', '/me', { title: 'special:developer' }, mia)).status).toBe(403); // not given to her

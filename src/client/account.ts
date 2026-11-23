@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Preset } from '../shared/presets';
 import type { Me, ProfileView } from '../shared/accounts';
 import type { TitleOption, Visibility } from '../shared/profile';
+import type { LevelInfo } from '../shared/levels';
 import { prefs, socket } from './socket';
 
 // The logged-in account, shared by every component. Guests have me = null.
@@ -170,6 +171,31 @@ export async function adminUnlockBadges(username: string, unlock: boolean) {
   return api<{ ok: true; unlocked: boolean }>(`/admin/users/${encodeURIComponent(username)}/badges`, { method: 'POST', body: { unlock } });
 }
 
+/** Upload a profile picture (a square JPEG made by `squareJpeg`). */
+export async function uploadAvatar(jpeg: Blob) {
+  let res: Response;
+  try {
+    res = await fetch('/api/me/avatar', { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: jpeg, credentials: 'same-origin' });
+  } catch {
+    throw new Error('Could not reach the server.');
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(res.status === 413 ? 'That picture is too big.' : data.error ?? `Something went wrong (${res.status}).`);
+  set(data.user);
+  return data.user as Me;
+}
+
+export async function removeAvatar() {
+  const { user } = await api<{ user: Me }>('/me/avatar', { method: 'DELETE' });
+  set(user);
+  return user;
+}
+
+/** Admin: take down someone's profile picture. */
+export async function adminRemoveAvatar(username: string) {
+  return api<{ ok: true }>(`/admin/users/${encodeURIComponent(username)}/avatar`, { method: 'DELETE' });
+}
+
 /** Admin: delete someone's account, sessions and saved games. */
 export async function adminDeleteAccount(username: string) {
   return api<{ ok: true }>(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
@@ -192,5 +218,22 @@ window.addEventListener('qb-settings', (e) => {
     me = { ...me, settings };
   }, 1500);
 });
+
+// ---------- XP from the last finished game ----------
+
+export interface XpNews { gained: number; before: LevelInfo; after: LevelInfo; unlocked: string[]; at: number }
+let xpNews: XpNews | null = null;
+const xpListeners = new Set<() => void>();
+
+socket.on('account:xp', (x: Omit<XpNews, 'at'>) => {
+  xpNews = { ...x, at: Date.now() };
+  if (me) set({ ...me, level: x.after.level });
+  xpListeners.forEach((l) => l());
+});
+
+/** The XP the last game gave this account (null until a game ends while logged in). */
+export function useXpNews() {
+  return useSyncExternalStore((l) => { xpListeners.add(l); return () => xpListeners.delete(l); }, () => xpNews);
+}
 
 void loadAccount();

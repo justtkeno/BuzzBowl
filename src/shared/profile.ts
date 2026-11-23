@@ -3,6 +3,7 @@
 // before badges existed.
 
 import type { GameRecord, PublicProfile } from './accounts';
+import { LEVEL_TITLES, MAX_LEVEL, levelFor } from './levels';
 
 export type Visibility = 'public' | 'friends' | 'private';
 export const VISIBILITIES: Visibility[] = ['public', 'friends', 'private'];
@@ -115,15 +116,17 @@ export function badgesFor(x: BadgeInput): BadgeState[] {
   });
 }
 
-// ---------- badge rewards: profile colors and avatar frames ----------
-// Cosmetic only. Each one but the defaults is unlocked by a badge (earned, or granted by a site admin).
-// The server checks the badge when a player picks one, and shows the default once the badge is gone.
+// ---------- rewards: profile colors and avatar frames ----------
+// Cosmetic only. Each one but the defaults is unlocked by a badge (earned, or granted by a site admin) or by
+// reaching a level. The server checks when a player picks one, and shows the default once it's locked again.
 
 export interface Reward {
   id: string;
   name: string;
-  /** The badge that unlocks it. Missing: always available (the default). */
+  /** The badge that unlocks it. */
   badge?: string;
+  /** The level that unlocks it. Neither: always available (the default). */
+  level?: number;
 }
 
 /** An accent color: `light` for the light theme, `dark` for the dark theme (each reads well with that theme's accent ink). */
@@ -142,6 +145,13 @@ export const PROFILE_COLORS: ProfileColor[] = [
   { id: 'pine', name: 'Pine', light: '#087f5b', dark: '#38d9a9', badge: 'dailyWeek' },
   { id: 'violet', name: 'Violet', light: '#6741d9', dark: '#9775fa', badge: 'powerHungry' },
   { id: 'gold', name: 'Gold', light: '#9a6700', dark: '#fcc419', badge: 'dailyWin' },
+  // From levels
+  { id: 'mint', name: 'Mint', light: '#2b8a3e', dark: '#8ce99a', level: 3 },
+  { id: 'plum', name: 'Plum', light: '#862e9c', dark: '#da77f2', level: 8 },
+  { id: 'crimson', name: 'Crimson', light: '#c92a2a', dark: '#ff8787', level: 12 },
+  { id: 'indigo', name: 'Indigo', light: '#3b5bdb', dark: '#91a7ff', level: 18 },
+  { id: 'copper', name: 'Copper', light: '#a8571b', dark: '#f4a261', level: 25 },
+  { id: 'lime', name: 'Lime', light: '#5c940d', dark: '#c0eb75', level: 35 },
 ];
 
 /** Rings and marks around the avatar, drawn in the player's color (`.frame-*` in accounts.css). */
@@ -153,6 +163,13 @@ export const AVATAR_FRAMES: Reward[] = [
   { id: 'flame', name: 'Flame', badge: 'unstoppable' },
   { id: 'star', name: 'Star', badge: 'dailyPerfect' },
   { id: 'halo', name: 'Halo', badge: 'champion' },
+  // From levels
+  { id: 'bronze', name: 'Bronze ring', level: 5 },
+  { id: 'silver', name: 'Silver ring', level: 10 },
+  { id: 'gold', name: 'Gold ring', level: 20 },
+  { id: 'laurel', name: 'Laurel', level: 30 },
+  { id: 'prism', name: 'Prism', level: 40 },
+  { id: 'crown', name: 'Crown', level: 50 },
 ];
 
 const COLOR_BY_ID = new Map(PROFILE_COLORS.map((c) => [c.id, c]));
@@ -165,16 +182,38 @@ export const isFrame = (id: unknown): id is string => typeof id === 'string' && 
 /** Ids of the badges a player has. */
 export const earnedIds = (badges: BadgeState[]) => new Set(badges.filter((b) => b.earned).map((b) => b.id));
 
-/** True when the reward is free or its badge is among `earned`. */
-export const isUnlocked = (r: Reward, earned: Set<string>) => !r.badge || earned.has(r.badge);
+/** True when the reward is free, its badge is among `earned`, or its level is reached. */
+export const isUnlocked = (r: Reward, earned: Set<string>, level = 1) =>
+  (!r.badge && !r.level) || (!!r.badge && earned.has(r.badge)) || (!!r.level && level >= r.level);
 
-/** What to show: the stored color and frame if known (and, given `earned`, still unlocked), else the defaults. */
-export function lookFor(stored: { color?: string | null; frame?: string | null }, earned?: Set<string>): { color: string; frame: string } {
+/** How the reward is unlocked, for a locked picker option. */
+export const unlockHint = (r: Reward) => (r.level ? `Reach level ${r.level}` : r.badge ? `Earn the ${BADGE_BY_ID.get(r.badge)?.name ?? r.badge} badge` : '');
+
+/** The profile picture's address; the version makes a new upload show at once despite caching. */
+export const picUrl = (username: string, version: number) => `/api/avatar/${encodeURIComponent(username.toLowerCase())}?v=${version.toString(36)}`;
+
+/** What an account stores that decides how it looks. */
+export interface StoredLook {
+  color?: string | null; frame?: string | null;
+  username?: string; avatarAt?: number | null; xp?: number | null; grantedBadges?: string[] | null;
+}
+
+/** The level rewards are judged by: an admin who unlocked every badge for someone unlocks every level reward too. */
+export const rewardLevel = (u: StoredLook) => (BADGES.every((b) => u.grantedBadges?.includes(b.id)) ? MAX_LEVEL : levelFor(u.xp ?? 0).level);
+
+/**
+ * What to show: the stored color and frame if known (and, given `earned`, still unlocked by a badge or the level),
+ * else the defaults. Adds the profile picture and level when the account has them.
+ */
+export function lookFor(stored: StoredLook, earned?: Set<string>): { color: string; frame: string; pic?: string; level?: number } {
   const c = colorById(stored.color);
   const f = frameById(stored.frame);
+  const lv = rewardLevel(stored);
   return {
-    color: !earned || isUnlocked(c, earned) ? c.id : DEFAULT_COLOR,
-    frame: !earned || isUnlocked(f, earned) ? f.id : DEFAULT_FRAME,
+    color: !earned || isUnlocked(c, earned, lv) ? c.id : DEFAULT_COLOR,
+    frame: !earned || isUnlocked(f, earned, lv) ? f.id : DEFAULT_FRAME,
+    ...(stored.avatarAt && stored.username ? { pic: picUrl(stored.username, stored.avatarAt) } : {}),
+    ...(stored.xp != null ? { level: levelFor(stored.xp).level } : {}),
   };
 }
 
@@ -195,7 +234,7 @@ export const TITLE_MAX = 24;
 /** Most titles an admin can give one player. */
 export const GRANTED_TITLES_MAX = 20;
 
-export interface TitleOption { key: string; name: string; from: 'special' | 'custom' | 'badge' }
+export interface TitleOption { key: string; name: string; from: 'special' | 'custom' | 'level' | 'badge' }
 
 /** A custom title as typed by an admin: one line, no control characters, at most TITLE_MAX characters. */
 export function cleanCustomTitle(s: unknown): string {
@@ -216,19 +255,20 @@ export function cleanGrantedTitles(list: unknown): string[] {
   return out.slice(0, GRANTED_TITLES_MAX);
 }
 
-/** Every title a player can equip: the ones an admin gave them, then one per earned badge. */
-export function titleOptions(granted: string[] | undefined, earned: Set<string>): TitleOption[] {
+/** Every title a player can equip: the ones an admin gave them, then one per level title reached, then one per earned badge. */
+export function titleOptions(granted: string[] | undefined, earned: Set<string>, level = 1): TitleOption[] {
   const out: TitleOption[] = [];
   for (const k of cleanGrantedTitles(granted ?? [])) {
     if (k.startsWith('special:')) out.push({ key: k, name: SPECIAL_BY_ID.get(k.slice(8))!, from: 'special' });
     else out.push({ key: k, name: k.slice(7), from: 'custom' });
   }
+  for (const t of LEVEL_TITLES) if (level >= t.level) out.push({ key: `level:${t.level}`, name: t.title, from: 'level' });
   for (const b of BADGES) if (earned.has(b.id)) out.push({ key: `badge:${b.id}`, name: b.name, from: 'badge' });
   return out;
 }
 
 /** The equipped title's text, or null when nothing is equipped or it's no longer theirs. */
-export function titleName(key: string | null | undefined, granted: string[] | undefined, earned: Set<string>): string | null {
+export function titleName(key: string | null | undefined, granted: string[] | undefined, earned: Set<string>, level = 1): string | null {
   if (!key) return null;
-  return titleOptions(granted, earned).find((o) => o.key === key)?.name ?? null;
+  return titleOptions(granted, earned, level).find((o) => o.key === key)?.name ?? null;
 }

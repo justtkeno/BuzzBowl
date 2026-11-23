@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { USERNAME_RE, type Friend, type FriendRequest, type FriendsList } from '../../shared/accounts';
 import { removeFriend, sendFriendRequest, useFriends } from '../friends';
 import { call, socket } from '../socket';
-import { AccountDialog, Avatar as UserAvatar, CreatorBadge } from './Account';
+import { AccountDialog, Avatar as UserAvatar, CreatorBadge, LevelChip } from './Account';
 import { Icon } from './Icon';
 
 /** How often the list refreshes while the panel is open, and (for the tab's counts) while it's closed. */
@@ -23,18 +23,18 @@ function statusText(f: Friend) {
   return f.status === 'online' ? 'Online' : 'Offline';
 }
 
-function Avatar({ name, status, color, frame }: { name: string; status?: Friend['status']; color?: string; frame?: string }) {
+function Avatar({ name, status, color, frame, pic }: { name: string; status?: Friend['status']; color?: string; frame?: string; pic?: string }) {
   return (
-    <UserAvatar name={name} color={color} frame={frame} className="friend-avatar">
+    <UserAvatar name={name} color={color} frame={frame} pic={pic} className="friend-avatar">
       {status && status !== 'offline' && <span className={`friend-dot ${status}`} />}
     </UserAvatar>
   );
 }
 
-function Name({ who, newTab }: { who: { username: string; displayName: string; admin: boolean }; newTab?: boolean }) {
+function Name({ who, newTab }: { who: { username: string; displayName: string; admin: boolean; level?: number }; newTab?: boolean }) {
   return (
     <a className="friend-name" href={`/u/${who.username}`} {...(newTab ? { target: '_blank', rel: 'noreferrer' } : {})}>
-      {who.displayName}{who.admin && <CreatorBadge />}
+      {who.displayName}<LevelChip level={who.level} />{who.admin && <CreatorBadge />}
     </a>
   );
 }
@@ -178,7 +178,7 @@ function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab, can
 
   const row = (x: Friend) => (
     <li key={x.username} className={`friend ${x.status}`}>
-      <Avatar name={x.displayName} status={x.status} color={x.color} frame={x.frame} />
+      <Avatar name={x.displayName} status={x.status} color={x.color} frame={x.frame} pic={x.pic} />
       <div className="grow friend-text">
         <Name who={x} newTab={newTab} />
         <div className="muted small">{x.room && x.room.code === currentCode ? 'In your room' : statusText(x)}</div>
@@ -244,7 +244,7 @@ function FriendsPanel({ list, change, onJoin, currentCode, disabled, newTab, can
 function RequestRow({ r, newTab, children }: { r: FriendRequest; newTab?: boolean; children: React.ReactNode }) {
   return (
     <li className="friend">
-      <Avatar name={r.displayName} color={r.color} frame={r.frame} />
+      <Avatar name={r.displayName} color={r.color} frame={r.frame} pic={r.pic} />
       <div className="grow friend-text">
         <Name who={r} newTab={newTab} />
         <div className="muted small">@{r.username}</div>

@@ -5,15 +5,17 @@ import {
   AVATAR_FRAMES, BADGE_BY_ID, PIN_MAX, PIN_STATS, PROFILE_COLORS, VISIBILITIES, VISIBILITY_LABEL, colorById, earnedIds, frameById, isUnlocked,
   type Reward, type Visibility, SPECIAL_TITLES, TITLE_MAX, BADGES, type TitleOption,
 } from '../../shared/profile';
-import { adminDeleteAccount, adminResetProfile, adminSetBadges, adminSetTitles, adminUnlockBadges, fetchProfile, fetchTitles, updateMe, useAccount } from '../account';
+import { LEVEL_TITLES, MAX_LEVEL, MILESTONES, xpAtLevel, type LevelInfo } from '../../shared/levels';
+import { adminDeleteAccount, adminRemoveAvatar, adminResetProfile, adminSetBadges, adminSetTitles, adminUnlockBadges, fetchProfile, fetchTitles, removeAvatar, updateMe, useAccount } from '../account';
 import { SettingsMenu } from './AppSettings';
+import { PhotoPicker } from './PhotoPicker';
 import { Announcement } from './Announcement';
 import { CategoryDot } from './CategoryChip';
 import { useTheme } from '../App';
 import { Info } from './Info';
 import { PhoneTabs } from './PhoneTabs';
 import type { TermId } from '../glossary';
-import { AccountBar, Avatar, CreatorBadge, TitleTag, tint } from './Account';
+import { AccountBar, Avatar, CreatorBadge, LevelChip, TitleTag, tint } from './Account';
 import { FriendButton, FriendsTab, InviteBanner } from './Friends';
 import { Marks } from './Daily';
 import { Icon } from './Icon';
@@ -81,15 +83,16 @@ export function Profile({ username }: { username: string }) {
         {p && !deleted && (
           <>
             <section className={`card profile-head ${headTint.className ?? ''}`} style={headTint.style}>
-              <Avatar name={p.displayName} color={look!.color} frame={look!.frame} size="big" />
+              <Avatar name={p.displayName} color={look!.color} frame={look!.frame} pic={p.pic} size="big" />
               <div className="grow">
                 <h1>{p.displayName} <span className="verified" title="Verified Trivio account"><Check /></span>{p.admin && <CreatorBadge />}</h1>
                 {p.title && <div className="profile-title"><TitleTag title={p.title} /></div>}
                 <div className="muted small">@{p.username} · joined {new Date(p.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
+                {isLocked(p) ? p.level ? <div className="level-line small"><LevelChip level={p.level} /> Level {p.level}</div> : null : <LevelLine info={p.levelInfo} />}
                 {!isLocked(p) && p.visibility && p.visibility !== 'public' && !editing && (
                   <div className="visibility-note small"><Icon name="lock" /> {p.visibility === 'private' ? (mine ? 'Private: only you can see your stats' : 'Private profile · you can see it as an admin') : (mine ? 'Friends only: only your friends can see your stats' : 'Friends-only profile · you can see it as an admin')}</div>
                 )}
-                {!isLocked(p) && (editing ? <EditProfile p={p} onPreview={setPreview} onDone={(np) => { if (np) setP(np); setEditing(false); setPreview(null); }} /> : p.bio && <p className="bio">{p.bio}</p>)}
+                {!isLocked(p) && (editing ? <EditProfile p={p} onPreview={setPreview} onPic={(pic) => setP({ ...p, pic })} onDone={(np) => { if (np) setP(np); setEditing(false); setPreview(null); }} /> : p.bio && <p className="bio">{p.bio}</p>)}
               </div>
               <div className="row gap">
                 {mine && !editing && <button className="btn small" onClick={() => setEditing(true)}>Edit profile</button>}
@@ -113,6 +116,7 @@ export function Profile({ username }: { username: string }) {
             {tab === 'overview' && (
               <>
                 <Pinned p={p} color={look!.color} mine={mine} onEdit={() => setEditing(true)} />
+                <Levels p={p} mine={mine} />
                 {p.totals.games === 0 ? <NoGames p={p} mine={mine} /> : (
                   <>
                     <Recent games={p.recent.slice(0, 5)} />
@@ -161,13 +165,65 @@ function LockIcon() {
   return <svg className="lock" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path fill="currentColor" d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2h.5a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm1.6 0h3.8V5a1.9 1.9 0 0 0-3.8 0z" /></svg>;
 }
 
-/** Which badge unlocks a reward, for locked options. */
+/** What unlocks a reward (a badge or a level), for locked options. */
 function unlockText(r: Reward) {
+  if (r.level) return `${r.name} unlocks at level ${r.level}.`;
   const b = BADGE_BY_ID.get(r.badge ?? '');
   return b ? `${r.name} unlocks with the ${b.icon} ${b.name} badge (${b.desc.charAt(0).toLowerCase()}${b.desc.slice(1)}).` : r.name;
 }
 
-function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: PublicProfile | null) => void; onPreview: (look: Look) => void }) {
+/** "Level 12 · Scholar" with a thin bar to the next level. */
+function LevelLine({ info }: { info: LevelInfo }) {
+  const pctDone = info.need ? Math.min(100, (info.into / info.need) * 100) : 100;
+  return (
+    <div className="level-line small" title={`${info.xp.toLocaleString()} XP in total`}>
+      <b>Level {info.level}</b> <span className="muted">· {info.title}</span>
+      <span className="xp-bar" role="progressbar" aria-label="Progress to the next level" aria-valuemin={0} aria-valuemax={info.need || 1} aria-valuenow={info.need ? info.into : 1}><i style={{ width: `${pctDone}%` }} /></span>
+      <span className="muted">{info.need ? `${info.into} / ${info.need} XP` : 'Max level'}</span>
+    </div>
+  );
+}
+
+/** What each milestone level unlocks: titles, colors and frames. */
+function Levels({ p, mine }: { p: PublicProfile; mine: boolean }) {
+  const [open, setOpen] = useState(false);
+  const lv = p.levelInfo.level;
+  const rows = MILESTONES.map((level) => ({
+    level,
+    items: [
+      ...LEVEL_TITLES.filter((t) => t.level === level).map((t) => `${t.title} title`),
+      ...PROFILE_COLORS.filter((c) => c.level === level).map((c) => `${c.name} color`),
+      ...AVATAR_FRAMES.filter((f) => f.level === level).map((f) => `${f.name} frame`),
+    ],
+  })).filter((r) => r.items.length);
+  const next = rows.find((r) => r.level > lv);
+  return (
+    <section className="card levels-card">
+      <div className="row between">
+        <h2>Level {lv}</h2>
+        <button type="button" className="btn small ghost" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Hide rewards' : 'All rewards'}</button>
+      </div>
+      <p className="muted small">
+        {next ? <>{mine ? 'You reach' : `${p.displayName} reaches`} level {next.level} at {xpAtLevel(next.level).toLocaleString()} XP ({(xpAtLevel(next.level) - p.levelInfo.xp).toLocaleString()} to go), unlocking {next.items.join(', ')}.</>
+          : lv >= MAX_LEVEL ? 'Max level. Every level reward is unlocked.' : 'Every level reward is unlocked.'}
+      </p>
+      {mine && <p className="muted small">XP comes from every finished game: 2 per tossup played, 6 per power, 4 per ten, a bit for bonuses, more for a win or a top-3 finish, and 30 for the daily challenge.</p>}
+      {open && (
+        <ul className="level-rewards">
+          {rows.map((r) => (
+            <li key={r.level} className={r.level <= lv ? 'got' : ''}>
+              <span className="lvl">{r.level}</span>
+              <span className="grow">{r.items.join(' · ')}</span>
+              {r.level <= lv ? <Icon name="check" /> : <LockIcon />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function EditProfile({ p, onDone, onPreview, onPic }: { p: PublicProfile; onDone: (p: PublicProfile | null) => void; onPreview: (look: Look) => void; onPic: (pic: string | undefined) => void }) {
   const [account, setAccount] = useState(false);
   const [displayName, setDisplayName] = useState(p.displayName);
   const [color, setColor] = useState(p.color);
@@ -175,9 +231,13 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
   /** What a tapped locked option needs, shown under its picker. */
   const [hint, setHint] = useState<{ kind: 'color' | 'frame'; text: string } | null>(null);
   const earned = earnedIds(p.badges);
+  const level = p.badgesUnlocked ? MAX_LEVEL : p.levelInfo.level;
   useEffect(() => onPreview({ color, frame }), [color, frame]);
-  const [bio, setBio] = useState(p.bio);
+  const [picBusy, setPicBusy] = useState(false);
   const { me } = useAccount();
+  // A new picture shows at once (the account store has its address).
+  useEffect(() => { if (me && me.username === p.username && me.pic !== p.pic) onPic(me.pic); }, [me?.pic]);
+  const [bio, setBio] = useState(p.bio);
   const [titles, setTitles] = useState<TitleOption[] | null>(null);
   const [title, setTitle] = useState<string | null>(me?.title ?? null);
   useEffect(() => { fetchTitles().then((r) => { setTitles(r.options); setTitle(r.equipped); }, () => setTitles([])); }, []);
@@ -196,6 +256,18 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
   };
   return (
     <form className="edit-profile" onSubmit={save}>
+      <div className="field">
+        <span>Profile picture</span>
+        <div className="row gap pic-row">
+          <Avatar name={displayName || p.displayName} color={color} frame={frame} pic={p.pic} force />
+          <PhotoPicker label={p.pic ? 'Change photo' : 'Choose photo'} onSaved={() => {}} />
+          {p.pic && <button type="button" className="btn small ghost" disabled={picBusy} onClick={async () => {
+            setPicBusy(true);
+            try { await removeAvatar(); } catch (x: any) { setErr(x.message); } finally { setPicBusy(false); }
+          }}>Remove</button>}
+        </div>
+        <span className="muted small">From your photo library or camera. Saved right away.</span>
+      </div>
       <label className="field"><span>Display name</span><input value={displayName} maxLength={24} onChange={(e) => setDisplayName(e.target.value)} /></label>
       <label className="field"><span>Bio <span className="muted">({bio.length}/{BIO_MAX})</span></span>
         <textarea value={bio} maxLength={BIO_MAX} rows={2} placeholder="Favorite categories, team, school…" onChange={(e) => setBio(e.target.value)} />
@@ -226,7 +298,7 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
         <span>Profile color <span className="muted">· {colorById(color).name}</span></span>
         <div className="reward-picker" role="radiogroup" aria-label="Profile color">
           {PROFILE_COLORS.map((c) => {
-            const open = isUnlocked(c, earned);
+            const open = isUnlocked(c, earned, level);
             const t = tint(c.id, true);
             return (
               <button key={c.id} type="button" role="radio" aria-checked={color === c.id} aria-disabled={!open}
@@ -244,7 +316,7 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
         <span>Avatar frame <span className="muted">· {frameById(frame).name}</span></span>
         <div className="reward-picker" role="radiogroup" aria-label="Avatar frame">
           {AVATAR_FRAMES.map((f) => {
-            const open = isUnlocked(f, earned);
+            const open = isUnlocked(f, earned, level);
             return (
               <button key={f.id} type="button" role="radio" aria-checked={frame === f.id} aria-disabled={!open}
                 className={`frame-opt ${frame === f.id ? 'on' : ''} ${open ? '' : 'locked'}`}
@@ -256,7 +328,7 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
             );
           })}
         </div>
-        {hint?.kind === 'frame' ? <span className="reward-hint small"><Icon name="lock" /> {hint.text}</span> : <span className="muted small">Earn badges to unlock more colors and frames.</span>}
+        {hint?.kind === 'frame' ? <span className="reward-hint small"><Icon name="lock" /> {hint.text}</span> : <span className="muted small">Earn badges and level up to unlock more colors and frames.</span>}
       </div>
       <div className="field">
         <span>Title <span className="muted">· shown with your name on your profile and in games</span></span>
@@ -264,12 +336,12 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
           <div className="chips title-picker" role="radiogroup" aria-label="Title">
             <button type="button" role="radio" aria-checked={!title} className={`chip ${!title ? 'on' : ''}`} onClick={() => setTitle(null)}>None</button>
             {titles.map((o) => (
-              <button key={o.key} type="button" role="radio" aria-checked={title === o.key} className={`chip ${title === o.key ? 'on' : ''} ${o.from !== 'badge' ? 'special' : ''}`}
-                title={o.from === 'badge' ? 'Earned with a badge' : 'Given by Trivio'} onClick={() => setTitle(o.key)}>{o.name}</button>
+              <button key={o.key} type="button" role="radio" aria-checked={title === o.key} className={`chip ${title === o.key ? 'on' : ''} ${o.from === 'special' || o.from === 'custom' ? 'special' : ''}`}
+                title={o.from === 'badge' ? 'Earned with a badge' : o.from === 'level' ? `Reached at level ${o.key.slice(6)}` : 'Given by Trivio'} onClick={() => setTitle(o.key)}>{o.name}</button>
             ))}
           </div>
         )}
-        {titles && !titles.length && <span className="muted small">Earn badges to unlock titles.</span>}
+        {titles && !titles.length && <span className="muted small">Level up and earn badges to unlock titles.</span>}
       </div>
       <p className="muted small">Username, email and password are in <button type="button" className="link" onClick={() => setAccount(true)}>Account settings</button>.</p>
       {account && <SettingsMenu start="account" onClose={() => setAccount(false)} />}
@@ -279,7 +351,6 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
   );
 }
 
-/** Admin-only moderation tools for someone else's profile. */
 /** Site admins: give titles (special or custom) and individual badges. Works on any profile, yours and other admins' too. */
 function AdminTitles({ p, onChange }: { p: ProfileView; onChange: (p: ProfileView) => void }) {
   const [titles, setTitles] = useState<string[]>(p.grantedTitles ?? []);
@@ -340,6 +411,7 @@ function AdminTitles({ p, onChange }: { p: ProfileView; onChange: (p: ProfileVie
   );
 }
 
+/** Admin-only moderation tools for someone else's profile. */
 function AdminCard({ p, onChange, onDeleted }: { p: PublicProfile; onChange: (p: PublicProfile) => void; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -361,6 +433,11 @@ function AdminCard({ p, onChange, onDeleted }: { p: PublicProfile; onChange: (p:
       <div className="row gap">
         <button className="btn small" disabled={busy || p.displayName === p.username} onClick={() => reset(true, false)}>Reset display name</button>
         <button className="btn small" disabled={busy || !p.bio} onClick={() => reset(false, true)}>Clear bio</button>
+        {p.pic && <button className="btn small" disabled={busy} onClick={() => run(async () => {
+          await adminRemoveAvatar(p.username);
+          onChange({ ...p, pic: undefined });
+          setNote('Profile picture removed.');
+        })}>Remove picture</button>}
         <button className="btn small" disabled={busy} onClick={() => run(async () => {
           const unlock = !p.badgesUnlocked;
           await adminUnlockBadges(p.username, unlock);

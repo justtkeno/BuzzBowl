@@ -7,9 +7,10 @@ import {
   type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type ProfileView, type PublicProfile,
 } from '../../shared/accounts';
 import {
-  BADGES, BADGE_BY_ID, VISIBILITIES, badgesFor, cleanGrantedTitles, titleName, titleOptions, cleanPinned, colorById, earnedIds, frameById, isColor, isFrame, isUnlocked, lookFor,
-  type Reward, type Visibility,
+  AVATAR_FRAMES, BADGES, BADGE_BY_ID, PROFILE_COLORS, VISIBILITIES, badgesFor, cleanGrantedTitles, titleName, titleOptions, cleanPinned, colorById, earnedIds, frameById, isColor, isFrame, isUnlocked,
+  lookFor, rewardLevel, unlockHint, type Reward, type Visibility,
 } from '../../shared/profile';
+import { levelFor, unlockedBetween, xpForGame, type LevelInfo } from '../../shared/levels';
 import { cleanPresets } from '../../shared/presets';
 import type { Mailer } from './mailer';
 import type { AccountStore, FriendLink, GameTotal, User, UserPatch } from './store';
@@ -28,8 +29,42 @@ const CONFIRM_MINUTES = 7 * 24 * 60;
 /** At most this many emails of each kind (reset, confirm) per account per hour. */
 const LINKS_PER_HOUR = 3;
 
-/** Who a socket is logged in as. */
-export interface SocketAccount { id: string; username: string; admin: boolean; title?: string }
+/** The level an account's titles and rewards go by (an admin who unlocked every badge unlocks every level reward). */
+const levelOf = (u: User) => rewardLevel(u);
+
+/** Who a socket is logged in as, with their level and picture for the rooms they join. */
+export interface SocketAccount { id: string; username: string; admin: boolean; title?: string; level?: number; pic?: string }
+
+/** XP one account got from a finished game. */
+export interface XpGain { accountId: string; gained: number; before: LevelInfo; after: LevelInfo; unlocked: string[] }
+
+const LEVEL_REWARDS = [
+  ...PROFILE_COLORS.map((r) => ({ ...r, kind: 'color' })),
+  ...AVATAR_FRAMES.map((r) => ({ ...r, kind: 'frame' })),
+];
+
+/** Profile pictures: a square JPEG the app made on the player's device (256 px), checked here. */
+export const AVATAR_MAX_BYTES = 200 * 1024;
+const AVATAR_MIN_PX = 32, AVATAR_MAX_PX = 1024;
+
+/** Width and height of a baseline or progressive JPEG, or null when it isn't one. */
+export function jpegSize(b: Buffer): { width: number; height: number } | null {
+  if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8 || b[2] !== 0xff) return null;
+  let i = 2;
+  while (i + 9 < b.length) {
+    if (b[i] !== 0xff) return null;
+    const marker = b[i + 1];
+    if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01 || marker === 0xff) { i += marker === 0xff ? 1 : 2; continue; }
+    const len = b.readUInt16BE(i + 2);
+    // SOF markers (C0–CF except C4 DHT, C8 JPG, CC DAC) carry the size.
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) };
+    }
+    if (marker === 0xda || len < 2) return null;
+    i += 2 + len;
+  }
+  return null;
+}
 
 /** Where a logged-in account is right now (accounts with no entry are offline). */
 export interface Presence { status: 'online' | 'room' | 'daily' | 'survival'; room?: FriendRoom }
@@ -128,6 +163,7 @@ export class Accounts {
   private sockets = new WeakMap<Socket, SocketAccount>();
   private allow = limiter(20, 10 * 60_000);
   private allowFriendRequest = limiter(30, 10 * 60_000);
+  private allowAvatar = limiter(10, 10 * 60_000);
   /** Set by the server, which knows the sockets and rooms: where each of these accounts is right now. */
   presence: (accountIds: string[]) => Map<string, Presence> = () => new Map();
 
@@ -254,7 +290,31 @@ export class Accounts {
       this.ready = true;
     } catch (e) {
       console.error(`Accounts are disabled: could not open the ${this.store.kind} store.`, e);
+      return;
     }
+    // Work out levels for accounts that had games before levels existed (in the background).
+    void this.backfillXp();
+  }
+
+  private async backfillXp() {
+    try {
+      const ids = await this.store.usersWithoutXp();
+      for (const id of ids) {
+        const u = await this.store.userById(id);
+        if (u) await this.xpOf(u);
+      }
+      if (ids.length) console.log(`Worked out levels for ${ids.length} account${ids.length === 1 ? '' : 's'}.`);
+    } catch (e) {
+      console.error('Could not work out levels:', e);
+    }
+  }
+
+  /** Total XP of an account, worked out from every saved game the first time it's needed. */
+  async xpOf(u: User): Promise<number> {
+    if (u.xp != null) return u.xp;
+    const games = await this.store.games(u.id, 1_000_000);
+    u.xp = await this.store.initXp(u.id, games.reduce((n, g) => n + xpForGame(g), 0));
+    return u.xp;
   }
 
   /** The account a request's session cookie belongs to. */
@@ -284,9 +344,10 @@ export class Accounts {
   socketMiddleware = (socket: Socket, next: (err?: Error) => void) => {
     this.userFrom(socket.request.headers.cookie).then((u) => {
       if (!u) return next();
-      // The equipped title rides along into rooms (a reconnect picks up a newly equipped one).
+      // The equipped title, level and picture ride along into rooms (a reconnect picks up new ones).
       this.titleOf(u).catch(() => null).then((title) => {
-        this.sockets.set(socket, { id: u.id, username: u.username, admin: isAdmin(u), ...(title ? { title } : {}) });
+        const { level, pic } = lookFor(u);
+        this.sockets.set(socket, { id: u.id, username: u.username, admin: isAdmin(u), ...(title ? { title } : {}), ...(level ? { level } : {}), ...(pic ? { pic } : {}) });
         next();
       });
     }, () => next());
@@ -296,11 +357,34 @@ export class Accounts {
 
   // ---------- game results ----------
 
-  /** Save finished games to their players' profiles. Never throws. */
-  record(entries: { accountId: string; game: GameRecord }[]) {
-    if (!this.ready || !entries.length) return;
-    this.store.addGames(entries.map((e) => ({ userId: e.accountId, game: e.game })))
-      .catch((e) => console.error('Could not save game results:', e));
+  /** Save finished games to their players' profiles and add their XP. Never throws. */
+  async record(entries: { accountId: string; game: GameRecord }[]): Promise<XpGain[]> {
+    if (!this.ready || !entries.length) return [];
+    try {
+      await this.store.addGames(entries.map((e) => ({ userId: e.accountId, game: e.game })));
+    } catch (e) {
+      console.error('Could not save game results:', e);
+      return [];
+    }
+    const gained = new Map<string, number>();
+    for (const e of entries) gained.set(e.accountId, (gained.get(e.accountId) ?? 0) + xpForGame(e.game));
+    const out: XpGain[] = [];
+    for (const [accountId, n] of gained) {
+      try {
+        let total = await this.store.addXp(accountId, n);
+        if (total == null) {
+          // Not worked out yet: the sum over saved games already includes this one.
+          const u = await this.store.userById(accountId);
+          if (!u) continue;
+          total = await this.xpOf(u);
+        }
+        const before = levelFor(total - n), after = levelFor(total);
+        out.push({ accountId, gained: n, before, after, unlocked: unlockedBetween(before.level, after.level, LEVEL_REWARDS) });
+      } catch (e) {
+        console.error('Could not add XP:', e);
+      }
+    }
+    return out;
   }
 
   /**
@@ -310,6 +394,7 @@ export class Accounts {
   async profile(username: string, viewer: User | null = null): Promise<ProfileView | null> {
     const u = await this.store.userByName(username);
     if (!u) return null;
+    await this.xpOf(u);
     const visibility: Visibility = u.visibility ?? 'public';
     const owner = viewer?.id === u.id;
     const privileged = owner || (!!viewer && isAdmin(viewer));
@@ -319,7 +404,7 @@ export class Accounts {
         const earned = await this.earnedBadges(u);
         return {
           username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u), locked: visibility, ...lookFor(u, earned),
-          ...((t) => (t ? { title: t } : {}))(titleName(u.title, u.titles, earned)),
+          ...((t) => (t ? { title: t } : {}))(titleName(u.title, u.titles, earned, levelOf(u))),
           ...(viewer && isAdmin(viewer) ? { grantedTitles: u.titles ?? [] } : {}),
         };
       }
@@ -341,12 +426,13 @@ export class Accounts {
       ...(await this.extras(u)),
       pinned: cleanPinned(u.pinned),
       badges: [],
+      levelInfo: levelFor(u.xp ?? 0),
       ...(privileged ? { visibility } : {}),
       ...(viewer && isAdmin(viewer) ? { badgesUnlocked: BADGES.every((b) => u.grantedBadges?.includes(b.id)), grantedBadges: u.grantedBadges ?? [], grantedTitles: u.titles ?? [] } : {}),
     };
     p.badges = badgesFor({ games, p, granted: u.grantedBadges });
     const earned = earnedIds(p.badges);
-    Object.assign(p, lookFor(u, earned), { title: titleName(u.title, u.titles, earned) });
+    Object.assign(p, lookFor(u, earned), { title: titleName(u.title, u.titles, earned, levelOf(u)) });
     return p;
   }
 
@@ -357,7 +443,7 @@ export class Accounts {
   /** The text of the title an account has equipped, if it's still theirs. */
   async titleOf(u: User): Promise<string | null> {
     if (!u.title) return null;
-    return titleName(u.title, u.titles, u.title.startsWith('badge:') ? await this.earnedBadges(u) : new Set());
+    return titleName(u.title, u.titles, u.title.startsWith('badge:') ? await this.earnedBadges(u) : new Set(), levelOf(u));
   }
 
   /** Leaderboard totals over saved games (see `GameTotal`). */
@@ -373,13 +459,14 @@ export class Accounts {
   }
 
   /** Leaderboards: each account's avatar look and equipped title, as their profile shows them. */
-  async boardLooks(ids: string[]): Promise<Map<string, { color: string; frame: string; title?: string }>> {
+  async boardLooks(ids: string[]): Promise<Map<string, { color: string; frame: string; pic?: string; title?: string }>> {
     const users = ids.length ? await this.store.usersByIds(ids) : [];
-    const out = new Map<string, { color: string; frame: string; title?: string }>();
+    const out = new Map<string, { color: string; frame: string; pic?: string; title?: string }>();
     await Promise.all(users.map(async (u) => {
       const earned = await this.earnedBadges(u).catch(() => new Set<string>());
-      const title = titleName(u.title, u.titles, earned);
-      out.set(u.id, { ...lookFor(u, earned), ...(title ? { title } : {}) });
+      const title = titleName(u.title, u.titles, earned, levelOf(u));
+      const { color, frame, pic } = lookFor(u, earned);
+      out.set(u.id, { color, frame, ...(pic ? { pic } : {}), ...(title ? { title } : {}) });
     }));
     return out;
   }
@@ -443,6 +530,7 @@ export class Accounts {
 
     r.get('/me', wrap(async (req, res) => {
       const u = await this.userFrom(req.headers.cookie);
+      if (u) await this.xpOf(u);
       // `email` tells the app whether to offer Forgot password and confirmation links at all.
       res.json({ user: u ? toMe(u) : null, email: this.emailReady(req) });
     }));
@@ -451,8 +539,43 @@ export class Accounts {
     r.get('/me/titles', wrap(async (req, res) => {
       const u = await this.userFrom(req.headers.cookie);
       if (!u) return res.status(401).json({ error: 'Log in first.' });
-      const options = titleOptions(u.titles, await this.earnedBadges(u));
+      const options = titleOptions(u.titles, await this.earnedBadges(u), levelOf(u));
       res.json({ options, equipped: options.some((o) => o.key === u.title) ? u.title : null });
+    }));
+
+    // ---------- profile pictures ----------
+
+    r.get('/avatar/:username', wrap(async (req, res) => {
+      const u = await this.store.userByName(String(req.params.username));
+      const jpeg = u?.avatarAt ? await this.store.avatar(u.id) : null;
+      if (!jpeg) return res.status(404).json({ error: 'No picture.' });
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      // The address carries the upload time, so a new picture gets a new address.
+      res.setHeader('Cache-Control', req.query.v ? 'public, max-age=31536000, immutable' : 'public, max-age=300');
+      res.send(jpeg);
+    }));
+
+    r.put('/me/avatar', express.raw({ type: 'image/jpeg', limit: AVATAR_MAX_BYTES }), wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) return res.status(401).json({ error: 'Log in first.' });
+      if (!this.allowAvatar(u.id)) return res.status(429).json({ error: 'That’s a lot of new pictures. Try again in a few minutes.' });
+      const body = Buffer.isBuffer(req.body) ? req.body : null;
+      const size = body ? jpegSize(body) : null;
+      if (!body || !size) return res.status(400).json({ error: 'That picture didn’t come through. Try another one.' });
+      if (size.width < AVATAR_MIN_PX || size.height < AVATAR_MIN_PX || size.width > AVATAR_MAX_PX || size.height > AVATAR_MAX_PX) {
+        return res.status(400).json({ error: 'That picture is the wrong size.' });
+      }
+      const at = Date.now();
+      await this.store.setAvatar(u.id, body, at);
+      res.json({ user: toMe({ ...u, avatarAt: at }) });
+    }));
+
+    r.delete('/me/avatar', wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) return res.status(401).json({ error: 'Log in first.' });
+      await this.store.setAvatar(u.id, null, Date.now());
+      res.json({ user: toMe({ ...u, avatarAt: null }) });
     }));
 
     r.post('/signup', wrap(async (req, res) => {
@@ -474,6 +597,7 @@ export class Accounts {
         const nameTaken = !!(await this.store.userByName(username));
         return res.status(409).json({ error: nameTaken ? 'That username is taken.' : 'That email is already on another account.' });
       }
+      user.xp = await this.store.initXp(user.id, 0);
       await this.startSession(req, res, user.id);
       this.confirmLater(user, req);
       res.json({ user: toMe(user) });
@@ -486,6 +610,7 @@ export class Accounts {
       const password = String(req.body?.password ?? '');
       const u = !username ? null : username.includes('@') ? await this.store.userByEmail(username) : await this.store.userByName(username);
       if (!u || !(await verifyPassword(password, u.passwordHash))) return res.status(401).json({ error: 'Wrong username or password.' });
+      await this.xpOf(u);
       await this.startSession(req, res, u.id);
       res.json({ user: toMe(u) });
     }));
@@ -533,14 +658,15 @@ export class Accounts {
       const wanted: Reward[] = [];
       if ('color' in b) { patch.color = b.color; wanted.push(colorById(b.color)); }
       if ('frame' in b) { patch.frame = b.frame; wanted.push(frameById(b.frame)); }
-      if (wanted.some((r) => r.badge)) {
+      if (wanted.some((r) => r.badge || r.level)) {
+        await this.xpOf(u);
         const earned = await this.earnedBadges(u);
-        const locked = wanted.find((r) => !isUnlocked(r, earned));
-        if (locked) return res.status(403).json({ error: `Earn the ${BADGE_BY_ID.get(locked.badge!)?.name ?? locked.badge} badge to unlock ${locked.name}.` });
+        const locked = wanted.find((r) => !isUnlocked(r, earned, rewardLevel(u)));
+        if (locked) return res.status(403).json({ error: `${unlockHint(locked)} to unlock ${locked.name}.` });
       }
       if ('title' in b) {
         const key = b.title ? String(b.title) : null;
-        if (key && !titleOptions(u.titles, await this.earnedBadges(u)).some((o) => o.key === key)) {
+        if (key && !titleOptions(u.titles, await this.earnedBadges(u), levelOf(await this.xpOf(u).then(() => u))).some((o) => o.key === key)) {
           return res.status(403).json({ error: 'That title isn’t yours to wear.' });
         }
         patch.title = key;
@@ -727,14 +853,15 @@ export class Accounts {
         ? BADGES.map((b) => b.id).filter((id) => req.body.badges.includes(id))
         : req.body?.unlock ? BADGES.map((b) => b.id) : [];
       await this.store.updateUser(u.id, { grantedBadges });
+      await this.xpOf(u);
       const after = { ...u, grantedBadges };
       if (u.color || u.frame || u.title) {
         // Rewards and titles only those badges unlocked go back to the defaults.
         const earned = await this.earnedBadges(after);
-        const look = lookFor(u, earned);
+        const { color, frame } = lookFor(after, earned);
         const patch: Partial<User> = {};
-        if (look.color !== (u.color ?? look.color) || look.frame !== (u.frame ?? look.frame)) Object.assign(patch, look);
-        if (u.title && !titleName(u.title, u.titles, earned)) patch.title = null;
+        if (color !== (u.color ?? color) || frame !== (u.frame ?? frame)) Object.assign(patch, { color, frame });
+        if (u.title && !titleName(u.title, u.titles, earned, levelOf(after))) patch.title = null;
         if (Object.keys(patch).length) await this.store.updateUser(u.id, patch);
       }
       console.log(`Admin set ${grantedBadges.length} granted badge${grantedBadges.length === 1 ? '' : 's'} for @${u.username}`);
@@ -766,6 +893,15 @@ export class Accounts {
       await this.store.updateUser(u.id, patch);
       console.log(`Admin reset profile of @${u.username}`);
       res.json({ ok: true, ...patch });
+    }));
+
+    /** Take down someone's profile picture. */
+    r.delete('/admin/users/:username/avatar', wrap(async (req, res) => {
+      const u = await target(req, res);
+      if (!u) return;
+      await this.store.setAvatar(u.id, null, Date.now());
+      console.log(`Admin removed the profile picture of @${u.username}`);
+      res.json({ ok: true });
     }));
 
     /** Delete an account with its sessions and saved games. */

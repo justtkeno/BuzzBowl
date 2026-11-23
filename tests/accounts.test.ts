@@ -600,7 +600,7 @@ describe('friends API', () => {
     // Ben accepts by adding her back.
     const accepted = await (await req('POST', '/friends', { username: 'amy' }, ben.cookie)).json();
     expect(accepted.incoming).toEqual([]);
-    expect(accepted.friends).toEqual([{ username: 'amy', displayName: 'amy', admin: false, color: 'orange', frame: 'none', status: 'room', room: { code: 'ABCD', phase: 'lobby', mode: 'ffa', players: 2 } }]);
+    expect(accepted.friends).toEqual([{ username: 'amy', displayName: 'amy', admin: false, color: 'orange', frame: 'none', level: 1, status: 'room', room: { code: 'ABCD', phase: 'lobby', mode: 'ffa', players: 2 } }]);
     expect((await list(amy.cookie)).friends).toMatchObject([{ username: 'ben', status: 'offline' }]);
     expect((await list(amy.cookie)).friends[0].room).toBeUndefined();
     // Asking again changes nothing.
@@ -708,7 +708,7 @@ describe('profile privacy and pins', () => {
     await req('POST', '/friends', { username: 'shy' }, friend.cookie);
 
     await req('PATCH', '/me', { visibility: 'friends' }, owner.cookie);
-    expect(await view('shy')).toEqual({ username: 'shy', displayName: 'shy', createdAt: owner.user.createdAt, admin: false, locked: 'friends', color: 'orange', frame: 'none' });
+    expect(await view('shy')).toEqual({ username: 'shy', displayName: 'shy', createdAt: owner.user.createdAt, admin: false, locked: 'friends', color: 'orange', frame: 'none', level: 1 });
     expect((await view('shy', stranger.cookie)).locked).toBe('friends');
     expect((await view('shy', friend.cookie)).totals).toBeDefined();
     expect((await view('shy', owner.cookie)).visibility).toBe('friends');
@@ -741,11 +741,11 @@ describe('profile privacy and pins', () => {
 });
 
 describe('badge rewards', () => {
-  it('pairs every color and frame but the defaults with a real badge, and falls back to the defaults', async () => {
+  it('pairs every color and frame but the defaults with a real badge or a level, and falls back to the defaults', async () => {
     const { AVATAR_FRAMES, BADGE_BY_ID, DEFAULT_COLOR, DEFAULT_FRAME, PROFILE_COLORS, isUnlocked, lookFor } = await import('../src/shared/profile');
     for (const r of [...PROFILE_COLORS, ...AVATAR_FRAMES]) {
       if (r.id === DEFAULT_COLOR || r.id === DEFAULT_FRAME) expect(r.badge).toBeUndefined();
-      else expect(BADGE_BY_ID.has(r.badge!)).toBe(true);
+      else expect(r.level ? r.level >= 2 && !r.badge : BADGE_BY_ID.has(r.badge!)).toBe(true);
     }
     expect(PROFILE_COLORS.every((c) => /^#[0-9a-f]{6}$/.test(c.light) && /^#[0-9a-f]{6}$/.test(c.dark))).toBe(true);
     expect(lookFor({})).toEqual({ color: 'orange', frame: 'none' });
