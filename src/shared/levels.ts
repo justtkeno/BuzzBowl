@@ -33,8 +33,16 @@ export const xpForGame = (g: GameRecord) => xpParts(g).reduce((n, p) => n + p.xp
 
 export const MAX_LEVEL = 100;
 
-/** XP needed to go from `level` to the next one: 100, then 25 more each level. */
-export const xpToNext = (level: number) => 100 + 25 * (level - 1);
+/** XP for the first level-up, and how much more each later level takes. */
+const FIRST_LEVEL_XP = 100;
+const LEVEL_STEP_XP = 8;
+
+/**
+ * XP needed to go from `level` to the next one: 100, then 8 more each level, so level 100 takes 48,708 XP in all.
+ * A typical 20-tossup game is about 70 XP in about 15 minutes, so that's roughly 175 hours of play
+ * (level 10 after ~4 hours, 50 after ~50).
+ */
+export const xpToNext = (level: number) => FIRST_LEVEL_XP + LEVEL_STEP_XP * (level - 1);
 
 export interface LevelInfo {
   level: number;

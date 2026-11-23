@@ -46,10 +46,11 @@ describe('XP', () => {
 });
 
 describe('levels', () => {
-  it('starts at 1 and needs 25 more XP each level', () => {
+  it('starts at 1 and needs 8 more XP each level, about 49,000 XP to the max', () => {
     expect(levelFor(0)).toMatchObject({ level: 1, into: 0, need: 100, title: 'Rookie' });
     expect(levelFor(99).level).toBe(1);
-    expect(levelFor(100)).toMatchObject({ level: 2, into: 0, need: 125 });
+    expect(levelFor(100)).toMatchObject({ level: 2, into: 0, need: 108 });
+    expect(xpAtLevel(MAX_LEVEL)).toBe(48_708);
     expect(levelFor(xpAtLevel(10) + 5)).toMatchObject({ level: 10, into: 5, need: xpToNext(10), title: 'Scholar' });
     expect(levelFor(1e9)).toMatchObject({ level: MAX_LEVEL, need: 0 });
     for (let l = 1; l < 30; l++) expect(levelFor(xpAtLevel(l)).level).toBe(l);
