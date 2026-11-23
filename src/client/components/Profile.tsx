@@ -30,6 +30,21 @@ const when = (t: number) => {
   return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: new Date(t).getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 };
 
+type ProfileTab = 'overview' | 'stats' | 'badges' | 'history';
+const PROFILE_TABS: [ProfileTab, string][] = [['overview', 'Overview'], ['stats', 'Stats'], ['badges', 'Badges'], ['history', 'History']];
+const tabFromHash = (): ProfileTab => (PROFILE_TABS.find(([t]) => `#${t}` === location.hash)?.[0] ?? 'overview');
+
+/** No finished games yet: says where stats will come from, with a Play button on your own profile. */
+function NoGames({ p, mine }: { p: ProfileView; mine: boolean }) {
+  return (
+    <section className="card">
+      <h2>No games yet</h2>
+      <p className="muted">{mine ? 'Stats, subjects and your game history show up here after you finish a game while logged in.' : `${p.displayName} hasn’t finished a game yet.`}</p>
+      {mine && <a className="btn primary" href="/">Play a game</a>}
+    </section>
+  );
+}
+
 export function Profile({ username }: { username: string }) {
   useTheme();
   const { me } = useAccount();
@@ -39,6 +54,8 @@ export function Profile({ username }: { username: string }) {
   const [deleted, setDeleted] = useState(false);
   /** The color and frame being tried out in the Edit form. */
   const [preview, setPreview] = useState<Look | null>(null);
+  const [tab, setTab] = useState<ProfileTab>(() => tabFromHash());
+  const pickTab = (t: ProfileTab) => { setTab(t); history.replaceState(null, '', t === 'overview' ? location.pathname : `#${t}`); };
 
   useEffect(() => {
     setP(null); setErr(null); setDeleted(false);
@@ -87,26 +104,31 @@ export function Profile({ username }: { username: string }) {
               </section>
             ) : (
             <>
-            <Pinned p={p} color={look!.color} mine={mine} onEdit={() => setEditing(true)} />
-            <Badges p={p} mine={mine} />
-            {p.totals.games === 0 ? (
-              <section className="card">
-                <h2>No games yet</h2>
-                <p className="muted">{mine ? 'Play a game while logged in and your stats will show up here once the game ends.' : `${p.displayName} hasn’t finished a game yet.`}</p>
-                {mine && <a className="btn primary" href="/">Play now</a>}
-              </section>
-            ) : null}
-            {p.totals.games === 0 && p.daily && <DailySection d={p.daily} />}
-            {p.totals.games === 0 && p.survival && <SurvivalSection sv={p.survival} />}
-            {p.totals.games === 0 ? null : (
+            <div className="settings-tabs profile-tabs" role="tablist" aria-label="Profile sections">
+              {PROFILE_TABS.map(([t, label]) => (
+                <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'on' : ''} onClick={() => pickTab(t)}>{label}</button>
+              ))}
+            </div>
+            {tab === 'overview' && (
               <>
-                <Tiles p={p} />
-                {p.daily && <DailySection d={p.daily} />}
-                {p.survival && <SurvivalSection sv={p.survival} />}
-                <Subjects p={p} />
-                <Recent games={p.recent} />
+                <Pinned p={p} color={look!.color} mine={mine} onEdit={() => setEditing(true)} />
+                {p.totals.games === 0 ? <NoGames p={p} mine={mine} /> : (
+                  <>
+                    <Recent games={p.recent.slice(0, 5)} />
+                    {p.recent.length > 5 && <button className="btn ghost see-all" onClick={() => pickTab('history')}>See all {p.recent.length} recent games</button>}
+                  </>
+                )}
               </>
             )}
+            {tab === 'stats' && (
+              <>
+                {p.totals.games === 0 ? <NoGames p={p} mine={mine} /> : <><Tiles p={p} /><Subjects p={p} /></>}
+                {p.daily && <DailySection d={p.daily} />}
+                {p.survival && <SurvivalSection sv={p.survival} />}
+              </>
+            )}
+            {tab === 'badges' && <Badges p={p} mine={mine} />}
+            {tab === 'history' && (p.recent.length ? <Recent games={p.recent} /> : <NoGames p={p} mine={mine} />)}
             {me?.admin && !mine && !p.admin && <AdminCard p={p} onChange={setP} onDeleted={() => setDeleted(true)} />}
             </>
             )}

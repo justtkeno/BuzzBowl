@@ -51,6 +51,11 @@ export function SettingsMenu({ onClose, start = 'menu' }: { onClose: () => void;
               <span className="grow"><b>Game settings</b><small>Sound, vibration, text size, theme</small></span>
               <Icon name="next" />
             </button>
+            <a className="settings-choice" href="/help">
+              <Icon name="help" />
+              <span className="grow"><b>Help and glossary</b><small>How things work, and what quiz bowl words mean</small></span>
+              <Icon name="next" />
+            </a>
           </div>
         )}
         {view === 'account' && <AccountSettings onClose={onClose} />}

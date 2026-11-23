@@ -7,6 +7,7 @@ import { InviteBanner } from './components/Friends';
 import { Announcement } from './components/Announcement';
 import { WakeScreen } from './components/WakeScreen';
 import { Privacy } from './components/Privacy';
+import { Help } from './components/Help';
 import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
@@ -32,6 +33,7 @@ function Page() {
   if (location.pathname === '/reset') return <ResetPassword />;
   if (location.pathname === '/confirm') return <ConfirmEmail />;
   if (location.pathname === '/privacy') return <Privacy />;
+  if (location.pathname === '/help') return <Help />;
   return <Player />;
 }
 

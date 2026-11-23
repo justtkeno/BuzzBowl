@@ -303,3 +303,15 @@ a.creator-badge:hover { filter: brightness(1.1); }
 }
 
 @media (max-width: 420px) { .profile-top .account-bar > .muted.grow { display: none; } }
+.profile-tabs { margin: .2rem 0 0; justify-content: flex-start; gap: 1.3rem; }
+.see-all { align-self: center; }
+.help h1 { margin: 0 0 .3rem; }
+.help h2 { margin: 0 0 .4rem; }
+.help-toc { display: flex; flex-wrap: wrap; gap: .4rem .9rem; margin-top: .6rem; font-size: .92rem; }
+.faq { border-top: 1px solid var(--border); }
+.faq > summary { cursor: pointer; padding: .7rem 0; font-weight: 600; list-style-position: inside; }
+.faq > p { margin: 0 0 .8rem; line-height: 1.55; }
+.glossary { margin: 0; display: flex; flex-direction: column; }
+.glossary > div { padding: .6rem 0; border-top: 1px solid var(--border); }
+.glossary dt { font-weight: 600; }
+.glossary dd { margin: .2rem 0 0; color: var(--muted); line-height: 1.5; }

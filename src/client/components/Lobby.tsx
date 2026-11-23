@@ -50,7 +50,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
         <h3><span className="step-num">2</span> Choose how to play</h3>
         {r.isController && !r.fixed && (
           <>
-            <p className="muted small">Pick a preset, or customize every rule yourself.</p>
+            <p className="muted small">Pick a preset, or set every rule yourself in Room settings.</p>
             <PresetPicker settings={s.settings} canApply />
           </>
         )}
@@ -65,7 +65,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
           <li>{set.gameLength ? `${set.gameLength} tossups` : 'No set length: plays until the host ends it'} · {set.wpm} wpm · {set.answerSeconds}s to answer</li>
           <li>{sourceLabel}{f.categories.length || f.topics?.length ? ` · ${[...(f.topics ?? []), ...f.categories].join(', ')}` : ' · all categories'}</li>
         </ul>
-        {r.isController && !r.fixed && <div className="row gap"><button className="btn" onClick={onSettings}>Customize rules…</button></div>}
+        {r.isController && !r.fixed && <div className="row gap"><button className="btn" onClick={onSettings}>Room settings…</button></div>}
 
         {set.mode === 'teams' && (
           <>

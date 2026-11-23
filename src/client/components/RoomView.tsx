@@ -121,40 +121,37 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
           <span className="chip daily-chip">Daily <b>#{s.daily.number}</b>{s.tossup && s.phase !== 'gameOver' ? ` · ${s.tossup.num}/${s.daily.total}` : ''}</span>
         ) : s.survival ? <SurvivalChip s={s} /> : (
           <>
-            <button className="chip" onClick={() => shareInvite(s.code)} title="Copy invite link">Room <b>{s.code}</b> ⧉</button>
-            <button className="btn primary small hide-sm" onClick={() => setShowInvite(true)} title="Show a big QR code people can scan">Invite</button>
+            <button className="chip" onClick={() => shareInvite(s.code)} title="Copy the invite link">Room <b>{s.code}</b> ⧉</button>
           </>
         )}
         <span className={`phase phase-${s.phase}`}>{s.paused ? 'Paused' : phaseLabel[s.phase]}</span>
-        {r.isReader && <span className="badge reader hide-sm">You are reading</span>}
         <div className="grow" />
         {r.isController && midGame && !r.fixed && (
           <button className={`btn ${s.paused ? 'primary' : 'ghost'} pause-btn`} onClick={() => act('game:hold', !s.paused)} title={s.paused ? 'Resume the game' : 'Pause the whole game'}>
             {s.paused ? <><Icon name="play" /> Resume</> : <Icon name="pause" />}<span className="hide-sm">{s.paused ? '' : ' Pause'}</span>
           </button>
         )}
-        {canModerate && <button className="btn ghost hide-sm" onClick={() => setShowPlayers(true)} title="Kick, ban or mute players"><Icon name="users" /> Players</button>}
-        {isAdmin && <button className="btn ghost hide-sm" onClick={() => setShowAdmin(true)} title="Admin tools"><Icon name="shield" /> Admin</button>}
-        <button className="btn ghost hide-sm" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
-        {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)} title="The host’s rules for this room: format, timers, scoring, questions">Room settings</button>}
-        <button className="btn ghost hide-sm" onClick={() => setShowAppSettings(true)} title="Settings: your account, sound, text size, theme" aria-label="Settings"><Icon name="gear" /></button>
-        <button className="btn ghost hide-sm" onClick={leave}>Leave</button>
-        <div className="menu-wrap show-sm">
-          <button className="btn ghost menu-btn" aria-label="More" aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯</button>
+        <div className="menu-wrap">
+          <button className="btn ghost menu-btn" aria-label="Menu" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯<span className="hide-sm"> Menu</span></button>
           {menu && (
             <>
               <div className="menu-back" onClick={() => setMenu(false)} />
               <div className="menu" role="menu" onClick={() => setMenu(false)}>
-                {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}><Icon name="qr" /> Invite (QR code)</button>}
+                <div className="menu-label">This room</div>
+                {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}><Icon name="qr" /> Invite people</button>}
                 <button role="menuitem" onClick={() => setShowReview(true)}><Icon name="list" /> Review questions{s.review.length ? ` (${s.review.length})` : ''}</button>
-                {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}><Icon name="sliders" /> Room settings</button>}
                 {!r.fixed && <button role="menuitem" onClick={openBigScreen}><Icon name="screen" /> Big-screen view</button>}
-                <button role="menuitem" onClick={() => setShowAppSettings(true)}><Icon name="gear" /> Settings <span className="menu-hint">account, sound, display</span></button>
-                {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}><Icon name="users" /> Players</button>}
-                {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}><Icon name="shield" /> Admin</button>}
+                {(r.isController && !r.fixed) || canModerate || isAdmin ? <div className="menu-label">{r.isReader ? 'Reader' : r.isHost ? 'Host' : 'Admin'}</div> : null}
+                {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}><Icon name="sliders" /> Room settings <span className="menu-hint">rules for this room</span></button>}
+                {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}><Icon name="users" /> Players <span className="menu-hint">kick, ban, mute</span></button>}
                 {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}><Icon name="flag" /> {s.survival ? 'End run' : 'End game'}</button>}
+                {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}><Icon name="shield" /> Admin</button>}
+                <div className="menu-label">You</div>
+                <button role="menuitem" onClick={() => setShowAppSettings(true)}><Icon name="gear" /> Settings <span className="menu-hint">account, sound, display</span></button>
                 <button role="menuitem" onClick={() => setShowTour(true)}><Icon name="help" /> How to play</button>
+                <a role="menuitem" href="/help" target="_blank" rel="noreferrer"><Icon name="help" /> Help and glossary</a>
                 <button role="menuitem" onClick={() => setShowFeedback(true)}><Icon name="chat" /> Send feedback</button>
+                <div className="menu-sep" />
                 <button role="menuitem" onClick={leave}><Icon name="leave" /> Leave room</button>
               </div>
             </>

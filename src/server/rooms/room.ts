@@ -1693,7 +1693,8 @@ export class Room {
     const r = this.s.rulings.find((x) => x.id === rulingId) ?? fail('No such ruling.');
     if (this.s.protests.some((x) => x.rulingId === rulingId && !x.resolved)) fail('That ruling is already protested.');
     this.s.protests.push({ id: rid(), rulingId, byId: by, byName: p.name, note: String(note ?? '').slice(0, 200), resolved: false });
-    this.system(`${p.name} protested the ruling on "${r!.given || '(no answer)'}" (${r!.type} ${r!.num}).`);
+    const where = r!.type === 'tossup' ? `tossup ${r!.num}` : `bonus ${r!.num}`;
+    this.system(`${p.name} thinks "${r!.given || '(no answer)'}" by ${r!.playerName} on ${where} should be marked ${r!.correct ? 'wrong' : 'correct'}. The ${this.s.readerId ? 'reader' : 'host'} will decide.`);
     this.broadcast();
   }
 
@@ -1704,7 +1705,11 @@ export class Room {
     const pr = this.s.protests.find((x) => x.id === protestId && !x.resolved) ?? fail('No open protest.');
     pr!.resolved = true;
     if (accept) this.flipRuling(pr!.rulingId);
-    this.system(`Protest ${accept ? 'upheld; ruling reversed' : 'denied'}.`);
+    const r = this.s.rulings.find((x) => x.id === pr!.rulingId);
+    const judge = this.player(by)?.name ?? (by === this.s.readerId ? 'The reader' : 'The host');
+    this.system(accept
+      ? `${judge} agreed with ${pr!.byName}: "${r?.given || '(no answer)'}" is now marked ${r?.correct ? 'correct' : 'wrong'}, and the scores are updated.`
+      : `${judge} kept the ruling on "${r?.given || '(no answer)'}" that ${pr!.byName} protested.`);
     this.broadcast();
   }
 
@@ -1714,7 +1719,7 @@ export class Room {
     if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     this.flipRuling(rulingId);
     const r = this.s.rulings.find((x) => x.id === rulingId)!;
-    this.system(`Ruling on "${r.given || '(no answer)'}" changed to ${r.correct ? 'correct' : 'incorrect'}.`);
+    this.system(`${this.player(by)?.name ?? 'The host'} changed "${r.given || '(no answer)'}" by ${r.playerName} to ${r.correct ? 'correct' : 'wrong'}. The scores are updated.`);
     this.broadcast();
   }
 

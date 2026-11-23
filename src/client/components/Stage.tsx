@@ -8,6 +8,7 @@ import { play } from '../sounds';
 import { act, colorFor, isTouch, resultLabel, roles, useNow, vibrate } from './util';
 import { ReportQuestion } from './Report';
 import { Icon } from './Icon';
+import { Info } from './Info';
 
 export function Stage({ s }: { s: PublicState }) {
   const r = roles(s);
@@ -341,11 +342,25 @@ function BuzzStatus({ s }: { s: PublicState }) {
 function EndSummary({ s }: { s: PublicState }) {
   const t = s.tossup!;
   const winner = t.buzzes.find((b) => b.result === 'power' || b.result === 'ten');
+  const who = (b: BuzzMarker) => (b.playerId === s.you ? 'You' : b.playerName);
+  const value = (n: number) => (t.bounty ? n * 2 : n);
+  const said = (b: BuzzMarker) => (b.given ? ` “${b.given}”` : '');
   return (
     <div className="end-line">
-      {winner ? <span><b>{winner.playerName}</b> got it for {winner.result === 'power' ? s.settings.powerValue : s.settings.tenValue}{winner.given ? ` with “${winner.given}”` : ''}.{winner.correctedTo && <span className="corrected"> Close enough: read as <b>{winner.correctedTo}</b>.</span>}</span> : <span className="muted">Dead tossup — nobody got it.</span>}
+      {winner ? (
+        <span>
+          {winner.result === 'power'
+            ? <><b>{who(winner)}</b> got it{said(winner)} before the (*), so it’s a <span className="nw">power<Info term="power" /></span>: <b>+{value(s.settings.powerValue)}</b>{t.bounty ? ' (doubled, bounty)' : ''}.</>
+            : <><b>{who(winner)}</b> got it{said(winner)}: <b>+{value(s.settings.tenValue)}</b>{t.bounty ? ' (doubled, bounty)' : ''}.</>}
+          {winner.correctedTo && <span className="corrected"> Close enough: read as <b>{winner.correctedTo}</b>.</span>}
+        </span>
+      ) : <span className="muted">Nobody got this one, so no points.</span>}
       {t.buzzes.filter((b) => b.result === 'neg' || b.result === 'zero').map((b, i) => (
-        <span key={i} className="muted"> {b.playerName}: “{b.given || '—'}” ({b.result === 'neg' ? 'neg' : 'no points'})</span>
+        <span key={i} className="muted end-miss">
+          {' '}{who(b)} said{said(b) || ' nothing'}{b.result === 'neg'
+            ? <> before the question finished, so it’s a <span className="nw">neg<Info term="neg" /></span>: <b>{String(s.settings.negValue).replace('-', '−')}</b>.</>
+            : <> after the question ended: wrong, but no points lost.</>}
+        </span>
       ))}
     </div>
   );

@@ -409,9 +409,6 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .tut-result { display: flex; flex-direction: column; gap: .45rem; padding: .7rem .8rem; border-radius: 10px; border: 1px solid var(--border); font-size: .92rem; color: var(--muted); }
 .tut-result b { font-size: 1.05rem; color: var(--text); }
 .tut-result.r-power b { color: var(--power); } .tut-result.r-ten b { color: var(--ok); } .tut-result.r-neg b { color: var(--bad); }
-.tour-nudge { display: flex; align-items: center; justify-content: space-between; gap: .4rem; margin-top: -.3rem; padding: .35rem .3rem .35rem .75rem; border: 1px solid var(--border); border-radius: 10px; }
-.tour-nudge .link { font-size: .9rem; text-align: left; }
-.tour-nudge .btn.icon { padding: .25rem .35rem; color: var(--muted); }
 .how-link { align-self: center; font-size: .88rem; }
 @media (prefers-reduced-motion: reduce) { .tut-body { animation: none; } }
 
@@ -1010,3 +1007,12 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 
 .nw { white-space: nowrap; }
 @media (max-width: 420px) { .preset { padding: .55rem .6rem; } .preset small { font-size: .76rem; } }
+/* The room's ⋯ menu, on every screen size. */
+.menu { max-height: calc(100dvh - 80px); overflow-y: auto; }
+.menu a[role='menuitem'] { display: block; padding: .7rem .75rem; border-radius: 8px; font-size: .95rem; color: var(--text); text-decoration: none; }
+.menu a[role='menuitem']:hover { background: var(--surface-2); }
+.menu a[role='menuitem'] .ic { margin-right: .6rem; color: var(--muted); }
+.menu-sep { border-top: 1px solid var(--border); margin: .3rem .4rem; }
+.menu .menu-label:first-child { padding-top: .3rem; }
+.settings-choice { text-decoration: none; }
+.menu .menu-hint { display: block; margin: .1rem 0 0 calc(1.15em + .6rem); }
