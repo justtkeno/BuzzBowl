@@ -5,6 +5,7 @@ import { call } from '../socket';
 import { REPORT_REASONS, type ReportGroup } from '../../shared/reports';
 import { FEEDBACK_KINDS, type FeedbackItem } from '../../shared/feedback';
 import { Icon } from './Icon';
+import { MyLevel } from './AdminXp';
 import { AdminStats } from './AdminStats';
 import { AdminLock, RoomAdmin, RoomTroll } from './AdminPanel';
 import { AdminPlayers } from './AdminPlayers';
@@ -165,6 +166,13 @@ export function SiteAdminPanel({ onClose, room, start }: { onClose: () => void; 
                 <button className="btn small ghost" disabled={busy} onClick={() => badges(false)}>Back to earned only</button>
                 {me && <a className="btn small ghost" href={`/u/${me.username}`}>View my profile</a>}
               </div>
+              {me && (
+                <>
+                  <h3>My level{me.level ? <span className="muted small"> · now {me.level}</span> : null}</h3>
+                  <MyLevel username={me.username} level={me.level} run={run} busy={busy} />
+                  <p className="muted small">Unlocks every color, frame and title up to that level. “Back to earned XP” puts it back to what your games are worth.</p>
+                </>
+              )}
             </>
           )}
 

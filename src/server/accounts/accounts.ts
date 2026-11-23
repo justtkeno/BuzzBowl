@@ -10,7 +10,7 @@ import {
   AVATAR_FRAMES, BADGES, BADGE_BY_ID, PROFILE_COLORS, VISIBILITIES, badgesFor, cleanGrantedTitles, titleName, titleOptions, cleanPinned, colorById, earnedIds, frameById, isColor, isFrame, isUnlocked,
   lookFor, rewardLevel, unlockHint, type Reward, type Visibility,
 } from '../../shared/profile';
-import { levelFor, unlockedBetween, xpForGame, type LevelInfo } from '../../shared/levels';
+import { MAX_LEVEL, levelFor, unlockedBetween, xpAtLevel, xpForGame, type LevelInfo } from '../../shared/levels';
 import { cleanPresets } from '../../shared/presets';
 import type { Mailer } from './mailer';
 import type { AccountStore, FriendLink, GameTotal, User, UserPatch } from './store';
@@ -31,6 +31,8 @@ const LINKS_PER_HOUR = 3;
 
 /** The level an account's titles and rewards go by (an admin who unlocked every badge unlocks every level reward). */
 const levelOf = (u: User) => rewardLevel(u);
+/** The most XP an admin can give at once, or set as a total. */
+const XP_ADMIN_MAX = 10_000_000;
 
 /** Who a socket is logged in as, with their level and picture for the rooms they join. */
 export interface SocketAccount { id: string; username: string; admin: boolean; title?: string; level?: number; pic?: string }
@@ -238,6 +240,17 @@ export class Accounts {
   /** How account email goes out: gmail, smtp, console, or off. */
   get mailKind() { return this.mailer ? this.mailer.kind ?? 'custom' : 'off'; }
 
+  /** After badges or XP were taken away: a color, frame or title they no longer unlock goes back to the default. */
+  private async relock(u: User, after: User) {
+    if (!u.color && !u.frame && !u.title) return;
+    const earned = await this.earnedBadges(after);
+    const { color, frame } = lookFor(after, earned);
+    const patch: Partial<User> = {};
+    if (color !== (u.color ?? color) || frame !== (u.frame ?? frame)) Object.assign(patch, { color, frame });
+    if (u.title && !titleName(u.title, u.titles, earned, levelOf(after))) patch.title = null;
+    if (Object.keys(patch).length) await this.store.updateUser(u.id, patch);
+  }
+
   /** Accounts matching a search, for the admin panel. Emails stay private: only whether one is set and confirmed. */
   async adminSearch(query: string) {
     const q = String(query ?? '').trim().replace(/^@/, '').slice(0, 20);
@@ -245,6 +258,7 @@ export class Accounts {
     return (await this.store.searchUsers(q, 25)).map((u) => ({
       id: u.id, username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u),
       email: !!u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null,
+      xp: u.xp ?? null, level: u.xp != null ? levelFor(u.xp).level : null,
     }));
   }
 
@@ -275,6 +289,8 @@ export class Accounts {
     });
   }
 
+  /** Called after an admin changes someone's XP, so their open screens and rooms show the new level. */
+  onLevel?: (accountId: string, level: number) => void;
   /** Called after a username change, so other stores (leaderboards, live rooms) can follow. Never throws to the caller. */
   onRename?: (accountId: string, from: string, to: string) => Promise<void>;
   /** Extra profile sections from elsewhere (the daily challenge, survival), added when a profile is shown. */
@@ -854,18 +870,47 @@ export class Accounts {
         : req.body?.unlock ? BADGES.map((b) => b.id) : [];
       await this.store.updateUser(u.id, { grantedBadges });
       await this.xpOf(u);
-      const after = { ...u, grantedBadges };
-      if (u.color || u.frame || u.title) {
-        // Rewards and titles only those badges unlocked go back to the defaults.
-        const earned = await this.earnedBadges(after);
-        const { color, frame } = lookFor(after, earned);
-        const patch: Partial<User> = {};
-        if (color !== (u.color ?? color) || frame !== (u.frame ?? frame)) Object.assign(patch, { color, frame });
-        if (u.title && !titleName(u.title, u.titles, earned, levelOf(after))) patch.title = null;
-        if (Object.keys(patch).length) await this.store.updateUser(u.id, patch);
-      }
+      await this.relock(u, { ...u, grantedBadges });
       console.log(`Admin set ${grantedBadges.length} granted badge${grantedBadges.length === 1 ? '' : 's'} for @${u.username}`);
       res.json({ ok: true, unlocked: grantedBadges.length === BADGES.length, grantedBadges });
+    }));
+
+    /**
+     * Change an account's XP (admins included, yourself too): { add } (negative takes XP away), { level } (the start of
+     * that level), or { earned: true } (back to what their saved games are worth).
+     */
+    r.post('/admin/users/:username/xp', wrap(async (req, res) => {
+      const me = await this.userFrom(req.headers.cookie);
+      if (!me || !isAdmin(me)) return res.status(403).json({ error: 'Admins only.' });
+      const u = await this.store.userByName(String(req.params.username));
+      if (!u) return res.status(404).json({ error: 'No player with that username.' });
+      const b = req.body ?? {};
+      const before = levelFor(await this.xpOf(u));
+      let xp: number;
+      if (b.earned === true) {
+        await this.store.setXp(u.id, null);
+        u.xp = null;
+        xp = await this.xpOf(u);
+      } else {
+        if ('add' in b) {
+          const add = Math.trunc(Number(b.add));
+          if (!Number.isFinite(add) || add === 0 || Math.abs(add) > XP_ADMIN_MAX) return res.status(400).json({ error: `Pick an amount between 1 and ${XP_ADMIN_MAX.toLocaleString('en-US')}.` });
+          xp = Math.min(XP_ADMIN_MAX, Math.max(0, before.xp + add));
+        } else if ('level' in b) {
+          const level = Math.trunc(Number(b.level));
+          if (!(level >= 1 && level <= MAX_LEVEL)) return res.status(400).json({ error: `Pick a level from 1 to ${MAX_LEVEL}.` });
+          xp = xpAtLevel(level);
+        } else {
+          return res.status(400).json({ error: 'Say how to change the XP.' });
+        }
+        await this.store.setXp(u.id, xp);
+      }
+      const after = levelFor(xp);
+      // A lower level can lock colors, frames and titles again: those go back to the defaults.
+      if (after.level < before.level) await this.relock(u, { ...u, xp });
+      this.onLevel?.(u.id, after.level);
+      console.log(`Admin @${me.username} set @${u.username} to ${xp} XP (level ${before.level} → ${after.level})`);
+      res.json({ ok: true, levelInfo: after });
     }));
 
     /** Give or take back titles (special ones like Developer or VIP, or custom text). Admins included, yourself too: titles are cosmetic. */

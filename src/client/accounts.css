@@ -431,3 +431,5 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .xp-news .xp-bar > i { animation: xp-fill .9s ease both; }
 @keyframes xp-fill { from { width: var(--from, 0%); } }
 @media (prefers-reduced-motion: reduce) { .xp-news .xp-bar > i { animation: none; } }
+.my-level { align-items: center; margin-bottom: .4rem; }
+.my-level input { width: 5.5rem; }

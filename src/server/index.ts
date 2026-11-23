@@ -74,6 +74,15 @@ accounts.findDaily = async (accountId, at, points) => {
   return r && r.points === points ? dailyNumber(day) : null;
 };
 
+// An admin changed someone's XP: their open screens and any room they're in show the new level.
+accounts.onLevel = (accountId, level) => {
+  for (const s of io.sockets.sockets.values()) {
+    const a = accounts.of(s);
+    if (a?.id === accountId) { a.level = level; s.emit('account:level', level); }
+  }
+  for (const room of store.all()) room.setLevel(accountId, level);
+};
+
 // A username change follows the account onto leaderboards and into any room it's sitting in.
 accounts.onRename = async (accountId, _from, to) => {
   const key = playerKeyFor(accountId, null)!;

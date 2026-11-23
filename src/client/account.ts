@@ -158,6 +158,11 @@ export async function adminSetBadges(username: string, badges: string[]) {
   return api<{ ok: true; grantedBadges: string[] }>(`/admin/users/${encodeURIComponent(username)}/badges`, { method: 'POST', body: { badges } });
 }
 
+/** Admin: change an account's XP (yours too). `add` can be negative; `level` sets the start of that level; `earned` goes back to what their games are worth. */
+export async function adminSetXp(username: string, change: { add: number } | { level: number } | { earned: true }) {
+  return api<{ ok: true; levelInfo: LevelInfo }>(`/admin/users/${encodeURIComponent(username)}/xp`, { method: 'POST', body: change });
+}
+
 /** Admin: reset someone's display name (to their username) and/or clear their bio. */
 export async function adminResetProfile(username: string, what: { name: boolean; bio: boolean }) {
   const body: { displayName?: false; bio?: false } = {};
@@ -230,6 +235,9 @@ socket.on('account:xp', (x: Omit<XpNews, 'at'>) => {
   if (me) set({ ...me, level: x.after.level });
   xpListeners.forEach((l) => l());
 });
+
+// An admin changed this account's XP.
+socket.on('account:level', (level: number) => { if (me) set({ ...me, level }); });
 
 /** The XP the last game gave this account (null until a game ends while logged in). */
 export function useXpNews() {

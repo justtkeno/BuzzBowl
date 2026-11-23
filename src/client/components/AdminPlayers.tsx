@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { adminDeleteAccount, adminResetProfile, adminUnlockBadges } from '../account';
 import { call } from '../socket';
+import { useAccount } from '../account';
+import { AdminXp } from './AdminXp';
 
 interface OnlinePerson { key: string; name: string; username: string | null; admin: boolean; screens: number; rooms: string[]; busy: boolean }
-interface Found { key: string; username: string; displayName: string; createdAt: number; admin: boolean; email: boolean; emailVerified: boolean; usernameChangedAt: number | null; online: boolean }
+interface Found { key: string; username: string; displayName: string; createdAt: number; admin: boolean; email: boolean; emailVerified: boolean; usernameChangedAt: number | null; online: boolean; xp: number | null; level: number | null }
 
 type Run = (fn: () => Promise<string | void>) => Promise<void>;
 
@@ -12,6 +14,8 @@ export function AdminPlayers({ run, busy }: { run: Run; busy: boolean }) {
   const [online, setOnline] = useState<OnlinePerson[] | null>(null);
   const [q, setQ] = useState('');
   const [found, setFound] = useState<Found[] | null>(null);
+  const { me } = useAccount();
+  const setLevelOf = (username: string, xp: number, level: number) => setFound((f) => f?.map((x) => (x.username === username ? { ...x, xp, level } : x)) ?? null);
 
   const loadOnline = () => call<{ people: OnlinePerson[] }>('site:online').then((r) => setOnline(r.people), () => {});
   useEffect(() => {
@@ -96,8 +100,14 @@ export function AdminPlayers({ run, busy }: { run: Run; busy: boolean }) {
               <div className="muted small">
                 Joined {new Date(u.createdAt).toLocaleDateString()} · {u.email ? (u.emailVerified ? 'email confirmed' : 'email not confirmed') : 'no email'}
                 {u.usernameChangedAt ? ` · renamed ${new Date(u.usernameChangedAt).toLocaleDateString()}` : ''}
+                {u.level != null ? ` · level ${u.level} (${(u.xp ?? 0).toLocaleString()} XP)` : ''}
               </div>
             </div>
+            {(!u.admin || u.username === me?.username) && (
+              <div className="row gap admin-list-actions">
+                <AdminXp username={u.username} mine={u.username === me?.username} run={run} busy={busy} onChange={(xp, level) => setLevelOf(u.username, xp, level)} />
+              </div>
+            )}
             {!u.admin && (
               <div className="row gap admin-list-actions">
                 {u.online && <button className="btn small" disabled={busy} onClick={() => whisper(u.key, u.displayName)}>Whisper</button>}

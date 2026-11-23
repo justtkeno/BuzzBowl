@@ -114,6 +114,8 @@ export interface AccountStore {
   initXp(userId: string, xp: number): Promise<number>;
   /** Ids of accounts whose XP total isn't worked out yet. */
   usersWithoutXp(): Promise<string[]>;
+  /** Admin: replace the total (null: work it out again from saved games next time). */
+  setXp(userId: string, xp: number | null): Promise<void>;
   readonly kind: string;
 }
 
@@ -326,6 +328,12 @@ export class FileAccountStore implements AccountStore {
     return u.xp;
   }
   async usersWithoutXp() { return this.d.users.filter((u) => u.xp == null).map((u) => u.id); }
+  async setXp(userId: string, xp: number | null) {
+    const u = this.d.users.find((x) => x.id === userId);
+    if (!u) return;
+    u.xp = xp;
+    this.save();
+  }
 }
 
 // ---------- Postgres (production) ----------
@@ -579,5 +587,8 @@ export class PgAccountStore implements AccountStore {
   }
   async usersWithoutXp() {
     return (await this.pool.query<{ id: string }>('SELECT id FROM users WHERE xp IS NULL')).rows.map((r) => r.id);
+  }
+  async setXp(userId: string, xp: number | null) {
+    await this.pool.query('UPDATE users SET xp = $2 WHERE id = $1', [userId, xp]);
   }
 }
