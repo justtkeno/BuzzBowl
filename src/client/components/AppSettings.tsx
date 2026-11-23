@@ -4,6 +4,7 @@ import { prefs } from '../socket';
 import { BUZZ_SOUNDS, buzzSound, play, setBuzzSound, setSoundOn, setVolume, soundOn, volume, type BuzzSound } from '../sounds';
 import { useAccount } from '../account';
 import { AccountSettings } from './AccountSettings';
+import { KeyboardSettings } from './KeyboardSettings';
 import { Icon } from './Icon';
 import { canVibrate, setVibrationOn, vibrate, vibrationOn } from './util';
 
@@ -11,7 +12,7 @@ type Size = keyof typeof TEXT_SIZE_LABEL;
 type Theme = 'auto' | 'light' | 'dark';
 const THEMES: [Theme, string][] = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
 
-export type SettingsView = 'menu' | 'account' | 'game';
+export type SettingsView = 'menu' | 'account' | 'game' | 'keys';
 
 /**
  * The gear button's menu, on every screen: Account settings (username, email, password) and
@@ -28,7 +29,7 @@ export function SettingsMenu({ onClose, start = 'menu' }: { onClose: () => void;
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const title = view === 'account' ? 'Account settings' : view === 'game' ? 'Game settings' : 'Settings';
+  const title = view === 'account' ? 'Account settings' : view === 'game' ? 'Game settings' : view === 'keys' ? 'Keyboard shortcuts' : 'Settings';
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal app-settings" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
@@ -51,10 +52,16 @@ export function SettingsMenu({ onClose, start = 'menu' }: { onClose: () => void;
               <span className="grow"><b>Game settings</b><small>Sound, vibration, text size, theme</small></span>
               <Icon name="next" />
             </button>
+            <button className="settings-choice" onClick={() => setView('keys')}>
+              <Icon name="keyboard" />
+              <span className="grow"><b>Keyboard shortcuts</b><small>Buzz, next tossup, next word… and change them</small></span>
+              <Icon name="next" />
+            </button>
           </div>
         )}
         {view === 'account' && <AccountSettings onClose={onClose} />}
         {view === 'game' && <GameSettings onClose={onClose} />}
+        {view === 'keys' && <KeyboardSettings />}
       </div>
     </div>
   );

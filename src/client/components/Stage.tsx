@@ -8,8 +8,10 @@ import { play } from '../sounds';
 import { act, colorFor, isTouch, resultLabel, roles, useNow, vibrate } from './util';
 import { ReportQuestion } from './Report';
 import { Icon } from './Icon';
+import { keyLabel, useKeyBindings } from '../keys';
 
 export function Stage({ s }: { s: PublicState }) {
+  const keys = useKeyBindings();
   const r = roles(s);
   const t = s.tossup;
   const inBonus = s.phase === 'bonus' && s.bonus;
@@ -60,20 +62,21 @@ export function Stage({ s }: { s: PublicState }) {
     act('buzz', t.revealed.length);
   };
 
-  // Keyboard: Space buzzes (reader: pause/resume), N = next, → = reader advances a word.
+  // Keyboard (changeable in Settings → Keyboard shortcuts): buzz (reader: pause/resume), next, next word; 1–9 vote.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.closest('input, textarea, select, [contenteditable]')) return;
-      if (e.code === 'Space') {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.code === keys.buzz) {
         e.preventDefault();
         if (r.isReader && s.phase === 'reading' && t) act('game:pause', !t.paused);
         else buzz();
-      } else if (e.key === 'n' || e.key === 'N') {
+      } else if (e.code === keys.next) {
         if (canNext || s.vote || (canSkip && !s.survival && (s.phase === 'reading' || s.phase === 'bonus'))) act('game:next');
       } else if (s.vote && /^[1-9]$/.test(e.key) && s.vote.options[Number(e.key) - 1]) {
         act('vote', s.vote.options[Number(e.key) - 1]);
-      } else if (e.key === 'ArrowRight' && r.isController && s.phase === 'reading' && t) {
+      } else if (e.code === keys.nextWord && r.isController && s.phase === 'reading' && t) {
         act('game:revealTo', t.revealed.length + 1);
       }
     };
@@ -97,7 +100,7 @@ export function Stage({ s }: { s: PublicState }) {
         {s.phase === 'reading' && !r.isReader && (
           <button className={`buzzer ${canBuzz ? '' : 'disabled'} ${buzzing ? 'pressed' : ''}`} onPointerDown={buzz} onTouchEnd={openKeyboard} onClick={() => buzz()} disabled={!canBuzz}>
             {!r.myTeam ? 'Spectating' : myTeamLocked ? 'Locked out' : s.paused ? 'Paused' : buzzing ? '…' : 'BUZZ'}
-            <small>{canBuzz ? (isTouch() ? 'tap' : 'Space / tap') : ''}</small>
+            <small>{canBuzz ? (isTouch() ? 'tap' : `${keyLabel(keys.buzz)} / tap`) : ''}</small>
           </button>
         )}
         {r.isController && t && s.phase === 'reading' && !r.fixed && <ReaderControls s={s} />}
@@ -107,7 +110,7 @@ export function Stage({ s }: { s: PublicState }) {
         )}
         {canNext && (
           <button className="btn primary big next-btn" onClick={() => act('game:next')} disabled={s.paused}>
-            {s.survival?.done ? 'See results' : s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : lastOne ? 'Finish game' : s.settings.source === 'lightning' ? 'Next question' : 'Next tossup'} <kbd>N</kbd>
+            {s.survival?.done ? 'See results' : s.phase === 'tossupEnd' && s.tossup?.bonusTeamId ? 'Read bonus' : lastOne ? 'Finish game' : s.settings.source === 'lightning' ? 'Next question' : 'Next tossup'} <kbd>{keyLabel(keys.next)}</kbd>
           </button>
         )}
         {s.vote && <VotePanel s={s} />}
@@ -217,6 +220,7 @@ export function BuzzMap({ buzzes, totalWords, powerIndex, revealed, order }: {
 }
 
 export function TossupCard({ s }: { s: PublicState }) {
+  const keys = useKeyBindings();
   const r = roles(s);
   const t = s.tossup!;
   const ended = s.phase === 'tossupEnd' || s.phase === 'gameOver';
@@ -282,7 +286,7 @@ export function TossupCard({ s }: { s: PublicState }) {
       {s.phase === 'reading' && t.deadline && !t.paused && (
         <div className="status"><span>Last chance to buzz</span><Countdown deadline={t.deadline} total={buzzWindowSeconds(s.settings)} frozen={s.paused} /></div>
       )}
-      {s.phase === 'reading' && t.paused && <div className="status muted">Paused{r.isReader ? ' — press Space to resume' : ' by the reader'}</div>}
+      {s.phase === 'reading' && t.paused && <div className="status muted">Paused{r.isReader ? ` — press ${keyLabel(keys.buzz)} to resume` : ' by the reader'}</div>}
       {s.buzz && <BuzzStatus s={s} />}
       {ended && <EndSummary s={s} />}
       {ended && t.answerKey && t.answerKey.misses.length > 0 && <WhyWrong k={t.answerKey} />}
@@ -397,30 +401,33 @@ function AnswerBox({ event, deadline, total, prompted, placeholder, lastGiven, p
 }
 
 function RulingBox({ given, suggestion }: { given: string; suggestion: Verdict }) {
+  const keys = useKeyBindings();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest('input, textarea')) return;
-      const map: Record<string, Verdict> = { a: 'correct', p: 'prompt', r: 'incorrect' };
-      const v = map[e.key.toLowerCase()];
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const map: Record<string, Verdict> = { [keys.accept]: 'correct', [keys.prompt]: 'prompt', [keys.reject]: 'incorrect' };
+      const v = map[e.code];
       if (v) act('reader:rule', v);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [keys]);
   const label: Record<Verdict, string> = { correct: 'Accept', prompt: 'Prompt', incorrect: 'Reject' };
   return (
     <div className="ruling-box">
       <div>Player answered <b>“{given}”</b>. Auto-check suggests <span className={`sugg s-${suggestion}`}>{label[suggestion]}</span>.</div>
       <div className="row gap">
-        <button className="btn ok" onClick={() => act('reader:rule', 'correct')}>Accept <kbd>A</kbd></button>
-        <button className="btn" onClick={() => act('reader:rule', 'prompt')}>Prompt <kbd>P</kbd></button>
-        <button className="btn bad" onClick={() => act('reader:rule', 'incorrect')}>Reject <kbd>R</kbd></button>
+        <button className="btn ok" onClick={() => act('reader:rule', 'correct')}>Accept <kbd>{keyLabel(keys.accept)}</kbd></button>
+        <button className="btn" onClick={() => act('reader:rule', 'prompt')}>Prompt <kbd>{keyLabel(keys.prompt)}</kbd></button>
+        <button className="btn bad" onClick={() => act('reader:rule', 'incorrect')}>Reject <kbd>{keyLabel(keys.reject)}</kbd></button>
       </div>
     </div>
   );
 }
 
 function ReaderControls({ s }: { s: PublicState }) {
+  const keys = useKeyBindings();
   const t = s.tossup!;
   const [wpm, setWpm] = useState(s.settings.wpm);
   // Lightning round with no reader shows each prompt all at once, so word-by-word controls don't apply.
@@ -432,12 +439,12 @@ function ReaderControls({ s }: { s: PublicState }) {
   if (!roles(s).isReader) {
     return (
       <div className="host-tools" role="toolbar" aria-label="Host controls">
-        <button className="btn ghost small icon" onClick={() => act('game:pause', !t.paused)} title={t.paused ? 'Resume reading (Space)' : 'Pause reading (Space)'} aria-label={t.paused ? 'Resume reading' : 'Pause reading'}>
+        <button className="btn ghost small icon" onClick={() => act('game:pause', !t.paused)} title={t.paused ? 'Resume reading' : 'Pause reading'} aria-label={t.paused ? 'Resume reading' : 'Pause reading'}>
           <Icon name={t.paused ? 'play' : 'pause'} />
         </button>
         {!instant && (
           <>
-            <button className="btn ghost small icon" onClick={() => act('game:revealTo', t.revealed.length + 1)} disabled={t.revealed.length >= t.totalWords} title="Next word (→)" aria-label="Next word">
+            <button className="btn ghost small icon" onClick={() => act('game:revealTo', t.revealed.length + 1)} disabled={t.revealed.length >= t.totalWords} title={`Next word (${keyLabel(keys.nextWord)})`} aria-label="Next word">
               <Icon name="next" />
             </button>
             <button className={`btn ghost small ${speedOpen ? 'on' : ''}`} onClick={() => setSpeedOpen(!speedOpen)} aria-expanded={speedOpen} title="Reading speed">{wpm} wpm</button>
@@ -447,7 +454,7 @@ function ReaderControls({ s }: { s: PublicState }) {
             )}
           </>
         )}
-        <button className="btn ghost small icon" onClick={() => act('game:next')} title="Skip this tossup (N)" aria-label="Skip this tossup">
+        <button className="btn ghost small icon" onClick={() => act('game:next')} title={`Skip this tossup (${keyLabel(keys.next)})`} aria-label="Skip this tossup">
           <Icon name="skip" />
         </button>
       </div>
@@ -455,10 +462,10 @@ function ReaderControls({ s }: { s: PublicState }) {
   }
   return (
     <div className="reader-controls">
-      <button className="btn" onClick={() => act('game:pause', !t.paused)}>{t.paused ? <><Icon name="play" /> Resume</> : <><Icon name="pause" /> Pause</>} <kbd>Space</kbd></button>
+      <button className="btn" onClick={() => act('game:pause', !t.paused)}>{t.paused ? <><Icon name="play" /> Resume</> : <><Icon name="pause" /> Pause</>} <kbd>{keyLabel(keys.buzz)}</kbd></button>
       {!instant && (
         <>
-          <button className="btn" onClick={() => act('game:revealTo', t.revealed.length + 1)} disabled={t.revealed.length >= t.totalWords}>Next word <kbd>→</kbd></button>
+          <button className="btn" onClick={() => act('game:revealTo', t.revealed.length + 1)} disabled={t.revealed.length >= t.totalWords}>Next word <kbd>{keyLabel(keys.nextWord)}</kbd></button>
           <label className="wpm">
             <span>{wpm} wpm</span>
             <input type="range" min={100} max={600} step={10} value={wpm} onChange={(e) => setWpm(Number(e.target.value))}
@@ -466,7 +473,7 @@ function ReaderControls({ s }: { s: PublicState }) {
           </label>
         </>
       )}
-      <button className="btn ghost" onClick={() => act('game:next')}>Skip <kbd>N</kbd></button>
+      <button className="btn ghost" onClick={() => act('game:next')}>Skip <kbd>{keyLabel(keys.next)}</kbd></button>
     </div>
   );
 }
