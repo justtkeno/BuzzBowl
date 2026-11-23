@@ -44,6 +44,17 @@ export interface FriendLink { from: string; to: string; accepted: boolean; at: n
 /** A one-time emailed link: a password reset, or confirming an email address (`email` is the address it was sent to). */
 export interface AccountToken { hash: string; userId: string; kind: 'reset' | 'confirm'; email: string | null; expiresAt: number; createdAt: number }
 
+/** One account's leaderboard numbers over a period. */
+export interface GameTotal {
+  userId: string;
+  /** Games against at least one other person. */
+  versus: number;
+  wins: number;
+  /** Tossups answered correctly (powers + tens). */
+  correct: number;
+  powers: number;
+}
+
 export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges' | 'color' | 'frame' | 'titles' | 'title' | 'email' | 'emailVerified' | 'passwordHash' | 'presets'>>;
 
 /** Where accounts live. Postgres in production, a JSON file for local development and tests. */
@@ -79,6 +90,8 @@ export interface AccountStore {
   addGames(entries: { userId: string; game: GameRecord }[]): Promise<void>;
   /** Newest first. */
   games(userId: string, limit: number): Promise<GameRecord[]>;
+  /** Leaderboard totals per account over games that count for the boards (`ranked`), played at or after `fromAt`. */
+  gameTotals(fromAt: number | null): Promise<GameTotal[]>;
   usersByIds(ids: string[]): Promise<User[]>;
   /** Every friend link (either direction) that involves this user. */
   friendLinks(userId: string): Promise<FriendLink[]>;
@@ -236,6 +249,19 @@ export class FileAccountStore implements AccountStore {
     }
     return out;
   }
+  async gameTotals(fromAt: number | null) {
+    const by = new Map<string, GameTotal>();
+    for (const { userId, game: g } of this.d.games) {
+      if (!g.ranked || (fromAt != null && g.at < fromAt)) continue;
+      let t = by.get(userId);
+      if (!t) by.set(userId, (t = { userId, versus: 0, wins: 0, correct: 0, powers: 0 }));
+      if (g.versus) t.versus++;
+      if (g.won) t.wins++;
+      t.correct += g.powers + g.tens;
+      t.powers += g.powers;
+    }
+    return [...by.values()];
+  }
   async usersByIds(ids: string[]) {
     const want = new Set(ids);
     return structuredClone(this.d.users.filter((u) => want.has(u.id)));
@@ -293,6 +319,7 @@ CREATE TABLE IF NOT EXISTS games (
   data JSONB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS games_user_at ON games (user_id, at DESC);
+CREATE INDEX IF NOT EXISTS games_at ON games (at);
 CREATE TABLE IF NOT EXISTS friends (
   from_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   to_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -446,6 +473,19 @@ export class PgAccountStore implements AccountStore {
   async games(userId: string, limit: number) {
     const r = await this.pool.query<{ data: GameRecord }>('SELECT data FROM games WHERE user_id = $1 ORDER BY at DESC LIMIT $2', [userId, limit]);
     return r.rows.map((x) => x.data);
+  }
+  async gameTotals(fromAt: number | null) {
+    const r = await this.pool.query(
+      `SELECT user_id,
+         count(*) FILTER (WHERE data->>'versus' = 'true')::int AS versus,
+         count(*) FILTER (WHERE data->>'won' = 'true')::int AS wins,
+         COALESCE(sum((data->>'powers')::int + (data->>'tens')::int), 0)::int AS correct,
+         COALESCE(sum((data->>'powers')::int), 0)::int AS powers
+       FROM games WHERE data->>'ranked' = 'true' AND ($1::bigint IS NULL OR at >= $1::bigint)
+       GROUP BY user_id`,
+      [fromAt],
+    );
+    return r.rows.map((x: any): GameTotal => ({ userId: x.user_id, versus: x.versus, wins: x.wins, correct: x.correct, powers: x.powers }));
   }
   async usersByIds(ids: string[]) {
     if (!ids.length) return [];

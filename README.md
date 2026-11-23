@@ -65,6 +65,16 @@ It's also a separate setting under **Without a reader**, usable in teams too. It
 
 Like the daily challenge it's fixed and solo: same settings for everyone, nobody else can join, no skipping, pausing, reader, bots, protests or score changes. Reloading goes back into the same run, and the clock keeps going while you're away, so leaving can't save a life. A run you walk away from ends where it stands. **End run** in the ⋯ menu gives up and counts the tossups so far. At the end you see your run, your best ever and your rank, with **Play again**. The **Board** shows each player's best run, all time and this week (from Monday, Eastern time). Logged-in players get their best run on their profile.
 
+### Leaderboards
+
+**Leaderboards** (the trophy tab on phones, or the link at the bottom of the home page, at `/leaderboards`) has three boards, each for **Today**, this **Week** (from Monday), this **Month** or **All time**, in US Eastern time:
+
+- **Wins**: first place in a game against at least one other person, not just bots (ties for first count, a 0-point tie doesn't, and games everyone left don't).
+- **Correct**: tossups answered correctly in any game, solo practice included.
+- **Daily**: daily-challenge points added up over the days played.
+
+Only signed-in players with a public profile are listed; your own place shows even when you're outside the top 25. Games where a score was adjusted, a ruling reversed (override or protest), a reader accepted an answer the checker rejected, or an uploaded packet was used still go on profiles but not on the boards. The daily challenge and survival only count on their own boards.
+
 ### Reader (moderator) seat
 
 Anyone can click **Be the reader** in the lobby. The reader:

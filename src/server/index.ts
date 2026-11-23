@@ -21,6 +21,8 @@ import { FileFeedbackStore, PgFeedbackStore } from './feedback/store';
 import { Survival } from './survival/survival';
 import { FileSurvivalStore, PgSurvivalStore } from './survival/store';
 import { Stats } from './stats/stats';
+import { Leaderboards } from './leaderboards/leaderboards';
+import { isBoard, isPeriod } from '../shared/leaderboards';
 import { FileStatsStore, PgStatsStore } from './stats/store';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -148,6 +150,24 @@ accounts.presence = (ids) => {
 app.set('trust proxy', 1);
 
 app.get('/healthz', (_req, res) => res.json({ ok: true, rooms: [...store.all()].length, accounts: accounts.ready ? accounts.kind : 'off' }));
+// Leaderboards (wins, correct answers, daily challenge) for today, this week, this month or all time.
+const leaderboards = new Leaderboards({
+  gameTotals: (fromAt) => accounts.gameTotals(fromAt),
+  dailyTotals: (fromDay) => daily.totals(fromDay),
+  people: (ids) => accounts.boardPeople(ids),
+  looks: (ids) => accounts.boardLooks(ids),
+});
+app.get('/api/leaderboards', async (req, res) => {
+  const { board, period } = req.query;
+  if (!isBoard(board) || !isPeriod(period)) return res.status(400).json({ error: 'Unknown leaderboard.' });
+  try {
+    const u = await accounts.requestUser(req.headers.cookie);
+    res.set('Cache-Control', 'no-store').json(await leaderboards.view(board, period, u?.id ?? null));
+  } catch (e) {
+    console.error('Leaderboard failed:', e);
+    res.status(500).json({ error: 'The leaderboards are unavailable right now.' });
+  }
+});
 app.use('/api', accounts.router());
 if (existsSync(CLIENT_DIR)) {
   app.use(express.static(CLIENT_DIR, {

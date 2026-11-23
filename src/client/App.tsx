@@ -7,6 +7,7 @@ import { InviteBanner } from './components/Friends';
 import { Announcement } from './components/Announcement';
 import { WakeScreen } from './components/WakeScreen';
 import { Privacy } from './components/Privacy';
+import { Leaderboards } from './components/Leaderboards';
 import { Help } from './components/Help';
 import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
@@ -34,6 +35,7 @@ function Page() {
   if (location.pathname === '/confirm') return <ConfirmEmail />;
   if (location.pathname === '/privacy') return <Privacy />;
   if (location.pathname === '/help') return <Help />;
+  if (location.pathname === '/leaderboards') return <Leaderboards />;
   return <Player />;
 }
 
