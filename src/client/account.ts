@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Preset } from '../shared/presets';
 import type { Me, ProfileView } from '../shared/accounts';
 import type { TitleOption, Visibility } from '../shared/profile';
-import type { LevelInfo } from '../shared/levels';
+import type { BoostView, LevelInfo } from '../shared/levels';
 import { prefs, socket } from './socket';
 
 // The logged-in account, shared by every component. Guests have me = null.
@@ -158,6 +158,11 @@ export async function adminSetBadges(username: string, badges: string[]) {
   return api<{ ok: true; grantedBadges: string[] }>(`/admin/users/${encodeURIComponent(username)}/badges`, { method: 'POST', body: { badges } });
 }
 
+/** Admin: change an account's XP (yours too). `add` can be negative; `level` sets the start of that level; `earned` goes back to what their games are worth. */
+export async function adminSetXp(username: string, change: { add: number } | { level: number } | { earned: true }) {
+  return api<{ ok: true; levelInfo: LevelInfo }>(`/admin/users/${encodeURIComponent(username)}/xp`, { method: 'POST', body: change });
+}
+
 /** Admin: reset someone's display name (to their username) and/or clear their bio. */
 export async function adminResetProfile(username: string, what: { name: boolean; bio: boolean }) {
   const body: { displayName?: false; bio?: false } = {};
@@ -221,7 +226,7 @@ window.addEventListener('qb-settings', (e) => {
 
 // ---------- XP from the last finished game ----------
 
-export interface XpNews { gained: number; before: LevelInfo; after: LevelInfo; unlocked: string[]; at: number }
+export interface XpNews { gained: number; before: LevelInfo; after: LevelInfo; unlocked: string[]; boost?: number; at: number }
 let xpNews: XpNews | null = null;
 const xpListeners = new Set<() => void>();
 
@@ -230,6 +235,20 @@ socket.on('account:xp', (x: Omit<XpNews, 'at'>) => {
   if (me) set({ ...me, level: x.after.level });
   xpListeners.forEach((l) => l());
 });
+
+// ---------- XP boost running now (an admin started it) ----------
+
+let boost: BoostView | null = null;
+const boostListeners = new Set<() => void>();
+socket.on('xp:boost', (b: BoostView | null) => { boost = b; boostListeners.forEach((l) => l()); });
+
+/** The XP boost on this player right now, or null. */
+export function useXpBoost() {
+  return useSyncExternalStore((l) => { boostListeners.add(l); return () => boostListeners.delete(l); }, () => boost);
+}
+
+// An admin changed this account's XP.
+socket.on('account:level', (level: number) => { if (me) set({ ...me, level }); });
 
 /** The XP the last game gave this account (null until a game ends while logged in). */
 export function useXpNews() {

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { Mode, Phase, PublicState } from '../../shared/types';
-import { adminUnlockBadges, useAccount } from '../account';
 import { call } from '../socket';
 import { REPORT_REASONS, type ReportGroup } from '../../shared/reports';
 import { FEEDBACK_KINDS, type FeedbackItem } from '../../shared/feedback';
 import { Icon } from './Icon';
+import { AdminAbuse } from './AdminAbuse';
 import { AdminStats } from './AdminStats';
 import { AdminLock, RoomAdmin, RoomTroll } from './AdminPanel';
 import { AdminPlayers } from './AdminPlayers';
@@ -28,16 +28,15 @@ interface ServerInfo {
   rooms: number; connections: number; users: { total: number; withEmail: number; confirmed: number; newSince: number } | null;
 }
 
-export type AdminTab = 'room' | 'stats' | 'rooms' | 'players' | 'troll' | 'reports' | 'feedback' | 'server';
+export type AdminTab = 'room' | 'stats' | 'rooms' | 'players' | 'troll' | 'abuse' | 'reports' | 'feedback' | 'server';
 const MAIL_LABEL: Record<string, string> = { gmail: 'Gmail API', smtp: 'SMTP', console: 'Printed to the server console (local only)', off: 'Off: nothing can be sent', custom: 'Custom' };
 const uptime = (s: number) => (s < 3600 ? `${Math.round(s / 60)} min` : s < 86_400 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.floor(s / 86_400)} d ${Math.floor((s % 86_400) / 3600)} h`);
 
 /**
  * The admin panel, from the shield by an admin's name (home, profiles) or a room's Admin button.
- * Tabs: This room (only inside a room), Stats, Rooms, Players, Troll, Reports, Feedback, Server.
+ * Tabs: This room (only inside a room), Stats, Rooms, Players, Troll, Abuse (your own perks and XP boosts), Reports, Feedback, Server.
  */
 export function SiteAdminPanel({ onClose, room, start }: { onClose: () => void; room?: { s: PublicState; onPlayers?: () => void }; start?: AdminTab }) {
-  const { me } = useAccount();
   const [tab, setTab] = useState<AdminTab>(start ?? (room ? 'room' : 'stats'));
   const [o, setO] = useState<Overview | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -97,10 +96,6 @@ export function SiteAdminPanel({ onClose, room, start }: { onClose: () => void; 
     await call('site:feedbackDone', f.id, done);
     await loadFeedback();
   });
-  const badges = (unlock: boolean) => me && run(async () => {
-    await adminUnlockBadges(me.username, unlock);
-    return unlock ? 'Every badge is unlocked on your profile.' : 'Your badges are back to the ones you earned.';
-  });
   const testEmail = () => void run(async () => { await call('site:testEmail'); return 'Sent. Check the inbox of the email on your account (and spam).'; });
 
   const live = o?.rooms.filter((r) => r.players.some((p) => p.online)) ?? [];
@@ -108,7 +103,7 @@ export function SiteAdminPanel({ onClose, room, start }: { onClose: () => void; 
   const openFeedback = feedback ? feedback.filter((f) => !f.done).length : null;
   const tabs: [AdminTab, string][] = [
     ...(room ? [['room', 'This room'] as [AdminTab, string]] : []),
-    ['stats', 'Stats'], ['rooms', `Rooms${o ? ` (${live.length})` : ''}`], ['players', 'Players'], ['troll', 'Troll'],
+    ['stats', 'Stats'], ['rooms', `Rooms${o ? ` (${live.length})` : ''}`], ['players', 'Players'], ['troll', 'Troll'], ['abuse', 'Abuse'],
     ['reports', `Reports${reports?.total ? ` (${reports.total})` : ''}`], ['feedback', `Feedback${openFeedback ? ` (${openFeedback})` : ''}`], ['server', 'Server'],
   ];
 
@@ -159,16 +154,12 @@ export function SiteAdminPanel({ onClose, room, start }: { onClose: () => void; 
                 <button className="btn small" disabled={busy} onClick={shakeAll}>Shake every screen</button>
               </div>
               <p className="muted small">Shows on the home page, profiles, rooms and big screens. Skips anyone in the middle of a daily challenge or survival run. To whisper to or shake one person anywhere, use the Players tab.</p>
-              <h3>Badges</h3>
-              <div className="row gap">
-                <button className="btn small" disabled={busy} onClick={() => badges(true)}>Unlock all my badges</button>
-                <button className="btn small ghost" disabled={busy} onClick={() => badges(false)}>Back to earned only</button>
-                {me && <a className="btn small ghost" href={`/u/${me.username}`}>View my profile</a>}
-              </div>
             </>
           )}
 
           {tab === 'players' && <AdminPlayers run={run} busy={busy} />}
+
+          {tab === 'abuse' && <AdminAbuse run={run} busy={busy} />}
 
           {tab === 'reports' && (
             <>

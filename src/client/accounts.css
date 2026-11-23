@@ -431,3 +431,12 @@ a.creator-badge:hover { filter: brightness(1.1); }
 .xp-news .xp-bar > i { animation: xp-fill .9s ease both; }
 @keyframes xp-fill { from { width: var(--from, 0%); } }
 @media (prefers-reduced-motion: reduce) { .xp-news .xp-bar > i { animation: none; } }
+.my-level { align-items: center; margin-bottom: .4rem; }
+.my-level input { width: 5.5rem; }
+
+/* XP boost chip: small and quiet, in the accent color */
+.boost-chip { display: inline-block; margin-left: .4rem; padding: .05rem .5rem; border-radius: 999px; font-size: .74rem; font-weight: 500; line-height: 1.5; vertical-align: .1em; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.boost-chip b { font-weight: 700; }
+.home-boost { margin: -.2rem 0 .2rem; align-self: flex-start; }
+.abuse-form { display: flex; flex-direction: column; gap: .55rem; margin-bottom: .3rem; }
+.abuse-form .btn.primary { align-self: flex-start; }

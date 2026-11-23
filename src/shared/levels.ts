@@ -26,6 +26,8 @@ export function xpParts(g: GameRecord): XpPart[] {
     else if (g.rank <= 3 && g.sides >= 3) add('Top 3', 10 * share);
   }
   if (g.daily) add('Daily challenge', 30);
+  const boost = g.xpBoost ?? 1;
+  if (boost > 1) add(`${fmtMultiplier(boost)} XP boost`, parts.reduce((n, p) => n + p.xp, 0) * (boost - 1));
   return parts;
 }
 
@@ -33,8 +35,16 @@ export const xpForGame = (g: GameRecord) => xpParts(g).reduce((n, p) => n + p.xp
 
 export const MAX_LEVEL = 100;
 
-/** XP needed to go from `level` to the next one: 100, then 25 more each level. */
-export const xpToNext = (level: number) => 100 + 25 * (level - 1);
+/** XP for the first level-up, and how much more each later level takes. */
+const FIRST_LEVEL_XP = 100;
+const LEVEL_STEP_XP = 8;
+
+/**
+ * XP needed to go from `level` to the next one: 100, then 8 more each level, so level 100 takes 48,708 XP in all.
+ * A typical 20-tossup game is about 70 XP in about 15 minutes, so that's roughly 175 hours of play
+ * (level 10 after ~4 hours, 50 after ~50).
+ */
+export const xpToNext = (level: number) => FIRST_LEVEL_XP + LEVEL_STEP_XP * (level - 1);
 
 export interface LevelInfo {
   level: number;
@@ -89,3 +99,28 @@ export function unlockedBetween(from: number, to: number, rewards: { name: strin
   for (const r of rewards) if (r.level && r.level > from && r.level <= to) out.push(`${r.name} ${r.kind}`);
   return out;
 }
+
+// ---------- XP boosts (admin "Abuse" tab) ----------
+
+/** Multipliers and lengths offered in the admin panel. */
+export const BOOST_MULTIPLIERS = [1.5, 2, 3, 5, 10];
+export const BOOST_MINUTES = [15, 30, 60, 180, 720, 1440];
+export const BOOST_MAX_MULTIPLIER = 10;
+export const BOOST_MAX_MINUTES = 7 * 1440;
+
+/** An XP boost: for everyone (accountId null) or one account, until `endsAt`. */
+export interface XpBoost {
+  id: string;
+  multiplier: number;
+  startedAt: number;
+  endsAt: number;
+  accountId: string | null;
+  /** The boosted account's username, for the admin list. */
+  username: string | null;
+}
+
+/** What a player sees: the best boost on them right now, or null. */
+export interface BoostView { multiplier: number; endsAt: number; personal: boolean }
+
+/** "2×", "1.5×". */
+export const fmtMultiplier = (m: number) => `${Number.isInteger(m) ? m : m.toFixed(1)}×`;

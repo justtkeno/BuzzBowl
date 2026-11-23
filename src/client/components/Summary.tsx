@@ -4,6 +4,7 @@ import { ScoreGraph } from './ScoreGraph';
 import { shareRecap } from '../recap';
 import { act, fmtPct, roles } from './util';
 import { useAccount, useXpNews } from '../account';
+import { fmtMultiplier } from '../../shared/levels';
 
 /** "+86 XP", a bar to the next level, and what a level-up unlocked. Only for the signed-in player, after the game was saved. */
 function XpNews() {
@@ -16,7 +17,7 @@ function XpNews() {
   const pctOf = (i: { into: number; need: number }) => (i.need ? Math.min(100, (i.into / i.need) * 100) : 100);
   return (
     <div className="xp-news" role="status">
-      <span className="xp-gain">+{x.gained} XP</span>
+      <span className="xp-gain">+{x.gained} XP{x.boost ? <span className="boost-chip">{fmtMultiplier(x.boost)} boost</span> : null}</span>
       {leveled ? <span className="level-up">Level {x.after.level}!</span> : <span className="muted">Level {x.after.level}</span>}
       <span className="xp-bar"><i style={{ width: `${pctOf(x.after)}%`, ['--from' as string]: leveled ? '0%' : `${pctOf(x.before)}%` }} /></span>
       {x.after.need > 0 && <span className="muted small">{x.after.need - x.after.into} XP to level {x.after.level + 1}</span>}

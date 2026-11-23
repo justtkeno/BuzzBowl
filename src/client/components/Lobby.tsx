@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BoostChip } from './BoostChip';
 import type { BotSkill, PublicState } from '../../shared/types';
 import { BOT_SKILLS } from '../../shared/types';
 import { InviteQR, inviteUrl, shareInvite } from './Invite';
@@ -120,7 +121,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
       </section>
 
       <section className="lobby-step">
-        <h3><span className="step-num">3</span> Start</h3>
+        <h3><span className="step-num">3</span> Start <BoostChip /></h3>
         <div className="row gap start-row">
           {r.isController ? (
             <button className="btn primary big" onClick={() => act('game:start')}>Start game</button>

@@ -46,10 +46,11 @@ describe('XP', () => {
 });
 
 describe('levels', () => {
-  it('starts at 1 and needs 25 more XP each level', () => {
+  it('starts at 1 and needs 8 more XP each level, about 49,000 XP to the max', () => {
     expect(levelFor(0)).toMatchObject({ level: 1, into: 0, need: 100, title: 'Rookie' });
     expect(levelFor(99).level).toBe(1);
-    expect(levelFor(100)).toMatchObject({ level: 2, into: 0, need: 125 });
+    expect(levelFor(100)).toMatchObject({ level: 2, into: 0, need: 108 });
+    expect(xpAtLevel(MAX_LEVEL)).toBe(48_708);
     expect(levelFor(xpAtLevel(10) + 5)).toMatchObject({ level: 10, into: 5, need: xpToNext(10), title: 'Scholar' });
     expect(levelFor(1e9)).toMatchObject({ level: MAX_LEVEL, need: 0 });
     for (let l = 1; l < 30; l++) expect(levelFor(xpAtLevel(l)).level).toBe(l);
@@ -169,5 +170,59 @@ describe('profile pictures and XP over HTTP', () => {
     // The next game adds to that total instead of counting everything again.
     const [g] = await accounts.record([{ accountId: user.id, game: game() }]);
     expect(g.after.xp).toBe(324);
+  });
+});
+
+describe('admin XP tools', () => {
+  let server: Server;
+  let base: string;
+  let dir: string;
+  let accounts: Accounts;
+  const levels: [string, number][] = [];
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'bb-adminxp-'));
+    accounts = new Accounts(new FileAccountStore(join(dir, 'accounts.json')));
+    accounts.onLevel = (id, level) => levels.push([id, level]);
+    await accounts.init();
+    const app = express();
+    app.use('/api', accounts.router());
+    server = createServer(app);
+    await new Promise<void>((r) => server.listen(0, r));
+    base = `http://localhost:${(server.address() as { port: number }).port}/api`;
+  });
+  afterAll(() => { server.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  const signup = async (username: string) => {
+    const res = await fetch(`${base}/signup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password: 'longenough1' }) });
+    return { cookie: res.headers.get('set-cookie')!.split(';')[0], user: (await res.json()).user };
+  };
+  const xp = (cookie: string, username: string, body: unknown) =>
+    fetch(`${base}/admin/users/${username}/xp`, { method: 'POST', headers: { 'Content-Type': 'application/json', cookie }, body: JSON.stringify(body) });
+
+  it('lets an admin set, add, take away and restore XP, and only an admin', async () => {
+    // "Hao" is the local default admin when ADMIN_ACCOUNT_IDS isn't set.
+    const admin = await signup('Hao');
+    const player = await signup('lv_player');
+    expect((await xp(player.cookie, 'lv_player', { level: 50 })).status).toBe(403);
+
+    const set = await (await xp(admin.cookie, 'Hao', { level: 40 })).json();
+    expect(set.levelInfo).toMatchObject({ level: 40, xp: xpAtLevel(40) });
+    expect(levels.at(-1)).toEqual([admin.user.id, 40]);
+    expect((await (await fetch(`${base}/me`, { headers: { cookie: admin.cookie } })).json()).user.level).toBe(40);
+    // Level 40 unlocks the Prism frame.
+    const pick = await fetch(`${base}/me`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', cookie: admin.cookie }, body: JSON.stringify({ frame: 'prism' }) });
+    expect(pick.status).toBe(200);
+
+    expect((await (await xp(admin.cookie, 'lv_player', { add: 250 })).json()).levelInfo).toMatchObject({ level: 3, xp: 250 });
+    expect((await (await xp(admin.cookie, 'lv_player', { add: -1000 })).json()).levelInfo).toMatchObject({ level: 1, xp: 0 });
+    expect((await (await xp(admin.cookie, 'Hao', { level: MAX_LEVEL })).json()).levelInfo.level).toBe(MAX_LEVEL);
+    for (const bad of [{ level: 0 }, { level: 101 }, { add: 0 }, { add: 'lots' }, {}]) expect((await xp(admin.cookie, 'Hao', bad)).status).toBe(400);
+    expect((await xp(admin.cookie, 'nobody_here', { level: 2 })).status).toBe(404);
+
+    // Back to earned: no games, so level 1, and the Prism frame goes back to none.
+    expect((await (await xp(admin.cookie, 'Hao', { earned: true })).json()).levelInfo).toMatchObject({ level: 1, xp: 0 });
+    const { profile } = await (await fetch(`${base}/users/Hao`)).json();
+    expect(profile.frame).toBe('none');
   });
 });

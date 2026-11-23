@@ -68,6 +68,8 @@ export interface GameRecord {
   abandoned?: boolean;
   /** The daily challenge's number when this game was that day's challenge. */
   daily?: number;
+  /** An admin's XP boost that was running when the game ended (2 = double XP). */
+  xpBoost?: number;
   /** True when this game was a survival run. */
   survival?: boolean;
   /** Counts for the leaderboards: an ordinary game with no scores changed by hand and no uploaded packet. */

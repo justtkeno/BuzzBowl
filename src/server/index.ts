@@ -18,6 +18,7 @@ import { ReportError, Reports } from './reports/reports';
 import { FileReportStore, PgReportStore } from './reports/store';
 import { Feedback, FeedbackError } from './feedback/feedback';
 import { FileFeedbackStore, PgFeedbackStore } from './feedback/store';
+import { BoostError, Boosts, FileBoostStore, PgBoostStore } from './boosts/boosts';
 import { Survival } from './survival/survival';
 import { FileSurvivalStore, PgSurvivalStore } from './survival/store';
 import { Stats } from './stats/stats';
@@ -72,6 +73,22 @@ accounts.findDaily = async (accountId, at, points) => {
   const day = dayKey(new Date(at));
   const r = await daily.result(day, playerKeyFor(accountId, null)!);
   return r && r.points === points ? dailyNumber(day) : null;
+};
+
+// XP boosts from the admin panel: games use the boost when their XP is added, and every screen shows the one on them.
+const boosts = new Boosts(process.env.DATABASE_URL ? new PgBoostStore(process.env.DATABASE_URL) : new FileBoostStore(join(DATA_DIR, `boosts-${PORT}.json`)));
+accounts.boostFor = (accountId) => boosts.multiplierFor(accountId);
+boosts.onChange = () => {
+  for (const s of io.sockets.sockets.values()) s.emit('xp:boost', boosts.viewFor(accounts.of(s)?.id));
+};
+
+// An admin changed someone's XP: their open screens and any room they're in show the new level.
+accounts.onLevel = (accountId, level) => {
+  for (const s of io.sockets.sockets.values()) {
+    const a = accounts.of(s);
+    if (a?.id === accountId) { a.level = level; s.emit('account:level', level); }
+  }
+  for (const room of store.all()) room.setLevel(accountId, level);
 };
 
 // A username change follows the account onto leaderboards and into any room it's sitting in.
@@ -207,7 +224,7 @@ function roomIO(code: string): RoomIO {
             const a = accounts.of(s);
             if (a?.id !== g.accountId) continue;
             a.level = g.after.level;
-            s.emit('account:xp', { gained: g.gained, before: g.before, after: g.after, unlocked: g.unlocked });
+            s.emit('account:xp', { gained: g.gained, before: g.before, after: g.after, unlocked: g.unlocked, ...(g.boost ? { boost: g.boost } : {}) });
           }
           store.get(code)?.setLevel(g.accountId, g.after.level);
         }
@@ -281,7 +298,7 @@ setInterval(() => saveRooms(), 3000).unref();
 // Bots watch every room a few times a second and buzz / answer when their moment comes.
 setInterval(() => { for (const room of store.all()) botsFor(room).tick(); }, 100).unref();
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); reportStore.flush(); feedback.flush(); stats.flush(); process.exit(0); });
+  process.on(sig, () => { saveRooms(true); fileAccounts?.flush(); reportStore.flush(); feedback.flush(); stats.flush(); boosts.flush(); process.exit(0); });
 }
 
 /** Last invite per sender and friend, so nobody can spam someone with invites. */
@@ -313,6 +330,7 @@ io.use(accounts.socketMiddleware);
 
 io.on('connection', (socket) => {
   socket.on('time', (ack: (t: number) => void) => typeof ack === 'function' && ack(Date.now()));
+  void boosts.ready.then(() => socket.emit('xp:boost', boosts.viewFor(accounts.of(socket)?.id)));
 
   /** Moving to another room: stop getting the old room's updates, and go offline there unless another tab is still in it. */
   const leaveSeat = (code: string, playerId: string) => {
@@ -641,6 +659,44 @@ io.on('connection', (socket) => {
     ack({ ok: true });
   });
 
+  // ---------- Abuse tab: XP boosts ----------
+
+  const boostList = () => boosts.active().map((b) => ({ id: b.id, multiplier: b.multiplier, startedAt: b.startedAt, endsAt: b.endsAt, username: b.username }));
+
+  socket.on('site:boosts', (ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    ack({ ok: true, boosts: boostList() });
+  });
+
+  // Start a boost for everyone (no username) or one account.
+  socket.on('site:boostStart', async (p: { multiplier?: unknown; minutes?: unknown; username?: unknown } | undefined, ack: Ack) => {
+    if (typeof ack !== 'function') return;
+    const admin = siteAdmin(ack);
+    if (!admin) return;
+    try {
+      const name = String(p?.username ?? '').trim();
+      const who = name ? await accounts.findAccount(name) : null;
+      if (name && !who) return ack({ ok: false, error: `No player called @${name.replace(/^@/, '')}.` });
+      const b = await boosts.start(p ?? {}, who);
+      console.log(`Admin @${admin.username} started a ${b.multiplier}× XP boost for ${who ? `@${who.username}` : 'everyone'} until ${new Date(b.endsAt).toISOString()}`);
+      ack({ ok: true, boosts: boostList() });
+    } catch (e) {
+      if (!(e instanceof BoostError)) console.error('site:boostStart failed:', e);
+      ack({ ok: false, error: e instanceof BoostError ? e.message : 'Could not start the boost.' });
+    }
+  });
+
+  socket.on('site:boostEnd', async (id: unknown, ack: Ack) => {
+    if (typeof ack !== 'function' || !siteAdmin(ack)) return;
+    try {
+      await boosts.end(id);
+      ack({ ok: true, boosts: boostList() });
+    } catch (e) {
+      console.error('site:boostEnd failed:', e);
+      ack({ ok: false, error: 'Could not end the boost.' });
+    }
+  });
+
   // Account search for the Players tab.
   socket.on('site:users', async (query: unknown, ack: Ack) => {
     if (typeof ack !== 'function' || !siteAdmin(ack)) return;
@@ -833,6 +889,6 @@ setInterval(() => {
   }
 }, 60_000).unref();
 
-Promise.all([accounts.init(), daily.ready, reports.ready, feedback.ready, survival.ready]).finally(() => {
+Promise.all([accounts.init(), daily.ready, reports.ready, feedback.ready, survival.ready, boosts.ready]).finally(() => {
   http.listen(PORT, () => console.log(`Quiz bowl server on http://localhost:${PORT} (accounts: ${accounts.ready ? accounts.kind : 'off'})`));
 });
