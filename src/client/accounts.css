@@ -303,3 +303,12 @@ a.creator-badge:hover { filter: brightness(1.1); }
 }
 
 @media (max-width: 420px) { .profile-top .account-bar > .muted.grow { display: none; } }
+
+/* ---------- titles ---------- */
+/* A player's equipped title: a small, quiet outlined tag after their name. */
+.title-tag { display: inline-flex; align-items: center; vertical-align: 1px; margin-left: .35rem; padding: 0 .45rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: .68rem; font-weight: 600; letter-spacing: .01em; line-height: 1.55; white-space: nowrap; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
+.profile-title { margin: .1rem 0 .25rem; }
+.profile-title .title-tag { margin-left: 0; font-size: .78rem; padding: .05rem .6rem; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.title-picker .chip.special:not(.on) { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.admin-titles h4 { margin: .8rem 0 .4rem; }
+.admin-custom-title { margin-top: .5rem; }

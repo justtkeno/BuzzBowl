@@ -28,6 +28,8 @@ export interface Me extends Look {
   email: string | null;
   /** They opened the confirmation link sent to `email` (optional). */
   emailVerified: boolean;
+  /** The equipped title's key (see titleOptions in shared/profile.ts), or null. */
+  title: string | null;
   /** When they last changed their username (null if never). The next change waits USERNAME_COOLDOWN_DAYS. */
   usernameChangedAt: number | null;
   createdAt: number;
@@ -125,6 +127,11 @@ export interface PublicProfile extends Look {
   visibility?: Visibility;
   /** Admins only: a site admin unlocked badges for this account. */
   badgesUnlocked?: boolean;
+  /** Site admins only: titles and badges given to this account (for the admin's Titles and Badges controls). */
+  grantedTitles?: string[];
+  grantedBadges?: string[];
+  /** The title shown with their name, if they equipped one. */
+  title?: string | null;
 }
 
 /** What others see of a profile that isn't open to them (the color and frame are cosmetic, so they still show). */
@@ -132,6 +139,9 @@ export interface LockedProfile extends Look {
   username: string;
   displayName: string;
   createdAt: number;
+  /** Cosmetic, like the color and frame, so it shows on a locked profile too. */
+  title?: string | null;
+  grantedTitles?: string[];
   admin: boolean;
   locked: Exclude<Visibility, 'public'>;
 }

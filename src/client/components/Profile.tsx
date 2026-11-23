@@ -3,14 +3,14 @@ import { useEffect, useState } from 'react';
 import { BEST_SUBJECT_MIN_HEARD, BIO_MAX, isLocked, type DailyProfile, type GameRecord, type Look, type ProfileView, type PublicProfile, type SurvivalProfile } from '../../shared/accounts';
 import {
   AVATAR_FRAMES, BADGE_BY_ID, PIN_MAX, PIN_STATS, PROFILE_COLORS, VISIBILITIES, VISIBILITY_LABEL, colorById, earnedIds, frameById, isUnlocked,
-  type Reward, type Visibility,
+  type Reward, type Visibility, SPECIAL_TITLES, TITLE_MAX, BADGES, type TitleOption,
 } from '../../shared/profile';
-import { adminDeleteAccount, adminResetProfile, adminUnlockBadges, fetchProfile, updateMe, useAccount } from '../account';
+import { adminDeleteAccount, adminResetProfile, adminSetBadges, adminSetTitles, adminUnlockBadges, fetchProfile, fetchTitles, updateMe, useAccount } from '../account';
 import { SettingsMenu } from './AppSettings';
 import { Announcement } from './Announcement';
 import { CategoryDot } from './CategoryChip';
 import { useTheme } from '../App';
-import { AccountBar, Avatar, CreatorBadge, tint } from './Account';
+import { AccountBar, Avatar, CreatorBadge, TitleTag, tint } from './Account';
 import { FriendButton, FriendsTab, InviteBanner } from './Friends';
 import { Marks } from './Daily';
 import { Icon } from './Icon';
@@ -64,6 +64,7 @@ export function Profile({ username }: { username: string }) {
               <Avatar name={p.displayName} color={look!.color} frame={look!.frame} size="big" />
               <div className="grow">
                 <h1>{p.displayName} <span className="verified" title="Verified Trivio account"><Check /></span>{p.admin && <CreatorBadge />}</h1>
+                {p.title && <div className="profile-title"><TitleTag title={p.title} /></div>}
                 <div className="muted small">@{p.username} · joined {new Date(p.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div>
                 {!isLocked(p) && p.visibility && p.visibility !== 'public' && !editing && (
                   <div className="visibility-note small"><Icon name="lock" /> {p.visibility === 'private' ? (mine ? 'Private: only you can see your stats' : 'Private profile · you can see it as an admin') : (mine ? 'Friends only: only your friends can see your stats' : 'Friends-only profile · you can see it as an admin')}</div>
@@ -105,6 +106,7 @@ export function Profile({ username }: { username: string }) {
               </>
             )}
             {me?.admin && !mine && !p.admin && <AdminCard p={p} onChange={setP} onDeleted={() => setDeleted(true)} />}
+            {me?.admin && <AdminTitles p={p} onChange={setP} />}
             </>
             )}
           </>
@@ -149,6 +151,10 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
   const earned = earnedIds(p.badges);
   useEffect(() => onPreview({ color, frame }), [color, frame]);
   const [bio, setBio] = useState(p.bio);
+  const { me } = useAccount();
+  const [titles, setTitles] = useState<TitleOption[] | null>(null);
+  const [title, setTitle] = useState<string | null>(me?.title ?? null);
+  useEffect(() => { fetchTitles().then((r) => { setTitles(r.options); setTitle(r.equipped); }, () => setTitles([])); }, []);
   const [visibility, setVisibility] = useState<Visibility>(p.visibility ?? 'public');
   const [pinned, setPinned] = useState<string[]>(p.pinned);
   const [busy, setBusy] = useState(false);
@@ -158,8 +164,8 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
     e.preventDefault();
     setBusy(true); setErr(null);
     try {
-      const u = await updateMe({ displayName, bio, visibility, pinned, color, frame });
-      onDone({ ...p, displayName: u.displayName, bio: u.bio, visibility: u.visibility, pinned: u.pinned, color: u.color, frame: u.frame });
+      const u = await updateMe({ displayName, bio, visibility, pinned, color, frame, ...(titles ? { title } : {}) });
+      onDone({ ...p, displayName: u.displayName, bio: u.bio, visibility: u.visibility, pinned: u.pinned, color: u.color, frame: u.frame, title: titles?.find((o) => o.key === u.title)?.name ?? null });
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
   return (
@@ -226,6 +232,19 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
         </div>
         {hint?.kind === 'frame' ? <span className="reward-hint small"><Icon name="lock" /> {hint.text}</span> : <span className="muted small">Earn badges to unlock more colors and frames.</span>}
       </div>
+      <div className="field">
+        <span>Title <span className="muted">· shown with your name on your profile and in games</span></span>
+        {titles === null ? <span className="muted small">Loading…</span> : (
+          <div className="chips title-picker" role="radiogroup" aria-label="Title">
+            <button type="button" role="radio" aria-checked={!title} className={`chip ${!title ? 'on' : ''}`} onClick={() => setTitle(null)}>None</button>
+            {titles.map((o) => (
+              <button key={o.key} type="button" role="radio" aria-checked={title === o.key} className={`chip ${title === o.key ? 'on' : ''} ${o.from !== 'badge' ? 'special' : ''}`}
+                title={o.from === 'badge' ? 'Earned with a badge' : 'Given by Trivio'} onClick={() => setTitle(o.key)}>{o.name}</button>
+            ))}
+          </div>
+        )}
+        {titles && !titles.length && <span className="muted small">Earn badges to unlock titles.</span>}
+      </div>
       <p className="muted small">Username, email and password are in <button type="button" className="link" onClick={() => setAccount(true)}>Account settings</button>.</p>
       {account && <SettingsMenu start="account" onClose={() => setAccount(false)} />}
       {err && <p className="error">{err}</p>}
@@ -235,6 +254,66 @@ function EditProfile({ p, onDone, onPreview }: { p: PublicProfile; onDone: (p: P
 }
 
 /** Admin-only moderation tools for someone else's profile. */
+/** Site admins: give titles (special or custom) and individual badges. Works on any profile, yours and other admins' too. */
+function AdminTitles({ p, onChange }: { p: ProfileView; onChange: (p: ProfileView) => void }) {
+  const [titles, setTitles] = useState<string[]>(p.grantedTitles ?? []);
+  const [badges, setBadges] = useState<string[]>(isLocked(p) ? [] : p.grantedBadges ?? []);
+  const [custom, setCustom] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const saveTitles = async (next: string[]) => {
+    setBusy(true); setErr(null);
+    try { const r = await adminSetTitles(p.username, next); setTitles(r.titles); onChange({ ...(await fetchProfile(p.username)) } as ProfileView); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const saveBadges = async (next: string[]) => {
+    setBusy(true); setErr(null);
+    try { const r = await adminSetBadges(p.username, next); setBadges(r.grantedBadges); onChange({ ...(await fetchProfile(p.username)) } as ProfileView); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  const customs = titles.filter((t) => t.startsWith('custom:'));
+  return (
+    <section className="card admin-card admin-titles">
+      <h2><Icon name="crown" /> Titles and badges</h2>
+      <p className="muted small">Only admins see this. Titles you give show up in their title list; they pick one to wear.</p>
+      <h4>Titles</h4>
+      <div className="chips">
+        {SPECIAL_TITLES.map((t) => {
+          const key = `special:${t.id}`;
+          const on = titles.includes(key);
+          return <button key={key} type="button" className={`chip ${on ? 'on' : ''}`} aria-pressed={on} disabled={busy} onClick={() => saveTitles(toggle(titles, key))}>{on ? '✓ ' : ''}{t.name}</button>;
+        })}
+        {customs.map((k) => (
+          <button key={k} type="button" className="chip on" disabled={busy} title="Remove this title" onClick={() => saveTitles(titles.filter((x) => x !== k))}>✓ {k.slice(7)} ✕</button>
+        ))}
+      </div>
+      <form className="row gap admin-custom-title" onSubmit={(e) => { e.preventDefault(); const t = custom.trim(); if (t) { void saveTitles([...titles, `custom:${t}`]); setCustom(''); } }}>
+        <input className="grow" value={custom} maxLength={TITLE_MAX} placeholder="Custom title, e.g. Quiz Bowl Legend" aria-label="Custom title" onChange={(e) => setCustom(e.target.value)} />
+        <button className="btn small" disabled={busy || !custom.trim()}>Give title</button>
+      </form>
+      {!isLocked(p) && (
+        <>
+          <h4>Badges <small className="muted">(given on top of what they earn)</small></h4>
+          <div className="chips">
+            {BADGES.map((b) => {
+              const on = badges.includes(b.id);
+              const earnedForReal = p.badges.find((x) => x.id === b.id)?.earned && !on;
+              return (
+                <button key={b.id} type="button" className={`chip ${on ? 'on' : ''}`} aria-pressed={on} disabled={busy || earnedForReal}
+                  title={earnedForReal ? 'They earned this one' : b.desc} onClick={() => saveBadges(toggle(badges, b.id))}>
+                  {b.icon} {b.name}{earnedForReal ? ' · earned' : ''}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+      {err && <p className="error small">{err}</p>}
+    </section>
+  );
+}
+
 function AdminCard({ p, onChange, onDeleted }: { p: PublicProfile; onChange: (p: PublicProfile) => void; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);

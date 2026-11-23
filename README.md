@@ -103,6 +103,7 @@ Anyone can still play as a guest. **Sign up** on the home screen (username + pas
 - **badges** on your profile, earned from your games and daily challenges (first power, 10 in a row, clean sheet, daily champion, week streak and more). On your own profile, **Show all** lists the ones still to get, with progress
 - **badge rewards**: badges unlock a **profile color** and **avatar frames** (ring, dashed, double ring, flame, star, halo), picked in **Edit profile**. They show on your profile, next to your name at the top of the page and in friends' lists. Tap a locked one to see which badge it needs
 - **pinned stats**: in **Edit profile**, pick up to 3 stats (daily 1st places, points per game, buzz depth…) to show at the top of your profile
+- **titles**: pick one title in **Edit profile** to show under your name on your profile and next to your name in games. Every badge you earn unlocks its name as a title, and Trivio can give special titles (Developer, Early Tester, VIP, Moderator, Supporter, or a custom one)
 - **privacy**: in **Edit profile**, choose who sees your stats, badges and games: everyone, friends only, or only you. Your name and username always show so friends can find you
 - **friends**: tap the small people tab on the right edge of the screen to slide out your friends, and add someone by username there (or with **Add friend** on their profile). Once they accept, you see who's online and who's in a room, with **Join** and **Watch** buttons. In a room, the tab shows in the lobby and after the game, never while questions are being read, and each online friend gets an **Invite** button: they see a small "Alex invited you to play · Join" banner wherever they are on the site. Friends only see your room after you've both said yes. Daily-challenge and survival rooms are never shown.
 
@@ -114,7 +115,7 @@ Results are saved when the host ends a game, or when everyone walks away from a 
 
 Accounts live in Postgres when `DATABASE_URL` is set, otherwise in `data/accounts-<port>.json` (fine for local use).
 
-**Admins** get a creator badge, a **🛡 Admin** panel in every room (make anyone host or reader at any time, even mid-match), and on other players' profiles can reset an offensive display name, clear a bio, or delete the account.
+**Admins** get a creator badge, a **🛡 Admin** panel in every room (make anyone host or reader at any time, even mid-match), and on other players' profiles can reset an offensive display name, clear a bio, or delete the account. On any profile, including their own, admins can also give titles (special or custom) and individual badges.
 
 - **Lock admin to your account (do this on a public server):** set `ADMIN_ACCOUNT_IDS` to your account id (comma-separated for several). The 🛡 Admin panel shows your id and a copy button. Once set, only those exact accounts are admins, so if the account list is ever wiped, someone re-registering your username gets nothing.
 - **Unlocked fallback:** without `ADMIN_ACCOUNT_IDS`, admin goes by username: `Hao` by default, or `ADMIN_USERNAMES` (comma-separated, `""` for none). Whoever registers that username first on a server is admin, so this is only safe locally.

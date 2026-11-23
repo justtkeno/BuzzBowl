@@ -3,7 +3,7 @@ import type { BotSkill, PublicState } from '../../shared/types';
 import { BOT_SKILLS } from '../../shared/types';
 import { InviteQR, inviteUrl, shareInvite } from './Invite';
 import { act, roles, toast } from './util';
-import { Verified } from './Account';
+import { TitleTag, Verified } from './Account';
 import { partyOn } from './SettingsPanel';
 import { Icon } from './Icon';
 
@@ -90,7 +90,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
                     const p = s.players.find((x) => x.id === id);
                     return (
                       <li key={id} className={`${p?.online ? '' : 'offline'} ${r.isController ? 'gm-row' : ''}`}>
-                        <span className="gm-name">{p?.name}<Verified username={p?.username} admin={p?.admin} />{t.captainId === id && <span className="badge">captain</span>}</span>
+                        <span className="gm-name">{p?.name}<Verified username={p?.username} admin={p?.admin} /><TitleTag title={p?.title} />{t.captainId === id && <span className="badge">captain</span>}</span>
                         {r.isController && <PlayerControls s={s} playerId={id} teamId={t.id} captain={t.captainId === id} />}
                       </li>
                     );
@@ -147,7 +147,7 @@ function Unassigned({ s }: { s: PublicState }) {
       <ul>
         {loose.map((p) => (
           <li key={p.id} className={`${p.online ? '' : 'offline'} ${r.isController ? 'gm-row' : ''}`}>
-            <span className="gm-name">{p.name}<Verified username={p.username} admin={p.admin} /></span>
+            <span className="gm-name">{p.name}<Verified username={p.username} admin={p.admin} /><TitleTag title={p.title} /></span>
             {r.isController && <PlayerControls s={s} playerId={p.id} teamId={null} />}
           </li>
         ))}

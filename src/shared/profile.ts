@@ -177,3 +177,58 @@ export function lookFor(stored: { color?: string | null; frame?: string | null }
     frame: !earned || isUnlocked(f, earned) ? f.id : DEFAULT_FRAME,
   };
 }
+
+// ---------- titles ----------
+// A short title shown with a player's name. Special and custom titles are given by a site admin; every earned
+// badge also unlocks its name as a title. A player equips one (or none). Keys: 'special:<id>', 'custom:<text>',
+// 'badge:<badge id>'. The server checks a title is still theirs before showing it.
+
+export const SPECIAL_TITLES = [
+  { id: 'developer', name: 'Developer' },
+  { id: 'early-tester', name: 'Early Tester' },
+  { id: 'vip', name: 'VIP' },
+  { id: 'moderator', name: 'Moderator' },
+  { id: 'supporter', name: 'Supporter' },
+] as const;
+const SPECIAL_BY_ID = new Map<string, string>(SPECIAL_TITLES.map((t) => [t.id, t.name]));
+export const TITLE_MAX = 24;
+/** Most titles an admin can give one player. */
+export const GRANTED_TITLES_MAX = 20;
+
+export interface TitleOption { key: string; name: string; from: 'special' | 'custom' | 'badge' }
+
+/** A custom title as typed by an admin: one line, no control characters, at most TITLE_MAX characters. */
+export function cleanCustomTitle(s: unknown): string {
+  return String(s ?? '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX);
+}
+
+/** The granted-title list an admin sent, kept to known special titles and tidy custom ones. */
+export function cleanGrantedTitles(list: unknown): string[] {
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const raw of list) {
+    const k = String(raw ?? '');
+    let key: string | null = null;
+    if (k.startsWith('special:') && SPECIAL_BY_ID.has(k.slice(8))) key = k;
+    else if (k.startsWith('custom:')) { const t = cleanCustomTitle(k.slice(7)); if (t) key = `custom:${t}`; }
+    if (key && !out.includes(key)) out.push(key);
+  }
+  return out.slice(0, GRANTED_TITLES_MAX);
+}
+
+/** Every title a player can equip: the ones an admin gave them, then one per earned badge. */
+export function titleOptions(granted: string[] | undefined, earned: Set<string>): TitleOption[] {
+  const out: TitleOption[] = [];
+  for (const k of cleanGrantedTitles(granted ?? [])) {
+    if (k.startsWith('special:')) out.push({ key: k, name: SPECIAL_BY_ID.get(k.slice(8))!, from: 'special' });
+    else out.push({ key: k, name: k.slice(7), from: 'custom' });
+  }
+  for (const b of BADGES) if (earned.has(b.id)) out.push({ key: `badge:${b.id}`, name: b.name, from: 'badge' });
+  return out;
+}
+
+/** The equipped title's text, or null when nothing is equipped or it's no longer theirs. */
+export function titleName(key: string | null | undefined, granted: string[] | undefined, earned: Set<string>): string | null {
+  if (!key) return null;
+  return titleOptions(granted, earned).find((o) => o.key === key)?.name ?? null;
+}

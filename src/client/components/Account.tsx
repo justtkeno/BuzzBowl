@@ -45,6 +45,12 @@ export function Verified({ username, admin }: { username?: string; admin?: boole
   );
 }
 
+/** A player's equipped title, as a small quiet tag after their name. */
+export function TitleTag({ title }: { title?: string | null }) {
+  if (!title) return null;
+  return <span className="title-tag" title={`Title: ${title}`}>{title}</span>;
+}
+
 /** The site creator's badge. */
 export function CreatorBadge({ username }: { username?: string }) {
   const inner = <><Crown />creator</>;
