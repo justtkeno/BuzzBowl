@@ -28,6 +28,9 @@ export class Survival {
   constructor(private store: SurvivalStore) {
     this.ready = store.init().catch((e) => console.error('Survival storage failed to start:', e));
   }
+  /** An account's new username, on its past runs. */
+  async rename(playerKey: string, username: string) { await this.ready; await this.store.rename(playerKey, username); }
+
 
   private async board(playerKey: string | null, fromDay: string | null): Promise<SurvivalBoard> {
     const [rows, players, mine] = await Promise.all([

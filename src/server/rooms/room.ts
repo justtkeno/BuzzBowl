@@ -93,7 +93,12 @@ interface Player {
   frozenFor?: number;
   /** Admin troll: this admin sees the answer while the question is read. */
   peek?: boolean;
+  /** Admin troll: their buzzes count as if they came SLOW_WORDS words later, so they lose close races. */
+  slowed?: boolean;
 }
+
+/** How many words late a slowed player's buzz counts. */
+const SLOW_WORDS = 2;
 interface Team { id: string; name: string; playerIds: string[] }
 
 interface LiveTossup {
@@ -628,6 +633,55 @@ export class Room {
     this.broadcast();
   }
   private isFrozen(p: Player) { return !!p.frozen || p.frozenFor === this.s.tossupNum; }
+
+  /** Troll tools that act on players stay out of the daily challenge and survival, which must stay fair. */
+  private noTrollHere() {
+    if (this.s.daily || this.s.survival) fail('Not in the daily challenge or survival.');
+  }
+
+  /** Admin: someone's buzzes quietly count a couple of words late, so they lose close races. Nobody is told. */
+  setSlowed(by: string, target: string, on: boolean) {
+    this.mustAdmin(by);
+    this.noTrollHere();
+    const p = this.mustPlayer(target);
+    if (p.id === by) fail('You can’t slow yourself.');
+    p.slowed = on || undefined;
+    this.broadcast();
+  }
+
+  /** Admin: a big message on one person's screen only. */
+  whisper(by: string, target: string, text: string) {
+    this.mustAdmin(by);
+    this.noTrollHere();
+    const p = this.mustPlayer(target);
+    if (!p.online || p.bot) fail(`${p.name} isn’t here to see it.`);
+    const clean = String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    if (!clean) fail('Type a message first.');
+    this.io.emitTo([p.id], 'announce', { text: clean, at: Date.now() });
+  }
+
+  /** Admin: shake one person's screen, or everyone's in the room (target null). */
+  shake(by: string, target: string | null) {
+    this.mustAdmin(by);
+    this.noTrollHere();
+    const ids = target ? [this.mustPlayer(target).id] : [...this.s.players.filter((p) => p.online && p.id !== by && !p.bot).map((p) => p.id), SPECTATOR];
+    this.io.emitTo(ids, 'shake', { at: Date.now() });
+  }
+
+  /** Admin: buzz someone in right now, as if they'd pressed it. They have to answer. */
+  forceBuzz(by: string, target: string) {
+    this.mustAdmin(by);
+    this.noTrollHere();
+    const p = this.mustPlayer(target);
+    if (p.bot) fail('Bots buzz on their own.');
+    if (!p.online) fail(`${p.name} is offline.`);
+    const t = this.s.tossup;
+    if (!t || this.s.phase !== 'reading' || t.ended) fail('Wait until a question is being read.');
+    const teamId = this.teamOf(p.id) ?? fail(`${p.name} isn’t playing.`);
+    if (t!.locked.has(teamId!)) fail(`${p.name} already buzzed on this question.`);
+    if (this.isFrozen(p)) fail(`Unfreeze ${p.name} first.`);
+    this.buzz(p.id, t!.revealed);
+  }
 
   /** Admin: change anyone's display name. It reads like they renamed themselves. */
   adminRename(by: string, target: string, name: string) {
@@ -1322,6 +1376,7 @@ export class Room {
     // Trust the client's word count only as far back as plausible network lag allows.
     let count = Math.max(0, Math.min(Math.floor(Number(clientCount)) || 0, t!.revealed));
     while (count < t!.revealed && now - t!.revealTimes[count] > TIMING.maxLagMs) count++;
+    if (this.player(by)!.slowed) count = Math.min(t!.revealed, count + SLOW_WORDS);
     this.pending.push({ playerId: by, teamId, count, at: now });
     if (this.pending.length === 1) {
       this.clearTimer('read', 'dead');
@@ -1914,6 +1969,7 @@ export class Room {
       admin: {
         peek: !!me.peek,
         frozen: s.players.filter((p) => p.frozen || (p.frozenFor !== undefined && p.frozenFor >= s.tossupNum)).map((p) => ({ id: p.id, always: !!p.frozen })),
+        slowed: s.players.filter((p) => p.slowed).map((p) => p.id),
       },
       ...(me.peek ? {
         peek: {

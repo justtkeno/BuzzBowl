@@ -5,6 +5,8 @@ import type { BadgeState, Visibility } from './profile';
 
 export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 export const PASSWORD_MIN = 8;
+/** After changing their username, an account waits this long to change it again. */
+export const USERNAME_COOLDOWN_DAYS = 7;
 export const BIO_MAX = 200;
 /** Loose on purpose: something@something.tld. */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -26,6 +28,8 @@ export interface Me extends Look {
   email: string | null;
   /** They opened the confirmation link sent to `email` (optional). */
   emailVerified: boolean;
+  /** When they last changed their username (null if never). The next change waits USERNAME_COOLDOWN_DAYS. */
+  usernameChangedAt: number | null;
   createdAt: number;
   /** Site admin (the creator): can take the host seat in any room and moderate accounts. */
   admin: boolean;

@@ -1,10 +1,10 @@
 import { Logo } from './Logo';
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../../shared/types';
-import { AppSettings } from './AppSettings';
+import { SettingsMenu } from './AppSettings';
 import { prefs } from '../socket';
 
-import { AdminPanel } from './AdminPanel';
+import { SiteAdminPanel } from './SiteAdmin';
 import { Announcement } from './Announcement';
 import { PlayersPanel } from './PlayersPanel';
 import { Chat } from './Chat';
@@ -136,8 +136,8 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         {canModerate && <button className="btn ghost hide-sm" onClick={() => setShowPlayers(true)} title="Kick, ban or mute players"><Icon name="users" /> Players</button>}
         {isAdmin && <button className="btn ghost hide-sm" onClick={() => setShowAdmin(true)} title="Admin tools"><Icon name="shield" /> Admin</button>}
         <button className="btn ghost hide-sm" onClick={() => setShowReview(true)} title="Review past questions">Review{s.review.length ? ` (${s.review.length})` : ''}</button>
-        {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)}>Game settings</button>}
-        <button className="btn ghost hide-sm" onClick={() => setShowAppSettings(true)} title="Your settings: sound, volume, text size, theme" aria-label="Your settings"><Icon name="gear" /></button>
+        {r.isController && !r.fixed && <button className="btn ghost hide-sm" onClick={() => setShowSettings(true)} title="The host’s rules for this room: format, timers, scoring, questions">Room settings</button>}
+        <button className="btn ghost hide-sm" onClick={() => setShowAppSettings(true)} title="Settings: your account, sound, text size, theme" aria-label="Settings"><Icon name="gear" /></button>
         <button className="btn ghost hide-sm" onClick={leave}>Leave</button>
         <div className="menu-wrap show-sm">
           <button className="btn ghost menu-btn" aria-label="More" aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯</button>
@@ -147,9 +147,9 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
               <div className="menu" role="menu" onClick={() => setMenu(false)}>
                 {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}><Icon name="qr" /> Invite (QR code)</button>}
                 <button role="menuitem" onClick={() => setShowReview(true)}><Icon name="list" /> Review questions{s.review.length ? ` (${s.review.length})` : ''}</button>
-                {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}><Icon name="sliders" /> Game settings</button>}
+                {r.isController && !r.fixed && <button role="menuitem" onClick={() => setShowSettings(true)}><Icon name="sliders" /> Room settings</button>}
                 {!r.fixed && <button role="menuitem" onClick={openBigScreen}><Icon name="screen" /> Big-screen view</button>}
-                <button role="menuitem" onClick={() => setShowAppSettings(true)}><Icon name="gear" /> Settings <span className="menu-hint">sound, text size, theme</span></button>
+                <button role="menuitem" onClick={() => setShowAppSettings(true)}><Icon name="gear" /> Settings <span className="menu-hint">account, sound, display</span></button>
                 {canModerate && <button role="menuitem" onClick={() => setShowPlayers(true)}><Icon name="users" /> Players</button>}
                 {isAdmin && <button role="menuitem" onClick={() => setShowAdmin(true)}><Icon name="shield" /> Admin</button>}
                 {r.isController && midGame && <button role="menuitem" onClick={() => { if (confirm(endPrompt)) act('game:end'); }}><Icon name="flag" /> {s.survival ? 'End run' : 'End game'}</button>}
@@ -216,12 +216,12 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         </div>
       )}
       {showTour && <Tutorial onClose={() => setShowTour(false)} />}
-      {showAppSettings && <AppSettings onClose={() => setShowAppSettings(false)} />}
+      {showAppSettings && <SettingsMenu onClose={() => setShowAppSettings(false)} />}
       {showSettings && <SettingsPanel s={s} onClose={() => setShowSettings(false)} />}
       {showQuestions && <SettingsPanel s={s} only="questions" onClose={() => setShowQuestions(false)} />}
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
       {showFeedback && <SendFeedback where={`room ${s.code}`} onClose={() => setShowFeedback(false)} />}
-      {showAdmin && isAdmin && <AdminPanel s={s} onClose={() => setShowAdmin(false)} onPlayers={() => { setShowAdmin(false); setShowPlayers(true); }} />}
+      {showAdmin && isAdmin && <SiteAdminPanel room={{ s, onPlayers: () => { setShowAdmin(false); setShowPlayers(true); } }} onClose={() => setShowAdmin(false)} />}
       {showPlayers && canModerate && <PlayersPanel s={s} onClose={() => setShowPlayers(false)} />}
       {/* Off screen while questions are being read, so it never gets in the way of buzzing. */}
       <FriendsTab hidden={midGame || drawer} currentCode={s.code} onJoin={onJoinRoom} disabled={!connected} canInvite={!r.fixed} />

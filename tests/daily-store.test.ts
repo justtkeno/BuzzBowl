@@ -14,6 +14,19 @@ const row = (day: string, playerKey: string, points: number, depth: number | nul
   ({ day, playerKey, name: playerKey, points, powers: 0, tens: 0, negs: 0, marks: '----------', depth, createdAt });
 
 describe.each(stores)('daily store (%s)', (_name, make) => {
+  it('follows an account to its new username', async () => {
+    const store = make();
+    opened.push(store);
+    await store.init();
+    const day = `test-${Date.now()}-${++n}`;
+    const key = `a:rename-${day}`;
+    await store.addResult({ ...row(day, key, 20, 0.5, 1), name: 'old_name', username: 'old_name' });
+    await store.addResult({ ...row(day, `${key}-other`, 10, 0.5, 2), name: 'Someone', username: 'someone' });
+    await store.rename(key, 'new_name');
+    expect(await store.result(day, key)).toMatchObject({ name: 'new_name', username: 'new_name' });
+    expect(await store.result(day, `${key}-other`)).toMatchObject({ name: 'Someone', username: 'someone' });
+  });
+
   it('ranks players by points, then earlier buzzes, then who finished first, with fractional depths', async () => {
     const store = make();
     opened.push(store);

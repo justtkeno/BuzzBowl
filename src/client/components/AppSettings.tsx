@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { TEXT_SIZE_LABEL, setTextSizeChoice, setThemeChoice } from '../App';
 import { prefs } from '../socket';
 import { BUZZ_SOUNDS, buzzSound, play, setBuzzSound, setSoundOn, setVolume, soundOn, volume, type BuzzSound } from '../sounds';
+import { useAccount } from '../account';
+import { AccountSettings } from './AccountSettings';
 import { Icon } from './Icon';
 import { canVibrate, setVibrationOn, vibrate, vibrationOn } from './util';
 
@@ -9,17 +11,16 @@ type Size = keyof typeof TEXT_SIZE_LABEL;
 type Theme = 'auto' | 'light' | 'dark';
 const THEMES: [Theme, string][] = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
 
+export type SettingsView = 'menu' | 'account' | 'game';
+
 /**
- * This device's own settings: sound, volume, buzz sound, vibration, question text size and theme.
- * (The host's room rules live in Game settings.) Everything is saved on the device right away.
+ * The gear button's menu, on every screen: Account settings (username, email, password) and
+ * Game settings (this device's sound, vibration, text size and theme).
+ * The host's rules for a room are separate, in Room settings.
  */
-export function AppSettings({ onClose }: { onClose: () => void }) {
-  const [sound, setSound] = useState(soundOn());
-  const [vol, setVol] = useState(Math.round(volume() * 100));
-  const [buzz, setBuzz] = useState<BuzzSound>(buzzSound());
-  const [vibe, setVibe] = useState(vibrationOn());
-  const [size, setSize] = useState<Size>(prefs.textSize());
-  const [theme, setTheme] = useState<Theme>((prefs.theme() as Theme) ?? 'auto');
+export function SettingsMenu({ onClose, start = 'menu' }: { onClose: () => void; start?: SettingsView }) {
+  const [view, setView] = useState<SettingsView>(start);
+  const { me } = useAccount();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -27,17 +28,53 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const title = view === 'account' ? 'Account settings' : view === 'game' ? 'Game settings' : 'Settings';
+  return (
+    <div className="modal-back" onClick={onClose}>
+      <div className="modal app-settings" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
+        <div className="row between as-head">
+          {view !== 'menu' && start === 'menu'
+            ? <button className="btn ghost icon as-back" onClick={() => setView('menu')} aria-label="Back to settings"><Icon name="back" /></button>
+            : null}
+          <h2 className="grow">{title}</h2>
+          <button className="btn ghost icon close-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
+        </div>
+        {view === 'menu' && (
+          <div className="settings-choices">
+            <button className="settings-choice" onClick={() => setView('account')}>
+              <Icon name="user" />
+              <span className="grow"><b>Account settings</b><small>{me ? `@${me.username} · username, email, password` : 'Log in or sign up'}</small></span>
+              <Icon name="next" />
+            </button>
+            <button className="settings-choice" onClick={() => setView('game')}>
+              <Icon name="sliders" />
+              <span className="grow"><b>Game settings</b><small>Sound, vibration, text size, theme</small></span>
+              <Icon name="next" />
+            </button>
+          </div>
+        )}
+        {view === 'account' && <AccountSettings onClose={onClose} />}
+        {view === 'game' && <GameSettings onClose={onClose} />}
+      </div>
+    </div>
+  );
+}
+
+/** This device's own settings. Everything is saved on the device right away. */
+function GameSettings({ onClose }: { onClose: () => void }) {
+  const [sound, setSound] = useState(soundOn());
+  const [vol, setVol] = useState(Math.round(volume() * 100));
+  const [buzz, setBuzz] = useState<BuzzSound>(buzzSound());
+  const [vibe, setVibe] = useState(vibrationOn());
+  const [size, setSize] = useState<Size>(prefs.textSize());
+  const [theme, setTheme] = useState<Theme>((prefs.theme() as Theme) ?? 'auto');
+
   const toggleSound = (on: boolean) => { setSoundOn(on); setSound(on); if (on) play('correct'); };
   const pickBuzz = (v: BuzzSound) => { setBuzzSound(v); setBuzz(v); };
 
   return (
-    <div className="modal-back" onClick={onClose}>
-      <div className="modal app-settings" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Settings">
-        <div className="row between">
-          <h2>Settings</h2>
-          <button className="btn ghost icon close-btn" onClick={onClose} aria-label="Close"><Icon name="close" /></button>
-        </div>
-        <p className="muted small as-note">For this device only. The host sets the game’s rules in Game settings.</p>
+    <>
+        <p className="muted small as-note">For this device only. A room’s host sets its rules in Room settings.</p>
 
         <div className="as-body">
           <section className="as-group">
@@ -96,12 +133,11 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="row end as-foot"><button className="btn primary" onClick={onClose}>Done</button></div>
-      </div>
-    </div>
+    </>
   );
 }
 
-function Switch({ on, onChange, label }: { on: boolean; onChange: (on: boolean) => void; label: string }) {
+export function Switch({ on, onChange, label }: { on: boolean; onChange: (on: boolean) => void; label: string }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} className={`switch ${on ? 'on' : ''}`} onClick={(e) => { e.preventDefault(); onChange(!on); }}>
       <span className="switch-knob" />

@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import express, { type Request, type Response } from 'express';
 import type { Socket } from 'socket.io';
 import {
-  BIO_MAX, EMAIL_MAX, EMAIL_RE, FRIENDS_MAX, PASSWORD_MIN, USERNAME_RE, summarize,
+  BIO_MAX, EMAIL_MAX, EMAIL_RE, FRIENDS_MAX, PASSWORD_MIN, USERNAME_COOLDOWN_DAYS, USERNAME_RE, summarize,
   type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type ProfileView, type PublicProfile,
 } from '../../shared/accounts';
 import {
@@ -102,7 +102,7 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt
 
 export function toMe(u: User): Me {
   return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u), ...(isAdmin(u) ? { adminLocked } : {}), settings: u.settings,
-    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u), email: u.email, emailVerified: !!u.email && !!u.emailVerified };
+    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u), email: u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null };
 }
 
 /** Tiny in-memory limiter for login/signup attempts, per IP. */
@@ -150,12 +150,14 @@ export class Accounts {
 
   /** Make a one-time link and email it. Quietly does nothing past the hourly limit. Returns whether it went out. */
   private async sendLink(u: User, kind: 'reset' | 'confirm', base: string) {
-    if (!u.email || !this.mailer) return false;
-    if ((await this.store.countTokens(u.id, kind, Date.now() - 3600_000)) >= LINKS_PER_HOUR) return false;
+    // Logged by username only (never the address), so a missing email can be traced.
+    if (!u.email || !this.mailer) { console.log(`No ${kind} email for @${u.username}: ${u.email ? 'email is not set up' : 'no email on the account'}`); return false; }
+    if ((await this.store.countTokens(u.id, kind, Date.now() - 3600_000)) >= LINKS_PER_HOUR) { console.log(`No ${kind} email for @${u.username}: ${LINKS_PER_HOUR} already sent this hour`); return false; }
     const token = randomBytes(32).toString('base64url');
     const minutes = kind === 'reset' ? RESET_MINUTES : CONFIRM_MINUTES;
     const now = Date.now();
-    await this.store.createToken({ hash: sha256(token), userId: u.id, kind, email: u.email, expiresAt: now + minutes * 60_000, createdAt: now });
+    const hash = sha256(token);
+    await this.store.createToken({ hash, userId: u.id, kind, email: u.email, expiresAt: now + minutes * 60_000, createdAt: now });
     // In the fragment, so the token never reaches server logs or other sites.
     const link = `${base}/${kind}#${token}`;
     const name = escapeHtml(u.displayName), user = escapeHtml(u.username), href = escapeHtml(link);
@@ -176,7 +178,14 @@ export class Accounts {
           + `Confirm it here (optional, works for a week):</p><p><a href="${href}">Confirm your email</a></p>`
           + `<p style="color:#777">If this isn’t your account, ignore this email.</p>`,
       };
-    await this.mailer.send({ to: u.email, ...mail });
+    try {
+      await this.mailer.send({ to: u.email, ...mail });
+      console.log(`Sent a ${kind} email for @${u.username}`);
+    } catch (e) {
+      // It never reached them: don't let it use up one of the hour's links.
+      await this.store.deleteToken(hash).catch(() => {});
+      throw e;
+    }
     return true;
   }
 
@@ -187,6 +196,50 @@ export class Accounts {
     this.sendLink(u, 'confirm', base).catch((e) => console.error('Could not send a confirmation email:', e?.message ?? e));
   }
 
+  // ---------- site admin ----------
+
+  /** How account email goes out: gmail, smtp, console, or off. */
+  get mailKind() { return this.mailer ? this.mailer.kind ?? 'custom' : 'off'; }
+
+  /** Accounts matching a search, for the admin panel. Emails stay private: only whether one is set and confirmed. */
+  async adminSearch(query: string) {
+    const q = String(query ?? '').trim().replace(/^@/, '').slice(0, 20);
+    if (!this.ready || !q) return [];
+    return (await this.store.searchUsers(q, 25)).map((u) => ({
+      id: u.id, username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u),
+      email: !!u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null,
+    }));
+  }
+
+  async adminCounts() {
+    if (!this.ready) return null;
+    return this.store.userCounts(Date.now() - 7 * 86_400_000);
+  }
+
+  /** Ends every session of an account. Returns its id (so live sockets can be dropped too), or null. */
+  async adminLogout(username: string) {
+    const u = this.ready ? await this.store.userByName(String(username ?? '')) : null;
+    if (!u) return null;
+    if (isAdmin(u)) throw new Error('Admin accounts can’t be logged out from here.');
+    await this.store.deleteSessionsOf(u.id);
+    console.log(`Admin logged out @${u.username} everywhere`);
+    return u.id;
+  }
+
+  /** Sends a test email to this admin's own address. Throws with the reason when it can't. */
+  async testEmail(accountId: string) {
+    const u = await this.store.userById(accountId);
+    if (!u?.email) throw new Error('Add an email to your account first (gear → Account settings).');
+    if (!this.mailer) throw new Error('Email isn’t set up on this server.');
+    await this.mailer.send({
+      to: u.email, subject: 'Trivio test email',
+      text: `This is a test from the Trivio admin panel, sent ${new Date().toUTCString()}. If you can read it, account emails work.\n`,
+      html: `<p>This is a test from the Trivio admin panel, sent ${new Date().toUTCString()}.</p><p>If you can read it, account emails work.</p>`,
+    });
+  }
+
+  /** Called after a username change, so other stores (leaderboards, live rooms) can follow. Never throws to the caller. */
+  onRename?: (accountId: string, from: string, to: string) => Promise<void>;
   /** Extra profile sections from elsewhere (the daily challenge, survival), added when a profile is shown. */
   profileExtras?: (user: { id: string }) => Promise<Partial<PublicProfile>>;
   /** Finds the daily challenge a solo game saved before games carried `daily` belongs to (its number), if any. */
@@ -440,6 +493,42 @@ export class Accounts {
       res.json({ user: toMe({ ...u, ...patch }) });
     }));
 
+    // ---------- account settings: username, password ----------
+
+    r.post('/me/username', wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) return res.status(401).json({ error: 'Log in first.' });
+      if (limited(req, res)) return;
+      const username = String(req.body?.username ?? '').trim();
+      if (!USERNAME_RE.test(username)) return res.status(400).json({ error: 'Usernames are 3–20 letters, numbers or underscores.' });
+      if (username === u.username) return res.status(400).json({ error: 'That’s already your username.' });
+      const next = (u.usernameChangedAt ?? 0) + USERNAME_COOLDOWN_DAYS * 86_400_000;
+      if (Date.now() < next) return res.status(429).json({ error: `You can change your username again on ${new Date(next).toUTCString().slice(0, 16)}.`, next });
+      // Without ADMIN_ACCOUNT_IDS, admin goes by username: don't let a rename take or drop it.
+      if (!adminLocked && (ADMINS.has(username.toLowerCase()) || ADMINS.has(u.username.toLowerCase())) && username.toLowerCase() !== u.key) {
+        return res.status(403).json({ error: 'That username can’t be used.' });
+      }
+      const at = Date.now();
+      if (!(await this.store.renameUser(u.id, username, at))) return res.status(409).json({ error: 'That username is taken.' });
+      console.log(`@${u.username} is now @${username}`);
+      await this.onRename?.(u.id, u.username, username).catch((e) => console.error('Could not carry a username change over:', e?.message ?? e));
+      res.json({ user: toMe({ ...u, username, key: username.toLowerCase(), usernameChangedAt: at }) });
+    }));
+
+    r.post('/password/change', wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) return res.status(401).json({ error: 'Log in first.' });
+      if (limited(req, res)) return;
+      const password = String(req.body?.password ?? '');
+      if (!(await verifyPassword(String(req.body?.current ?? ''), u.passwordHash))) return res.status(403).json({ error: 'Your current password isn’t right.' });
+      if (password.length < PASSWORD_MIN) return res.status(400).json({ error: `Passwords need at least ${PASSWORD_MIN} characters.` });
+      if (password.length > 200) return res.status(400).json({ error: 'That password is too long.' });
+      await this.store.updateUser(u.id, { passwordHash: await hashPassword(password) });
+      await this.store.deleteSessionsOf(u.id); // other devices log out; this one gets a fresh session
+      await this.startSession(req, res, u.id);
+      res.json({ user: toMe(u) });
+    }));
+
     // ---------- password reset ----------
 
     r.post('/password/forgot', wrap(async (req, res) => {
@@ -450,6 +539,7 @@ export class Accounts {
       const u = !who ? null : who.includes('@') ? await this.store.userByEmail(who) : await this.store.userByName(who);
       // Same answer either way, so this can't be used to find out who has an account or which email they use.
       res.json({ ok: true });
+      if (!u) console.log(`Password reset asked for an unknown ${who.includes('@') ? 'email' : `username "${who.slice(0, 20)}"`}`);
       if (u) this.sendLink(u, 'reset', base).catch((e) => console.error('Could not send a password-reset email:', e?.message ?? e));
     }));
 
@@ -496,7 +586,14 @@ export class Accounts {
       if (u.emailVerified) return res.json({ ok: true });
       const base = this.linkBase(req);
       if (!this.mailer || !base) return res.status(503).json({ error: 'Email isn’t set up on this server yet.' });
-      if (!(await this.sendLink(u, 'confirm', base))) return res.status(429).json({ error: 'A few links were already sent this hour. Check your inbox and spam folder, or try again later.' });
+      let sent: boolean;
+      try {
+        sent = await this.sendLink(u, 'confirm', base);
+      } catch (e: any) {
+        console.error('Could not send a confirmation email:', e?.message ?? e);
+        return res.status(502).json({ error: 'The email couldn’t be sent right now. Try again in a few minutes.' });
+      }
+      if (!sent) return res.status(429).json({ error: 'A few links were already sent this hour. Check your inbox and spam folder, or try again later.' });
       res.json({ ok: true });
     }));
 

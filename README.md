@@ -44,7 +44,10 @@ Small things that help:
 
 ### Your settings
 
-Each device has its own **Settings** (the gear in a room's top bar, ⋯ → Settings on a phone, or Settings on the home screen): sound effects on/off and **volume**, the **buzz sound** (Classic, Soft, Chime, Pop or Wood; other players' buzzes play a lower version of yours), vibration on phones, question text size and theme. The host's room rules are separate, under **Game settings**.
+The **gear** button is on every screen: by your name on the home screen and profiles, in a room's top bar (⋯ → Settings on a phone), and on the big-screen view. It opens two choices:
+
+- **Account settings**: change your **username** (then wait 7 days before changing it again; your profile link, leaderboard entries and room seat follow the new name, and the old name is free for others), your **email** and its optional confirmation, your **password** (logs out your other devices), and **Log out**. Guests get Log in and Sign up here.
+- **Game settings**, for this device only: sound effects on/off and **volume**, the **buzz sound** (Classic, Soft, Chime, Pop or Wood; other players' buzzes play a lower version of yours), vibration on phones, question text size and theme. The host's rules for a room are separate, under **Room settings**.
 
 ### Party mode
 
@@ -105,9 +108,9 @@ Anyone can still play as a guest. **Sign up** on the home screen (username + pas
 
 Results are saved when the host ends a game, or when everyone walks away from a game with at least 3 tossups heard. Solo games count toward stats but not wins. Passwords are hashed with scrypt, sessions are an HTTP-only cookie, and login/signup are rate-limited.
 
-**Email and password reset:** the email is optional, never shown to anyone else, and can be added or changed later under *Edit profile* (that takes the current password). You can log in with it instead of the username. **Log in → Forgot password?** emails a link that works once, for an hour, and logs out every other device when used. Each account gets at most 3 reset emails an hour, and the page never says whether an account or email exists.
+**Email and password reset:** the email is optional, never shown to anyone else, and can be added or changed later in *Account settings* (that takes the current password). You can log in with it instead of the username. **Log in → Forgot password?** emails a link that works once, for an hour, and logs out every other device when used. Each account gets at most 3 reset emails an hour, and the page never says whether an account or email exists.
 
-**Confirming the email is optional.** After sign-up (or an email change), Trivio sends a link to confirm the address. Opening it, on any device, marks it ✓ Confirmed under *Edit profile*, which can also send the link again (up to 3 an hour). A new address starts unconfirmed, and links sent to an old address stop working. Using a password-reset link confirms the address too. Unconfirmed emails still get reset links, so nobody has to confirm. Emails go out over SMTP, set up as below. Without it, a local server prints the email in the terminal and a production server says resets aren't available.
+**Confirming the email is optional.** After sign-up (or an email change), Trivio sends a link to confirm the address. Opening it, on any device, marks it ✓ Confirmed in *Account settings*, which can also send the link again (up to 3 an hour). A new address starts unconfirmed, and links sent to an old address stop working. Using a password-reset link confirms the address too. Unconfirmed emails still get reset links, so nobody has to confirm. Emails go out over SMTP, set up as below. Without it, a local server prints the email in the terminal and a production server says resets aren't available.
 
 Accounts live in Postgres when `DATABASE_URL` is set, otherwise in `data/accounts-<port>.json` (fine for local use).
 
@@ -176,10 +179,16 @@ tests/                       Vitest unit tests (answer checking, scoring, room f
 
 **Accounts need a database** on Render's free plan, because its disk is wiped on every deploy and restart. A free [Neon](https://neon.tech) Postgres works: create a project, copy its connection string (`postgresql://…`), and in Render open the service → *Environment* → add `DATABASE_URL` with that value. The server creates its tables on startup; `/healthz` shows `"accounts":"postgres"` when it's connected. Without `DATABASE_URL` the live site still runs, but accounts are lost on each restart.
 
-**Password-reset emails** need an SMTP account. In Render → *Environment*, add `SMTP_URL` and `MAIL_FROM`:
+**Account emails** (password resets, confirming an address) go out through the **Gmail API**, over HTTPS. Render's free plan blocks the SMTP ports, so plain SMTP times out there. One-time setup, signed in to Google as the sending account (e.g. playtriviosupport@gmail.com):
 
-- **Gmail** (simplest, up to ~500 emails a day): turn on 2-step verification for the Google account, create an *App password* at myaccount.google.com/apppasswords, then set `SMTP_URL` to `smtps://YOUR_ADDRESS%40gmail.com:APP_PASSWORD@smtp.gmail.com:465` (the `@` in the address becomes `%40`; remove the spaces from the app password) and `MAIL_FROM` to `Trivio <YOUR_ADDRESS@gmail.com>`.
-- **Brevo** (free, 300 a day, no domain needed): verify a sender address, create an SMTP key, then set `SMTP_URL` to `smtp://LOGIN:SMTP_KEY@smtp-relay.brevo.com:587` and `MAIL_FROM` to `Trivio <that verified address>`.
+1. Open [console.cloud.google.com](https://console.cloud.google.com/) and create a project (e.g. *Trivio*).
+2. Turn on the Gmail API: [Gmail API page](https://console.cloud.google.com/apis/library/gmail.googleapis.com) → **Enable**.
+3. Set up sign-in: [Google Auth Platform](https://console.cloud.google.com/auth/overview) → **Get started**. App name *Trivio*, support email the sending address, audience **External**, contact email the same. Then go to **Audience** → **Publish app** so it's *In production* (in *Testing*, the token stops working after 7 days).
+4. Make a client: [Clients](https://console.cloud.google.com/auth/clients) → **Create client** → type **Web application** → under *Authorized redirect URIs* add `https://developers.google.com/oauthplayground` → **Create**. Copy the **Client ID** and **Client secret**.
+5. Get a refresh token: open the [OAuth Playground](https://developers.google.com/oauthplayground), click the gear (top right) → tick **Use your own OAuth credentials** → paste the ID and secret. In *Step 1*, type `https://www.googleapis.com/auth/gmail.send` into *Input your own scopes* → **Authorize APIs** → pick the sending account. Google warns the app isn't verified: **Advanced** → **Go to Trivio** → **Continue**. In *Step 2*, click **Exchange authorization code for tokens** and copy the **Refresh token**.
+6. In Render → *Environment*, set `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, and `MAIL_FROM` (`Trivio <playtriviosupport@gmail.com>`), then **Save, rebuild, and deploy**.
+
+On a host that allows SMTP, `SMTP_URL` works instead (e.g. `smtps://YOUR_ADDRESS%40gmail.com:APP_PASSWORD@smtp.gmail.com:465` with a Gmail [app password](https://myaccount.google.com/apppasswords)). When both are set, the Gmail API wins. If a send fails, the server log says why (`Gmail sign-in failed: invalid_grant` means the refresh token was revoked or expired: repeat step 5).
 
 Reset links point at Render's own URL for the service (`RENDER_EXTERNAL_URL`). On a custom domain or another host, set `PUBLIC_URL` (e.g. `https://trivio.example.com`).
 

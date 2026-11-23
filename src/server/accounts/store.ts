@@ -18,6 +18,8 @@ export interface User {
   email: string | null;
   /** The owner opened the confirmation link sent to `email`. Optional: resets work either way. */
   emailVerified?: boolean;
+  /** When the username last changed. */
+  usernameChangedAt?: number;
   /** Who can see their profile stats. Missing means public. */
   visibility?: Visibility;
   /** Stat ids pinned to the top of their profile. */
@@ -45,7 +47,13 @@ export interface AccountStore {
   userById(id: string): Promise<User | null>;
   userByName(username: string): Promise<User | null>;
   userByEmail(email: string): Promise<User | null>;
+  /** Usernames containing `query` (case-insensitive), names starting with it first. */
+  searchUsers(query: string, limit: number): Promise<User[]>;
+  /** Account totals for the admin panel. */
+  userCounts(since: number): Promise<{ total: number; withEmail: number; confirmed: number; newSince: number }>;
   updateUser(id: string, patch: UserPatch): Promise<void>;
+  /** Changes the username. False when someone else has it. */
+  renameUser(id: string, username: string, at: number): Promise<boolean>;
   /** Removes the user with their sessions and games. */
   deleteUser(id: string): Promise<void>;
   createSession(tokenHash: string, userId: string, expiresAt: number): Promise<void>;
@@ -59,6 +67,8 @@ export interface AccountStore {
   countTokens(userId: string, kind: AccountToken['kind'], since: number): Promise<number>;
   /** Uses up a link: who it was for, if it was live and of this kind, else null. Either way it can't be used again. */
   takeToken(tokenHash: string, kind: AccountToken['kind']): Promise<{ userId: string; email: string | null } | null>;
+  /** Forget a link that never went out, so it doesn't count toward the hourly limit. */
+  deleteToken(tokenHash: string): Promise<void>;
   addGames(entries: { userId: string; game: GameRecord }[]): Promise<void>;
   /** Newest first. */
   games(userId: string, limit: number): Promise<GameRecord[]>;
@@ -136,6 +146,16 @@ export class FileAccountStore implements AccountStore {
     const key = username.toLowerCase();
     return structuredClone(this.d.users.find((u) => u.key === key) ?? null);
   }
+  async searchUsers(query: string, limit: number) {
+    const q = query.toLowerCase();
+    const hits = this.d.users.filter((u) => u.key.includes(q));
+    hits.sort((a, b) => Number(!a.key.startsWith(q)) - Number(!b.key.startsWith(q)) || a.key.localeCompare(b.key));
+    return structuredClone(hits.slice(0, limit));
+  }
+  async userCounts(since: number) {
+    const u = this.d.users;
+    return { total: u.length, withEmail: u.filter((x) => x.email).length, confirmed: u.filter((x) => x.email && x.emailVerified).length, newSince: u.filter((x) => x.createdAt >= since).length };
+  }
   async userByEmail(email: string) {
     const e = email.toLowerCase();
     return structuredClone(this.d.users.find((u) => u.email === e) ?? null);
@@ -145,6 +165,14 @@ export class FileAccountStore implements AccountStore {
     if (!u) return;
     Object.assign(u, structuredClone(patch));
     this.save();
+  }
+  async renameUser(id: string, username: string, at: number) {
+    const key = username.toLowerCase();
+    const u = this.d.users.find((x) => x.id === id);
+    if (!u || this.d.users.some((x) => x.key === key && x.id !== id)) return false;
+    Object.assign(u, { username, key, usernameChangedAt: at });
+    this.save();
+    return true;
   }
   async deleteUser(id: string) {
     this.d.users = this.d.users.filter((u) => u.id !== id);
@@ -185,6 +213,10 @@ export class FileAccountStore implements AccountStore {
     t.expiresAt = Math.min(t.expiresAt, Date.now());
     this.save();
     return live ? { userId: t.userId, email: t.email } : null;
+  }
+  async deleteToken(hash: string) {
+    this.d.tokens = this.d.tokens.filter((t) => t.hash !== hash);
+    this.save();
   }
   async addGames(entries: { userId: string; game: GameRecord }[]) {
     this.d.games.push(...structuredClone(entries));
@@ -262,6 +294,7 @@ CREATE TABLE IF NOT EXISTS friends (
 CREATE INDEX IF NOT EXISTS friends_to ON friends (to_id);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username_changed_at BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email) WHERE email IS NOT NULL;
 CREATE TABLE IF NOT EXISTS account_tokens (
   hash TEXT PRIMARY KEY,
@@ -277,7 +310,7 @@ CREATE INDEX IF NOT EXISTS account_tokens_user ON account_tokens (user_id, kind,
 interface UserRow {
   id: string; username: string; key: string; password_hash: string; display_name: string; bio: string;
   settings: Record<string, unknown> | null; created_at: string; visibility: Visibility | null; pinned: string[] | null; granted_badges: string[] | null;
-  color: string | null; frame: string | null; email: string | null; email_verified: boolean | null;
+  color: string | null; frame: string | null; email: string | null; email_verified: boolean | null; username_changed_at: string | null;
 }
 const fromRow = (r: UserRow | undefined): User | null => r ? {
   id: r.id, username: r.username, key: r.key, passwordHash: r.password_hash, displayName: r.display_name,
@@ -285,6 +318,7 @@ const fromRow = (r: UserRow | undefined): User | null => r ? {
   visibility: r.visibility ?? 'public', pinned: r.pinned ?? [], grantedBadges: r.granted_badges ?? [],
   ...(r.color ? { color: r.color } : {}), ...(r.frame ? { frame: r.frame } : {}),
   email: r.email ?? null, emailVerified: !!r.email_verified,
+  ...(r.username_changed_at ? { usernameChangedAt: Number(r.username_changed_at) } : {}),
 } : null;
 
 export class PgAccountStore implements AccountStore {
@@ -318,6 +352,19 @@ export class PgAccountStore implements AccountStore {
   async userByName(username: string) {
     return fromRow((await this.pool.query<UserRow>('SELECT * FROM users WHERE key = $1', [username.toLowerCase()])).rows[0]);
   }
+  async searchUsers(query: string, limit: number) {
+    const q = query.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`);
+    const r = await this.pool.query<UserRow>(
+      "SELECT * FROM users WHERE key LIKE '%' || $1 || '%' ORDER BY (key LIKE $1 || '%') DESC, key LIMIT $2", [q, limit]);
+    return r.rows.map((x) => fromRow(x)!);
+  }
+  async userCounts(since: number) {
+    const r = await this.pool.query<{ total: number; with_email: number; confirmed: number; new_since: number }>(
+      `SELECT count(*)::int AS total, count(email)::int AS with_email, count(*) FILTER (WHERE email IS NOT NULL AND email_verified)::int AS confirmed,
+       count(*) FILTER (WHERE created_at >= $1)::int AS new_since FROM users`, [since]);
+    const x = r.rows[0];
+    return { total: x.total, withEmail: x.with_email, confirmed: x.confirmed, newSince: x.new_since };
+  }
   async userByEmail(email: string) {
     return fromRow((await this.pool.query<UserRow>('SELECT * FROM users WHERE email = $1', [email.toLowerCase()])).rows[0]);
   }
@@ -333,6 +380,16 @@ export class PgAccountStore implements AccountStore {
     const value = (k: keyof UserPatch) => (Array.isArray(patch[k]) ? JSON.stringify(patch[k]) : patch[k]);
     await this.pool.query(`UPDATE users SET ${sets} WHERE id = $1`, [id, ...keys.map(value)]);
   }
+  async renameUser(id: string, username: string, at: number) {
+    try {
+      const r = await this.pool.query('UPDATE users SET username = $2, key = $3, username_changed_at = $4 WHERE id = $1', [id, username, username.toLowerCase(), at]);
+      return !!r.rowCount;
+    } catch (e) {
+      if ((e as { code?: string }).code === '23505') return false; // the name is taken (unique key)
+      throw e;
+    }
+  }
+
   async deleteUser(id: string) {
     // sessions and games go with it (ON DELETE CASCADE).
     await this.pool.query('DELETE FROM users WHERE id = $1', [id]);
@@ -364,6 +421,9 @@ export class PgAccountStore implements AccountStore {
     const r = await this.pool.query<{ user_id: string; email: string | null }>(
       'UPDATE account_tokens SET expires_at = $3 WHERE hash = $1 AND kind = $2 AND expires_at > $3 RETURNING user_id, email', [hash, kind, now]);
     return r.rows[0] ? { userId: r.rows[0].user_id, email: r.rows[0].email } : null;
+  }
+  async deleteToken(hash: string) {
+    await this.pool.query('DELETE FROM account_tokens WHERE hash = $1', [hash]);
   }
   async addGames(entries: { userId: string; game: GameRecord }[]) {
     for (const e of entries) {

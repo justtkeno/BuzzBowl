@@ -686,6 +686,60 @@ describe('moderation and admin extras', () => {
     expect(room.s.buzz?.playerId).toBe(bob);
   });
 
+  it('a slowed buzzer counts two words late, so a close race goes to the other player', async () => {
+    const { room, ann, bob, admin } = await withAdmin();
+    expect(() => room.setSlowed(ann, bob, true)).toThrow(/admins/);
+    room.start(ann);
+    await flush();
+    room.setSlowed(admin, bob, true);
+    await readTo(room, 6);
+    room.buzz(bob, 4); // two words earlier than Ann, but counted as 6
+    room.buzz(ann, 5);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(room.s.buzz?.playerId).toBe(ann);
+    expect(room.snapshot(admin).admin?.slowed).toEqual([bob]);
+    expect(JSON.stringify(room.snapshot(bob))).not.toMatch(/slowed/);
+  });
+
+  it('force-buzzes someone in, and whispers and shakes only who it should', async () => {
+    const sent: { to: string[]; event: string; payload: any }[] = [];
+    const room = new Room('TEST', { emitEach: () => {}, emitTo: (to, event, payload) => sent.push({ to, event, payload }) }, { qbreader: fakeProvider() });
+    const ann = room.join('Ann').playerId;
+    const bob = room.join('Bob').playerId;
+    const admin = room.join('Hao', undefined, ADMIN).playerId;
+    room.updateSettings(ann, { wpm: 600 });
+    expect(() => room.forceBuzz(ann, bob)).toThrow(/admins/);
+    expect(() => room.forceBuzz(admin, bob)).toThrow(/being read/);
+    room.start(ann);
+    await flush();
+    await readTo(room, 3);
+    room.forceBuzz(admin, bob);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(room.s.phase).toBe('buzz');
+    expect(room.s.buzz?.playerId).toBe(bob);
+
+    room.whisper(admin, ann, '  psst  ');
+    expect(sent.filter((x) => x.event === 'announce')).toEqual([{ to: [ann], event: 'announce', payload: expect.objectContaining({ text: 'psst' }) }]);
+    room.shake(admin, bob);
+    room.shake(admin, null);
+    const shakes = sent.filter((x) => x.event === 'shake').map((x) => x.to);
+    expect(shakes[0]).toEqual([bob]);
+    expect(shakes[1]).toEqual(expect.arrayContaining([ann, bob]));
+    expect(shakes[1]).not.toContain(admin);
+    expect(() => room.whisper(ann, bob, 'hi')).toThrow(/admins/);
+    room.dispose();
+  });
+
+  it('keeps the new tricks out of the daily challenge', () => {
+    const room = new Room('DAY', io, {});
+    const me = room.join('Hao', undefined, ADMIN).playerId;
+    room.makeDaily({ day: '2026-11-23', number: 5, playerKey: 'a:acc1' }, [TOSSUP]);
+    for (const f of [() => room.shake(me, null), () => room.whisper(me, me, 'x'), () => room.setSlowed(me, me, true), () => room.forceBuzz(me, me)]) {
+      expect(f).toThrow(/daily challenge or survival/);
+    }
+    room.dispose();
+  });
+
   it('shows the answer only to a peeking admin', async () => {
     const { room, ann, bob, admin } = await withAdmin();
     room.start(ann);
