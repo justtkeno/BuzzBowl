@@ -7,7 +7,7 @@ import {
   type Friend, type FriendRoom, type FriendsList, type GameRecord, type Me, type ProfileView, type PublicProfile,
 } from '../../shared/accounts';
 import {
-  BADGES, BADGE_BY_ID, VISIBILITIES, badgesFor, cleanPinned, colorById, earnedIds, frameById, isColor, isFrame, isUnlocked, lookFor,
+  BADGES, BADGE_BY_ID, VISIBILITIES, badgesFor, cleanGrantedTitles, titleName, titleOptions, cleanPinned, colorById, earnedIds, frameById, isColor, isFrame, isUnlocked, lookFor,
   type Reward, type Visibility,
 } from '../../shared/profile';
 import { cleanPresets } from '../../shared/presets';
@@ -29,7 +29,7 @@ const CONFIRM_MINUTES = 7 * 24 * 60;
 const LINKS_PER_HOUR = 3;
 
 /** Who a socket is logged in as. */
-export interface SocketAccount { id: string; username: string; admin: boolean }
+export interface SocketAccount { id: string; username: string; admin: boolean; title?: string }
 
 /** Where a logged-in account is right now (accounts with no entry are offline). */
 export interface Presence { status: 'online' | 'room' | 'daily' | 'survival'; room?: FriendRoom }
@@ -103,7 +103,7 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt
 
 export function toMe(u: User): Me {
   return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u), ...(isAdmin(u) ? { adminLocked } : {}), settings: u.settings,
-    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u), email: u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null, presets: u.presets ?? [] };
+    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u), email: u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null, title: u.title ?? null, presets: u.presets ?? [] };
 }
 
 /** Tiny in-memory limiter for login/signup attempts, per IP. */
@@ -140,6 +140,9 @@ export class Accounts {
     const url = opts.publicUrl ?? process.env.PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL;
     this.baseUrl = url ? url.replace(/\/+$/, '') : null;
   }
+
+  /** Whether this server can send reset and confirmation emails (SMTP set up, and a public address for links). */
+  private emailReady(req: Request) { return !!this.mailer && !!this.linkBase(req); }
 
   private linkBase(req: Request) {
     if (this.baseUrl) return this.baseUrl;
@@ -280,8 +283,12 @@ export class Accounts {
   /** Socket.IO middleware: remembers who each socket is logged in as (from the cookie sent with the handshake). */
   socketMiddleware = (socket: Socket, next: (err?: Error) => void) => {
     this.userFrom(socket.request.headers.cookie).then((u) => {
-      if (u) this.sockets.set(socket, { id: u.id, username: u.username, admin: isAdmin(u) });
-      next();
+      if (!u) return next();
+      // The equipped title rides along into rooms (a reconnect picks up a newly equipped one).
+      this.titleOf(u).catch(() => null).then((title) => {
+        this.sockets.set(socket, { id: u.id, username: u.username, admin: isAdmin(u), ...(title ? { title } : {}) });
+        next();
+      });
     }, () => next());
   };
 
@@ -309,7 +316,12 @@ export class Accounts {
     if (visibility !== 'public' && !privileged) {
       const friend = visibility === 'friends' && !!viewer && !!relations(await this.store.friendLinks(u.id), u.id).get(viewer.id)?.friend;
       if (!friend) {
-        return { username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u), locked: visibility, ...lookFor(u, await this.earnedBadges(u)) };
+        const earned = await this.earnedBadges(u);
+        return {
+          username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u), locked: visibility, ...lookFor(u, earned),
+          ...((t) => (t ? { title: t } : {}))(titleName(u.title, u.titles, earned)),
+          ...(viewer && isAdmin(viewer) ? { grantedTitles: u.titles ?? [] } : {}),
+        };
       }
     }
     const games = await this.store.games(u.id, PROFILE_GAMES);
@@ -330,15 +342,22 @@ export class Accounts {
       pinned: cleanPinned(u.pinned),
       badges: [],
       ...(privileged ? { visibility } : {}),
-      ...(viewer && isAdmin(viewer) ? { badgesUnlocked: !!u.grantedBadges?.length } : {}),
+      ...(viewer && isAdmin(viewer) ? { badgesUnlocked: BADGES.every((b) => u.grantedBadges?.includes(b.id)), grantedBadges: u.grantedBadges ?? [], grantedTitles: u.titles ?? [] } : {}),
     };
     p.badges = badgesFor({ games, p, granted: u.grantedBadges });
-    Object.assign(p, lookFor(u, earnedIds(p.badges)));
+    const earned = earnedIds(p.badges);
+    Object.assign(p, lookFor(u, earned), { title: titleName(u.title, u.titles, earned) });
     return p;
   }
 
   private extras(u: User): Promise<Partial<PublicProfile>> {
     return this.profileExtras?.(u).catch((e) => { console.error('Profile extras failed:', e); return {}; }) ?? Promise.resolve({});
+  }
+
+  /** The text of the title an account has equipped, if it's still theirs. */
+  async titleOf(u: User): Promise<string | null> {
+    if (!u.title) return null;
+    return titleName(u.title, u.titles, u.title.startsWith('badge:') ? await this.earnedBadges(u) : new Set());
   }
 
   /** The badges an account has now: earned from games and daily results, or granted by an admin. */
@@ -400,7 +419,16 @@ export class Accounts {
 
     r.get('/me', wrap(async (req, res) => {
       const u = await this.userFrom(req.headers.cookie);
-      res.json({ user: u ? toMe(u) : null });
+      // `email` tells the app whether to offer Forgot password and confirmation links at all.
+      res.json({ user: u ? toMe(u) : null, email: this.emailReady(req) });
+    }));
+
+    // The titles this account can equip, and which one is on.
+    r.get('/me/titles', wrap(async (req, res) => {
+      const u = await this.userFrom(req.headers.cookie);
+      if (!u) return res.status(401).json({ error: 'Log in first.' });
+      const options = titleOptions(u.titles, await this.earnedBadges(u));
+      res.json({ options, equipped: options.some((o) => o.key === u.title) ? u.title : null });
     }));
 
     r.post('/signup', wrap(async (req, res) => {
@@ -485,6 +513,13 @@ export class Accounts {
         const earned = await this.earnedBadges(u);
         const locked = wanted.find((r) => !isUnlocked(r, earned));
         if (locked) return res.status(403).json({ error: `Earn the ${BADGE_BY_ID.get(locked.badge!)?.name ?? locked.badge} badge to unlock ${locked.name}.` });
+      }
+      if ('title' in b) {
+        const key = b.title ? String(b.title) : null;
+        if (key && !titleOptions(u.titles, await this.earnedBadges(u)).some((o) => o.key === key)) {
+          return res.status(403).json({ error: 'That title isn’t yours to wear.' });
+        }
+        patch.title = key;
       }
       await this.store.updateUser(u.id, patch);
       if (patch.email) this.confirmLater({ ...u, ...patch }, req);
@@ -663,15 +698,38 @@ export class Accounts {
       if (!me || !isAdmin(me)) return res.status(403).json({ error: 'Admins only.' });
       const u = await this.store.userByName(String(req.params.username));
       if (!u) return res.status(404).json({ error: 'No player with that username.' });
-      const grantedBadges = req.body?.unlock ? BADGES.map((b) => b.id) : [];
+      // Either { unlock: true/false } for all of them, or { badges: [...] } for exactly these.
+      const grantedBadges = Array.isArray(req.body?.badges)
+        ? BADGES.map((b) => b.id).filter((id) => req.body.badges.includes(id))
+        : req.body?.unlock ? BADGES.map((b) => b.id) : [];
       await this.store.updateUser(u.id, { grantedBadges });
-      if (!grantedBadges.length && (u.color || u.frame)) {
-        // Rewards those badges unlocked go back to the defaults.
-        const look = lookFor(u, await this.earnedBadges({ ...u, grantedBadges }));
-        if (look.color !== (u.color ?? look.color) || look.frame !== (u.frame ?? look.frame)) await this.store.updateUser(u.id, look);
+      const after = { ...u, grantedBadges };
+      if (u.color || u.frame || u.title) {
+        // Rewards and titles only those badges unlocked go back to the defaults.
+        const earned = await this.earnedBadges(after);
+        const look = lookFor(u, earned);
+        const patch: Partial<User> = {};
+        if (look.color !== (u.color ?? look.color) || look.frame !== (u.frame ?? look.frame)) Object.assign(patch, look);
+        if (u.title && !titleName(u.title, u.titles, earned)) patch.title = null;
+        if (Object.keys(patch).length) await this.store.updateUser(u.id, patch);
       }
-      console.log(`Admin ${grantedBadges.length ? 'unlocked' : 're-locked'} badges for @${u.username}`);
-      res.json({ ok: true, unlocked: grantedBadges.length > 0 });
+      console.log(`Admin set ${grantedBadges.length} granted badge${grantedBadges.length === 1 ? '' : 's'} for @${u.username}`);
+      res.json({ ok: true, unlocked: grantedBadges.length === BADGES.length, grantedBadges });
+    }));
+
+    /** Give or take back titles (special ones like Developer or VIP, or custom text). Admins included, yourself too: titles are cosmetic. */
+    r.post('/admin/users/:username/titles', wrap(async (req, res) => {
+      const me = await this.userFrom(req.headers.cookie);
+      if (!me || !isAdmin(me)) return res.status(403).json({ error: 'Admins only.' });
+      const u = await this.store.userByName(String(req.params.username));
+      if (!u) return res.status(404).json({ error: 'No player with that username.' });
+      const titles = cleanGrantedTitles(req.body?.titles);
+      const patch: Partial<User> = { titles };
+      // Taking away the title they wear takes it off too.
+      if (u.title && !u.title.startsWith('badge:') && !titles.includes(u.title)) patch.title = null;
+      await this.store.updateUser(u.id, patch);
+      console.log(`Admin @${me.username} set titles for @${u.username}: ${titles.join(', ') || '(none)'}`);
+      res.json({ ok: true, titles });
     }));
 
     /** Clear an offensive display name (back to the username) and/or bio. */

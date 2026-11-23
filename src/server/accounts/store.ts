@@ -32,6 +32,10 @@ export interface User {
   /** Badge rewards they picked (ids from PROFILE_COLORS / AVATAR_FRAMES). Missing means the default. */
   color?: string;
   frame?: string;
+  /** Titles a site admin gave them ('special:<id>' or 'custom:<text>', see shared/profile.ts). */
+  titles?: string[];
+  /** The title they show with their name (a key from titleOptions), or null for none. */
+  title?: string | null;
 }
 
 /** A friend request from `from` to `to`; once accepted, the two are friends. */
@@ -40,7 +44,7 @@ export interface FriendLink { from: string; to: string; accepted: boolean; at: n
 /** A one-time emailed link: a password reset, or confirming an email address (`email` is the address it was sent to). */
 export interface AccountToken { hash: string; userId: string; kind: 'reset' | 'confirm'; email: string | null; expiresAt: number; createdAt: number }
 
-export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges' | 'color' | 'frame' | 'email' | 'emailVerified' | 'passwordHash' | 'presets'>>;
+export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges' | 'color' | 'frame' | 'titles' | 'title' | 'email' | 'emailVerified' | 'passwordHash' | 'presets'>>;
 
 /** Where accounts live. Postgres in production, a JSON file for local development and tests. */
 export interface AccountStore {
@@ -275,6 +279,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS pinned JSONB;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS granted_badges JSONB;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS color TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS frame TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS titles JSONB;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT;
 CREATE TABLE IF NOT EXISTS sessions (
   hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -315,12 +321,14 @@ interface UserRow {
   id: string; username: string; key: string; password_hash: string; display_name: string; bio: string;
   settings: Record<string, unknown> | null; created_at: string; visibility: Visibility | null; pinned: string[] | null; granted_badges: string[] | null;
   color: string | null; frame: string | null; email: string | null; email_verified: boolean | null; username_changed_at: string | null; presets: Preset[] | null;
+  titles: string[] | null; title: string | null;
 }
 const fromRow = (r: UserRow | undefined): User | null => r ? {
   id: r.id, username: r.username, key: r.key, passwordHash: r.password_hash, displayName: r.display_name,
   bio: r.bio, settings: r.settings, createdAt: Number(r.created_at),
   visibility: r.visibility ?? 'public', pinned: r.pinned ?? [], grantedBadges: r.granted_badges ?? [],
   ...(r.color ? { color: r.color } : {}), ...(r.frame ? { frame: r.frame } : {}),
+  titles: r.titles ?? [], title: r.title ?? null,
   email: r.email ?? null, emailVerified: !!r.email_verified,
   ...(r.username_changed_at ? { usernameChangedAt: Number(r.username_changed_at) } : {}),
   ...(r.presets ? { presets: r.presets } : {}),
@@ -376,7 +384,7 @@ export class PgAccountStore implements AccountStore {
   async updateUser(id: string, patch: UserPatch) {
     const cols: Record<keyof UserPatch, string> = {
       displayName: 'display_name', bio: 'bio', settings: 'settings', visibility: 'visibility', pinned: 'pinned', grantedBadges: 'granted_badges',
-      color: 'color', frame: 'frame', email: 'email', emailVerified: 'email_verified', passwordHash: 'password_hash', presets: 'presets',
+      color: 'color', frame: 'frame', titles: 'titles', title: 'title', email: 'email', emailVerified: 'email_verified', passwordHash: 'password_hash', presets: 'presets',
     };
     const keys = (Object.keys(patch) as (keyof UserPatch)[]).filter((k) => k in cols);
     if (!keys.length) return;

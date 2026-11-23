@@ -138,6 +138,8 @@ export interface PublicPlayer {
   username?: string;
   /** Logged in as a site admin (shown as a creator badge). */
   admin?: boolean;
+  /** The title they equipped on their account, shown with their name. */
+  title?: string;
   /** The host, reader or an admin muted this player in chat. */
   muted?: boolean;
 }

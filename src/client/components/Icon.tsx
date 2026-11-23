@@ -28,6 +28,7 @@ const PATHS = {
   pin: <path d="M12 16.5V21M8.5 3.5h7M9.7 3.5v5.2L6.5 13h11l-3.2-4.3V3.5" />,
   share: <path d="M12 3.5v11M8 7.5l4-4 4 4M6.5 11v8.5h11V11" />,
   next: <path d="M9 6l6 6-6 6" />,
+  keyboard: <><rect x="2.5" y="6" width="19" height="12" rx="2" /><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M6.5 14h11" /></>,
   back: <path d="M15 6l-6 6 6 6" />,
   calendar: <><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></>,
   home: <path d="M4 11l8-6.5 8 6.5M6 9.5V20h4.5v-5.5h3V20H18V9.5" />,
