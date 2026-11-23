@@ -303,3 +303,37 @@ a.creator-badge:hover { filter: brightness(1.1); }
 }
 
 @media (max-width: 420px) { .profile-top .account-bar > .muted.grow { display: none; } }
+.profile-tabs { margin: .2rem 0 0; justify-content: flex-start; gap: 1.3rem; }
+.see-all { align-self: center; }
+.help h1 { margin: 0 0 .3rem; }
+.help h2 { margin: 0 0 .4rem; }
+.help-toc { display: flex; flex-wrap: wrap; gap: .4rem .9rem; margin-top: .6rem; font-size: .92rem; }
+.faq { border-top: 1px solid var(--border); }
+.faq > summary { cursor: pointer; padding: .7rem 0; font-weight: 600; list-style-position: inside; }
+.faq > p { margin: 0 0 .8rem; line-height: 1.55; }
+.glossary { margin: 0; display: flex; flex-direction: column; }
+.glossary > div { padding: .6rem 0; border-top: 1px solid var(--border); }
+.glossary dt { font-weight: 600; }
+.glossary dd { margin: .2rem 0 0; color: var(--muted); line-height: 1.5; }
+
+/* ---------- titles ---------- */
+/* A player's equipped title: a small, quiet outlined tag after their name. */
+.title-tag { display: inline-flex; align-items: center; vertical-align: 1px; margin-left: .35rem; padding: 0 .45rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); font-size: .68rem; font-weight: 600; letter-spacing: .01em; line-height: 1.55; white-space: nowrap; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
+.profile-title { margin: .1rem 0 .25rem; }
+.profile-title .title-tag { margin-left: 0; font-size: .78rem; padding: .05rem .6rem; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.title-picker .chip.special:not(.on) { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.admin-titles h4 { margin: .8rem 0 .4rem; }
+.admin-custom-title { margin-top: .5rem; }
+
+/* ---------- keyboard shortcuts (Settings) ---------- */
+.key-list { list-style: none; margin: .2rem 0 .6rem; padding: 0; display: flex; flex-direction: column; }
+.key-list li { display: flex; align-items: center; justify-content: space-between; gap: .8rem; padding: .55rem 0; border-top: 1px solid var(--border); }
+.key-list li:first-child { border-top: 0; }
+.key-what { display: flex; flex-direction: column; min-width: 0; }
+.key-what small { color: var(--muted); font-size: .78rem; }
+.key-btn { min-width: 6.5rem; justify-content: center; }
+.key-btn kbd { margin: 0; opacity: 1; font-size: .8rem; padding: .15rem .45rem; }
+.key-btn.waiting { border-color: var(--accent); color: var(--accent); }
+.key-fixed { display: flex; gap: .25rem; }
+.key-fixed kbd { margin: 0; font-size: .78rem; padding: .15rem .4rem; }
+.key-list li.fixed .key-what b { font-weight: 500; }

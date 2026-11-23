@@ -3,9 +3,11 @@ import type { BotSkill, PublicState } from '../../shared/types';
 import { BOT_SKILLS } from '../../shared/types';
 import { InviteQR, inviteUrl, shareInvite } from './Invite';
 import { act, roles, toast } from './util';
-import { Verified } from './Account';
+import { TitleTag, Verified } from './Account';
 import { partyOn } from './SettingsPanel';
 import { Icon } from './Icon';
+import { Info } from './Info';
+import { PresetPicker } from './Presets';
 
 interface Props {
   s: PublicState; fresh: boolean;
@@ -18,107 +20,132 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
   const sourceLabel = { qbreader: 'QBReader', sample: 'Built-in questions', upload: `Uploaded packet (${s.uploadedCount?.tossups ?? 0} tossups)`, lightning: 'Lightning round' }[s.settings.source];
   const f = s.settings.filters;
   const party = partyOn(s.settings);
+  const set = s.settings;
 
   return (
     <div className="card lobby">
-      <h2>Lobby</h2>
+      <div className="row between lobby-top">
+        <h2>Lobby</h2>
+        <RoleChip s={s} />
+      </div>
       <NameBox s={s} fresh={fresh} onRename={onRename} />
 
-      <div className="invite-box">
-        <InviteQR code={s.code} size={132} />
-        <div className="invite-box-text">
-          <h3>Invite players</h3>
-          <p className="muted small">Scan the code, or open the link. Anyone who opens it joins this room right away.</p>
-          <code className="invite-link">{inviteUrl(s.code).replace(/^https?:\/\//, '')}</code>
-          <div className="row gap wrap">
-            <button className="btn primary" onClick={() => shareInvite(s.code)}>Copy link</button>
-            <button className="btn" onClick={onBigInvite}>Show QR full screen</button>
-            <button className="btn" onClick={onBigScreen} title="Opens a scoreboard and question view for a projector or TV"><Icon name="screen" /> Big-screen view</button>
+      <section className="lobby-step">
+        <h3><span className="step-num">1</span> Invite people</h3>
+        <div className="invite-box">
+          <InviteQR code={s.code} size={120} />
+          <div className="invite-box-text">
+            <p className="muted small">Anyone who scans the code or opens the link joins this room. The room code is <b className="mono">{s.code}</b>.</p>
+            <code className="invite-link">{inviteUrl(s.code).replace(/^https?:\/\//, '')}</code>
+            <div className="row gap wrap">
+              <button className="btn" onClick={() => shareInvite(s.code)}>Copy link</button>
+              <button className="btn ghost" onClick={onBigInvite}>Show QR full screen</button>
+              <button className="btn ghost" onClick={onBigScreen} title="Opens a scoreboard and question view for a projector or TV"><Icon name="screen" /> Big-screen view</button>
+            </div>
           </div>
         </div>
-      </div>
-      <p className="muted">{s.settings.mode === 'teams' ? 'Pick a team below.' : 'Everyone plays for themselves.'}</p>
+      </section>
 
-      <div className="lobby-grid">
-        <div>
-          <h3>Format</h3>
-          <ul className="facts">
-            <li>{s.settings.mode === 'teams' ? 'Teams (up to 4 each)' : party ? 'Party (free-for-all)' : 'Free-for-all'}</li>
-            {s.settings.topicVote && <li>Players vote on topics</li>}
-            <li>{s.settings.powers ? `Powers ${s.settings.powerValue}` : 'No powers'} · {s.settings.tenValue} · {s.settings.negs ? `negs ${s.settings.negValue}` : 'no negs'}{s.settings.bounty ? ' · bounty tossups' : ''}</li>
-            <li>{s.settings.bonuses ? `Bonuses on (${s.settings.bonusSeconds}s per part)` : 'Tossups only'}</li>
-            <li>{s.settings.gameLength ? `${s.settings.gameLength} tossups` : 'No set length'} · {s.settings.wpm} wpm · {s.settings.answerSeconds}s to answer</li>
-            <li>{sourceLabel}{f.categories.length ? ` · ${f.categories.join(', ')}` : ' · all categories'}</li>
-          </ul>
-          {r.isController && (
-            <div className="row gap wrap">
-              <button className="btn" onClick={onSettings}>Change settings</button>
-              <button className={`btn ${party ? 'ghost' : ''}`} onClick={() => act('settings:update', party ? { topicVote: false } : { mode: 'ffa', topicVote: true })}
-                title="Free-for-all, and players vote on the next topic">
-                {party ? 'Turn off party mode' : 'Party mode'}
-              </button>
+      <section className="lobby-step">
+        <h3><span className="step-num">2</span> Choose how to play</h3>
+        {r.isController && !r.fixed && (
+          <>
+            <p className="muted small">Pick a preset, or set every rule yourself in Room settings.</p>
+            <PresetPicker settings={s.settings} canApply />
+          </>
+        )}
+        <h4>{r.isController ? 'Rules right now' : 'Rules for this game'}</h4>
+        <ul className="facts">
+          <li>{set.mode === 'teams' ? <span className="nw">Teams of up to 4<Info term="teams" /></span> : party ? <>Party: everyone for themselves, <span className="nw">voting on topics<Info term="party" /></span></> : <span className="nw">Free-for-all<Info term="ffa" /></span>}</li>
+          <li>
+            {set.powers ? <span className="nw">Powers {set.powerValue}<Info term="power" /></span> : 'No powers'} · <span className="nw">{set.tenValue} per tossup<Info term="tossup" /></span> · {set.negs ? <span className="nw">negs {set.negValue}<Info term="neg" /></span> : 'no negs'}
+            {set.bounty && <> · <span className="nw">bounty tossups<Info term="bounty" /></span></>}
+          </li>
+          <li>{set.bonuses ? <>Bonuses on <span className="nw">({set.bonusSeconds}s per part)<Info term="bonus" /></span></> : 'Tossups only, no bonuses'}</li>
+          <li>{set.gameLength ? `${set.gameLength} tossups` : 'No set length: plays until the host ends it'} · {set.wpm} wpm · {set.answerSeconds}s to answer</li>
+          <li>{sourceLabel}{f.categories.length || f.topics?.length ? ` · ${[...(f.topics ?? []), ...f.categories].join(', ')}` : ' · all categories'}</li>
+        </ul>
+        {r.isController && !r.fixed && <div className="row gap"><button className="btn" onClick={onSettings}>Room settings…</button></div>}
+
+        {set.mode === 'teams' && (
+          <>
+            <h4>Teams</h4>
+            <div className="teams-pick">
+              {s.teams.map((t) => (
+                <div key={t.id} className={`team-pick ${r.myTeam === t.id ? 'mine' : ''}`}>
+                  <div className="row between">
+                    <TeamName s={s} teamId={t.id} name={t.name} />
+                    <span className="muted small">{t.playerIds.length}/4</span>
+                  </div>
+                  <ul>
+                    {t.playerIds.map((id) => {
+                      const p = s.players.find((x) => x.id === id);
+                      return (
+                        <li key={id} className={`${p?.online ? '' : 'offline'} ${r.isController ? 'gm-row' : ''}`}>
+                          <span className="gm-name">{p?.name}<Verified username={p?.username} admin={p?.admin} /><TitleTag title={p?.title} />{t.captainId === id && <span className="badge">captain<Info term="captain" /></span>}</span>
+                          {r.isController && <PlayerControls s={s} playerId={id} teamId={t.id} captain={t.captainId === id} />}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div className="row gap">
+                    {r.myTeam !== t.id && !r.isReader && <button className="btn small" disabled={t.playerIds.length >= 4} onClick={() => act('team:join', t.id)}>Join</button>}
+                    {r.myTeam === t.id && t.captainId !== r.me && <button className="btn small ghost" onClick={() => act('team:captain')}>Be captain</button>}
+                    {r.isController && s.teams.length > 2 && <button className="btn small ghost" onClick={() => act('team:remove', t.id)}>Remove</button>}
+                  </div>
+                </div>
+              ))}
+              {r.isController && s.teams.length < 8 && <button className="btn ghost add-team" onClick={() => act('team:create', '')}>+ Add team</button>}
             </div>
-          )}
-        </div>
+            <Unassigned s={s} />
+          </>
+        )}
 
-        <div>
-          <h3>Reader</h3>
+        <details className="lobby-more" open={!!reader}>
+          <summary>Reader <span className="muted small">(optional){reader ? ` · ${reader.name}` : ''}</span></summary>
           {reader ? (
             <p><b>{reader.name}</b> will read the questions aloud and run the game{r.isReader ? ' (that’s you!)' : ''}.{r.isReader && <span className="muted small"> You can change settings and questions at any time, set up teams and captains, rule on answers and protests, and pause or end the match.</span>}</p>
           ) : (
-            <p className="muted">No reader: the app shows each tossup word by word at {s.settings.wpm} wpm. A reader sees every question ahead of time, reads it out loud (in person or on a call), controls the pace, rules on answers, and decides when to move on.</p>
+            <p className="muted small">With no reader, the app shows each question word by word. A reader sees every question early, reads it out loud (in person or on a call), sets the pace and rules on answers.<Info term="reader" /></p>
           )}
           {reader && s.settings.topicVote && <p className="muted small">While someone holds the reader seat, there’s no topic vote.</p>}
-          {!s.readerId && <button className="btn" onClick={() => act('reader:set', r.me)}>Be the reader</button>}
-          {r.isReader && <button className="btn ghost" onClick={() => act('reader:set', null)}>Leave reader seat</button>}
-          {r.isHost && reader && !r.isReader && <button className="btn ghost" onClick={() => act('reader:set', null)}>Remove reader</button>}
-        </div>
-      </div>
-
-      {s.settings.mode === 'teams' && (
-        <>
-          <h3>Teams</h3>
-          <div className="teams-pick">
-            {s.teams.map((t) => (
-              <div key={t.id} className={`team-pick ${r.myTeam === t.id ? 'mine' : ''}`}>
-                <div className="row between">
-                  <TeamName s={s} teamId={t.id} name={t.name} />
-                  <span className="muted small">{t.playerIds.length}/4</span>
-                </div>
-                <ul>
-                  {t.playerIds.map((id) => {
-                    const p = s.players.find((x) => x.id === id);
-                    return (
-                      <li key={id} className={`${p?.online ? '' : 'offline'} ${r.isController ? 'gm-row' : ''}`}>
-                        <span className="gm-name">{p?.name}<Verified username={p?.username} admin={p?.admin} />{t.captainId === id && <span className="badge">captain</span>}</span>
-                        {r.isController && <PlayerControls s={s} playerId={id} teamId={t.id} captain={t.captainId === id} />}
-                      </li>
-                    );
-                  })}
-                </ul>
-                <div className="row gap">
-                  {r.myTeam !== t.id && !r.isReader && <button className="btn small" disabled={t.playerIds.length >= 4} onClick={() => act('team:join', t.id)}>Join</button>}
-                  {r.myTeam === t.id && t.captainId !== r.me && <button className="btn small ghost" onClick={() => act('team:captain')}>Be captain</button>}
-                  {r.isController && s.teams.length > 2 && <button className="btn small ghost" onClick={() => act('team:remove', t.id)}>Remove</button>}
-                </div>
-              </div>
-            ))}
-            {r.isController && s.teams.length < 8 && <button className="btn ghost add-team" onClick={() => act('team:create', '')}>+ Add team</button>}
+          <div className="row gap">
+            {!s.readerId && <button className="btn small" onClick={() => act('reader:set', r.me)}>Be the reader</button>}
+            {r.isReader && <button className="btn small ghost" onClick={() => act('reader:set', null)}>Leave reader seat</button>}
+            {r.isHost && reader && !r.isReader && <button className="btn small ghost" onClick={() => act('reader:set', null)}>Remove reader</button>}
           </div>
-          <Unassigned s={s} />
-        </>
-      )}
+        </details>
 
-      <BotsPanel s={s} />
+        <BotsPanel s={s} />
+      </section>
 
-      <div className="row gap start-row">
-        {r.isController ? (
-          <button className="btn primary big" onClick={() => act('game:start')}>Start game</button>
-        ) : (
-          <p className="muted">Waiting for {s.readerId ? 'the reader' : 'the host'} to start…</p>
-        )}
-      </div>
+      <section className="lobby-step">
+        <h3><span className="step-num">3</span> Start</h3>
+        <div className="row gap start-row">
+          {r.isController ? (
+            <button className="btn primary big" onClick={() => act('game:start')}>Start game</button>
+          ) : (
+            <p className="muted">Waiting for {s.readerId ? 'the reader' : 'the host'} to start…</p>
+          )}
+        </div>
+      </section>
     </div>
+  );
+}
+
+/** Who you are in this room, and what that lets you do. */
+function RoleChip({ s }: { s: PublicState }) {
+  const r = roles(s);
+  const host = s.players.find((p) => p.id === s.hostId)?.name;
+  const [label, term, tip] = r.isReader
+    ? ['You’re the reader', 'reader' as const, 'You read the questions aloud and rule on answers.']
+    : r.isHost
+      ? ['You’re the host', 'host' as const, 'You choose the rules and start the game.']
+      : [`You’re playing${host ? ` · ${host} is the host` : ''}`, null, ''];
+  return (
+    <span className="role-chip" title={tip || undefined}>
+      {label}{term && <Info term={term} />}
+    </span>
   );
 }
 
@@ -147,7 +174,7 @@ function Unassigned({ s }: { s: PublicState }) {
       <ul>
         {loose.map((p) => (
           <li key={p.id} className={`${p.online ? '' : 'offline'} ${r.isController ? 'gm-row' : ''}`}>
-            <span className="gm-name">{p.name}<Verified username={p.username} admin={p.admin} /></span>
+            <span className="gm-name">{p.name}<Verified username={p.username} admin={p.admin} /><TitleTag title={p.title} /></span>
             {r.isController && <PlayerControls s={s} playerId={p.id} teamId={null} />}
           </li>
         ))}
@@ -192,8 +219,8 @@ function BotsPanel({ s }: { s: PublicState }) {
   if (!r.isController && !bots.length) return null;
   const teamName = (id: string | null) => s.teams.find((t) => t.id === id)?.name;
   return (
-    <div className="bots">
-      <h3>Bots</h3>
+    <details className="lobby-more bots" open={bots.length > 0}>
+      <summary>Computer opponents <span className="muted small">(optional){bots.length ? ` · ${bots.length}` : ''}</span></summary>
       {bots.length === 0 && <p className="muted small">Practice against computer players. Each bot buzzes and answers on its own, and joins a team in teams mode.</p>}
       {bots.length > 0 && (
         <ul className="bot-list">
@@ -222,7 +249,7 @@ function BotsPanel({ s }: { s: PublicState }) {
           <button className="btn" disabled={bots.length >= 8} onClick={() => act('bot:add', skill)}>+ Add bot</button>
         </div>
       )}
-    </div>
+    </details>
   );
 }
 

@@ -45,6 +45,12 @@ export function Verified({ username, admin }: { username?: string; admin?: boole
   );
 }
 
+/** A player's equipped title, as a small quiet tag after their name. */
+export function TitleTag({ title }: { title?: string | null }) {
+  if (!title) return null;
+  return <span className="title-tag" title={`Title: ${title}`}>{title}</span>;
+}
+
 /** The site creator's badge. */
 export function CreatorBadge({ username }: { username?: string }) {
   const inner = <><Crown />creator</>;
@@ -93,6 +99,7 @@ export function AccountBar() {
 
 export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup'; onClose: () => void }) {
   const [tab, setTab] = useState<'login' | 'signup' | 'forgot'>(initial);
+  const { emailOn } = useAccount();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -192,7 +199,8 @@ export function AccountDialog({ initial, onClose }: { initial: 'login' | 'signup
         </label>
         {err && <p className="error">{err}</p>}
         <div className="row gap end">
-          {tab === 'login' && <button type="button" className="link grow forgot" onClick={() => setTab('forgot')}>Forgot password?</button>}
+          {tab === 'login' && emailOn && <button type="button" className="link grow forgot" onClick={() => setTab('forgot')}>Forgot password?</button>}
+          {tab === 'login' && !emailOn && <span className="grow" />}
           <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn primary" disabled={busy || !username.trim() || !password}>{tab === 'signup' ? 'Create account' : 'Log in'}</button>
         </div>

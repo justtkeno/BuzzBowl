@@ -4,6 +4,8 @@ import { TOPICS } from '../../shared/topics';
 import { call } from '../socket';
 import { act, toast } from './util';
 import { Icon } from './Icon';
+import { Info } from './Info';
+import type { TermId } from '../glossary';
 
 /** Room settings. `only="questions"` shows just the question source and filters (the reader's quick mid-match change). */
 export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: () => void; only?: 'questions' }) {
@@ -40,16 +42,16 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
     } finally { setUploading(false); }
   };
 
-  const num = (k: keyof Settings, label: string, min: number, max: number, step = 1) => (
+  const num = (k: keyof Settings, label: string, min: number, max: number, step = 1, term?: TermId) => (
     <label className="field inline">
-      <span>{label}</span>
+      <span>{label}{term && <Info term={term} />}</span>
       <input type="number" min={min} max={max} step={step} value={f[k] as number} onChange={(e) => set(k, Number(e.target.value) as any)} />
     </label>
   );
-  const check = (k: keyof Settings, label: string, hint?: string) => (
+  const check = (k: keyof Settings, label: string, hint?: string, term?: TermId) => (
     <label className="check">
       <input type="checkbox" checked={f[k] as boolean} onChange={(e) => set(k, e.target.checked as any)} />
-      <span>{label}{hint && <small className="muted"> — {hint}</small>}</span>
+      <span>{label}{term && <Info term={term} />}{hint && <small className="muted"> — {hint}</small>}</span>
     </label>
   );
 
@@ -72,7 +74,7 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
         <div className="settings-body" role="tabpanel" id="settings-panel" aria-labelledby={`stab-${tab}`}>
         {tab === 'game' && (
         <section>
-          <h3>Format</h3>
+          <h3>Format <Info term="ffa" /></h3>
           <div className="seg">
             {(['ffa', 'teams', 'party'] as const).map((m) => {
               const on = m === 'teams' ? f.mode === 'teams' : f.mode === 'ffa' && (m === 'party') === partyOn(f);
@@ -88,12 +90,12 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
           <GameLength value={f.gameLength} playing={s.phase === 'lobby' || s.phase === 'gameOver' ? 0 : s.tossup?.num ?? 0} onChange={(n) => set('gameLength', n)} />
           <div className="grid2">
             <label className="field">
-              <span>Reading speed: {f.wpm} wpm</span>
+              <span>Reading speed: {f.wpm} wpm<Info term="wpm" /></span>
               <input type="range" min={100} max={600} step={10} value={f.wpm} onChange={(e) => set('wpm', Number(e.target.value))} />
             </label>
-            {num('answerSeconds', 'Seconds to answer', 2, 30)}
-            {num('deadSeconds', 'Buzz window after question', 1, 30)}
-            {num('bonusSeconds', 'Seconds per bonus part', 5, 60)}
+            {num('answerSeconds', 'Seconds to answer', 2, 30, 1, 'answerTime')}
+            {num('deadSeconds', 'Buzz window after question', 1, 30, 1, 'buzzWindow')}
+            {num('bonusSeconds', 'Seconds per bonus part', 5, 60, 1, 'bonus')}
           </div>
         </section>
         )}
@@ -101,10 +103,10 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
         {tab === 'scoring' && (
         <section>
           <h3>Scoring</h3>
-          {check('powers', 'Powers', 'correct before the (*) earns extra')}
-          {check('negs', 'Negs', 'wrong answers before the question ends lose points')}
-          {check('bounty', 'Bounty tossups', 'now and then a tossup is worth double for a correct answer; it’s marked before it’s read')}
-          {check('bonuses', 'Bonuses', f.mode === 'teams' ? 'team that gets the tossup plays a 3-part bonus' : 'player who gets the tossup plays a bonus')}
+          {check('powers', 'Powers', 'correct before the (*) earns extra', 'power')}
+          {check('negs', 'Negs', 'wrong answers before the question ends lose points', 'neg')}
+          {check('bounty', 'Bounty tossups', 'now and then a tossup is worth double for a correct answer; it’s marked before it’s read', 'bounty')}
+          {check('bonuses', 'Bonuses', f.mode === 'teams' ? 'team that gets the tossup plays a 3-part bonus' : 'player who gets the tossup plays a bonus', 'bonus')}
           <div className="grid4">
             {num('powerValue', 'Power', 0, 50)}
             {num('tenValue', 'Tossup', 0, 50)}
@@ -121,7 +123,7 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
         </section>
 
         <section>
-          <h3>Reader</h3>
+          <h3>Reader <Info term="reader" /></h3>
           {check('showTextToPlayers', 'Show question text to players while the reader reads', 'off = players only hear it')}
           {check('readerRules', 'Reader rules on answers', 'auto-check becomes a suggestion')}
         </section>

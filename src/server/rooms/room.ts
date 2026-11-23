@@ -33,7 +33,7 @@ export interface RoomIO {
 }
 
 /** A logged-in player's account, attached when they join. */
-export interface JoinAccount { id: string; username: string; admin?: boolean }
+export interface JoinAccount { id: string; username: string; admin?: boolean; title?: string }
 
 export class ActionError extends Error {}
 const fail = (msg: string): never => { throw new ActionError(msg); };
@@ -86,6 +86,8 @@ export const TIMING = {
 
 interface Player {
   id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string; admin?: boolean;
+  /** The title they equipped on their account (shown with their name). */
+  title?: string;
   /** The host, reader or an admin stopped this player from chatting. */
   muted?: boolean;
   /** Admin troll: buzzes are silently ignored, until unfrozen (`frozen`) or for one tossup number (`frozenFor`). */
@@ -435,6 +437,8 @@ export class Room {
       if (account && !existing.accountId) { existing.accountId = account.id; existing.username = account.username; }
       // Admin powers need the admin to be logged in right now, not just a saved seat token.
       existing.admin = (account && existing.accountId === account.id && account.admin) || undefined;
+      // The title follows the account (a newly equipped one shows on the next reconnect).
+      if (account && existing.accountId === account.id) existing.title = account.title || undefined;
       const hostAway = !this.s.hostId || !this.player(this.s.hostId)?.online;
       if (hostAway && (existing.id === this.s.hostId || Date.now() > this.hostReservedUntil)) this.s.hostId = existing.id;
       this.restoreSeats(existing);
@@ -445,7 +449,10 @@ export class Room {
     if (this.s.daily && this.s.players.length) fail('The daily challenge is played solo. Start your own from the home page.');
     if (this.s.survival && this.s.players.length) fail('Survival is played solo. Start your own run from the home page.');
     if (this.s.players.length >= 60) fail('This room is full.');
-    const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null, ...(account ? { accountId: account.id, username: account.username, ...(account.admin ? { admin: true } : {}) } : {}) };
+    const p: Player = {
+      id: rid(), token: rid(24), name: clean, online: true, teamId: null,
+      ...(account ? { accountId: account.id, username: account.username, ...(account.admin ? { admin: true } : {}), ...(account.title ? { title: account.title } : {}) } : {}),
+    };
     this.s.players.push(p);
     if (this.s.settings.mode === 'teams') this.autoAssign(p);
     if (!this.s.hostId || (!this.player(this.s.hostId)?.online && Date.now() > this.hostReservedUntil)) this.s.hostId = p.id;
@@ -1693,7 +1700,8 @@ export class Room {
     const r = this.s.rulings.find((x) => x.id === rulingId) ?? fail('No such ruling.');
     if (this.s.protests.some((x) => x.rulingId === rulingId && !x.resolved)) fail('That ruling is already protested.');
     this.s.protests.push({ id: rid(), rulingId, byId: by, byName: p.name, note: String(note ?? '').slice(0, 200), resolved: false });
-    this.system(`${p.name} protested the ruling on "${r!.given || '(no answer)'}" (${r!.type} ${r!.num}).`);
+    const where = r!.type === 'tossup' ? `tossup ${r!.num}` : `bonus ${r!.num}`;
+    this.system(`${p.name} thinks "${r!.given || '(no answer)'}" by ${r!.playerName} on ${where} should be marked ${r!.correct ? 'wrong' : 'correct'}. The ${this.s.readerId ? 'reader' : 'host'} will decide.`);
     this.broadcast();
   }
 
@@ -1704,7 +1712,11 @@ export class Room {
     const pr = this.s.protests.find((x) => x.id === protestId && !x.resolved) ?? fail('No open protest.');
     pr!.resolved = true;
     if (accept) this.flipRuling(pr!.rulingId);
-    this.system(`Protest ${accept ? 'upheld; ruling reversed' : 'denied'}.`);
+    const r = this.s.rulings.find((x) => x.id === pr!.rulingId);
+    const judge = this.player(by)?.name ?? (by === this.s.readerId ? 'The reader' : 'The host');
+    this.system(accept
+      ? `${judge} agreed with ${pr!.byName}: "${r?.given || '(no answer)'}" is now marked ${r?.correct ? 'correct' : 'wrong'}, and the scores are updated.`
+      : `${judge} kept the ruling on "${r?.given || '(no answer)'}" that ${pr!.byName} protested.`);
     this.broadcast();
   }
 
@@ -1714,7 +1726,7 @@ export class Room {
     if (this.s.survival) fail('Not available in survival: every answer is checked the same way for everyone.');
     this.flipRuling(rulingId);
     const r = this.s.rulings.find((x) => x.id === rulingId)!;
-    this.system(`Ruling on "${r.given || '(no answer)'}" changed to ${r.correct ? 'correct' : 'incorrect'}.`);
+    this.system(`${this.player(by)?.name ?? 'The host'} changed "${r.given || '(no answer)'}" by ${r.playerName} to ${r.correct ? 'correct' : 'wrong'}. The scores are updated.`);
     this.broadcast();
   }
 
@@ -1808,7 +1820,7 @@ export class Room {
       ? this.s.teams.map((t) => ({ id: t.id, name: t.name, playerIds: t.playerIds, captainId: this.captainOf(t.id), ...computeTeamTotals(t.id, this.s.rulings, this.s.adjustments) }))
       : [];
     const streaks = this.streaks();
-    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}), ...(p.admin ? { admin: true } : {}), ...(p.muted ? { muted: true } : {}) }));
+    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}), ...(p.admin ? { admin: true } : {}), ...(p.title ? { title: p.title } : {}), ...(p.muted ? { muted: true } : {}) }));
     // FFA bonus totals live on each player's "team" (themselves).
     const ffaTeams = this.s.settings.mode === 'ffa'
       ? this.s.players.map((p) => ({ id: p.id, name: p.name, playerIds: [p.id], captainId: p.id, ...computeTeamTotals(p.id, this.s.rulings, this.s.adjustments) }))

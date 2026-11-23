@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../shared/types';
+import type { PresetSettings } from '../shared/presets';
 import { Home } from './components/Home';
 import { ConfirmEmail, ResetPassword } from './components/Account';
 import { InviteBanner } from './components/Friends';
 import { Announcement } from './components/Announcement';
 import { WakeScreen } from './components/WakeScreen';
 import { Privacy } from './components/Privacy';
+import { Help } from './components/Help';
 import { Profile } from './components/Profile';
 import { RoomView } from './components/RoomView';
 import { Spectate } from './components/Spectate';
@@ -31,6 +33,7 @@ function Page() {
   if (location.pathname === '/reset') return <ResetPassword />;
   if (location.pathname === '/confirm') return <ConfirmEmail />;
   if (location.pathname === '/privacy') return <Privacy />;
+  if (location.pathname === '/help') return <Help />;
   return <Player />;
 }
 
@@ -61,9 +64,11 @@ function Player() {
     if (codeFromPath() !== res.code) history.replaceState(null, '', `/r/${res.code}`);
   }
 
-  const create = useCallback(async (name: string, solo: boolean) => {
+  const create = useCallback(async (name: string, solo: boolean, preset?: PresetSettings) => {
     const res = await call<{ code: string; playerId: string; token: string; chat: ChatMessage[] }>('room:create', { name, solo, settings: prefs.settings() });
     afterJoin(res, name);
+    // A shared preset's rules go on top of the host's usual settings.
+    if (preset) await call('settings:update', preset).catch((e) => setError(e.message));
     if (solo) await call('game:start').catch((e) => setError(e.message));
   }, []);
 

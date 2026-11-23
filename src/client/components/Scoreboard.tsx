@@ -1,8 +1,9 @@
+import { Info } from './Info';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PublicPlayer, PublicState } from '../../shared/types';
 import { BOT_SKILLS } from '../../shared/types';
 import { act, colorFor, fmtPct, roles } from './util';
-import { Verified } from './Account';
+import { TitleTag, Verified } from './Account';
 import { Icon } from './Icon';
 
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -74,7 +75,7 @@ export function Scoreboard({ s }: { s: PublicState }) {
       <td className="name">
         <span className="pdot" style={{ background: colorFor(p.id, order) }} />
         {p.name}
-        <Verified username={p.username} admin={p.admin} />
+        <Verified username={p.username} admin={p.admin} /><TitleTag title={p.title} />
         {p.streak >= 2 && <span className="streak" title={`${p.streak} tossups in a row`}>×{p.streak}</span>}
         {p.bot && <span className="badge" title={`Computer player · ${BOT_SKILLS[p.bot].blurb}`}>bot · {BOT_SKILLS[p.bot].label.toLowerCase()}</span>}
         {p.id === s.hostId && <span className="badge">host</span>}
@@ -110,7 +111,7 @@ export function Scoreboard({ s }: { s: PublicState }) {
         ))
       ) : (
         <table className="ffa">
-          <thead><tr><th>Player</th><th className="num">P/10/N</th><th className="num">Pts</th>{r.isController && !r.fixed && <th />}</tr></thead>
+          <thead><tr><th>Player</th><th className="num">P/10/N<Info term="pn" /></th><th className="num">Pts</th>{r.isController && !r.fixed && <th />}</tr></thead>
           <tbody>{ffa.map((p) => row(p))}</tbody>
         </table>
       )}

@@ -80,6 +80,12 @@ export function FriendsTab({ onJoin, currentCode, hidden, disabled, canInvite }:
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
   useEffect(() => { if (hidden) setOpen(false); }, [hidden]);
+  // The phone tab bar's Friends button opens this panel.
+  useEffect(() => {
+    const openIt = () => { if (!hidden) setOpen(true); };
+    window.addEventListener('qb-open-friends', openIt);
+    return () => window.removeEventListener('qb-open-friends', openIt);
+  }, [hidden]);
 
   const list = f.list;
   const playing = list?.friends.filter((x) => x.status === 'room' || x.status === 'daily' || x.status === 'survival').length ?? 0;

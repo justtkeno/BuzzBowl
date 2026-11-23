@@ -1,19 +1,22 @@
 import { useSyncExternalStore } from 'react';
+import type { Preset } from '../shared/presets';
 import type { Me, ProfileView } from '../shared/accounts';
-import type { Visibility } from '../shared/profile';
+import type { TitleOption, Visibility } from '../shared/profile';
 import { prefs, socket } from './socket';
 
 // The logged-in account, shared by every component. Guests have me = null.
 
 let me: Me | null = null;
 let loaded = false;
+/** The server can send email (reset and confirmation links). Off until it says so. */
+let emailOn = false;
 const listeners = new Set<() => void>();
-let snap: { me: Me | null; loaded: boolean } = { me, loaded };
+let snap: { me: Me | null; loaded: boolean; emailOn: boolean } = { me, loaded, emailOn };
 
 function set(next: Me | null) {
   me = next;
   loaded = true;
-  snap = { me, loaded };
+  snap = { me, loaded, emailOn };
   listeners.forEach((l) => l());
 }
 
@@ -56,7 +59,8 @@ function adopt(u: Me) {
 
 export async function loadAccount() {
   try {
-    const { user } = await api<{ user: Me | null }>('/me');
+    const { user, email } = await api<{ user: Me | null; email?: boolean }>('/me');
+    emailOn = !!email;
     if (user) adopt(user); else set(null);
   } catch {
     set(null);
@@ -88,6 +92,13 @@ export async function resetPassword(token: string, password: string) {
   prefs.setName(user.displayName);
   adopt(user);
   reconnect();
+}
+
+/** Saves this account's own game presets (at most PRESET_SLOTS). */
+export async function savePresets(presets: Preset[]) {
+  const { user } = await api<{ user: Me }>('/me', { method: 'PATCH', body: { presets } });
+  set(user);
+  return user.presets;
 }
 
 /** New username (once a week). Reconnects so rooms and friends see the new name. */
@@ -123,10 +134,27 @@ export async function logout() {
   reconnect();
 }
 
-export async function updateMe(patch: { displayName?: string; bio?: string; visibility?: Visibility; pinned?: string[]; color?: string; frame?: string; email?: string; password?: string }) {
+export async function updateMe(patch: { displayName?: string; bio?: string; visibility?: Visibility; pinned?: string[]; color?: string; frame?: string; title?: string | null; email?: string; password?: string }) {
   const { user } = await api<{ user: Me }>('/me', { method: 'PATCH', body: patch });
   set(user);
+  // A changed title shows in rooms after the socket reconnects (it carries the account into rooms).
+  if ('title' in patch) reconnect();
   return user;
+}
+
+/** The titles this account can equip (given by an admin, or earned with badges) and the one it wears. */
+export async function fetchTitles() {
+  return api<{ options: TitleOption[]; equipped: string | null }>('/me/titles');
+}
+
+/** Admin: set exactly which special and custom titles an account has. */
+export async function adminSetTitles(username: string, titles: string[]) {
+  return api<{ ok: true; titles: string[] }>(`/admin/users/${encodeURIComponent(username)}/titles`, { method: 'POST', body: { titles } });
+}
+
+/** Admin: set exactly which badges are given to an account (on top of the ones they earn). */
+export async function adminSetBadges(username: string, badges: string[]) {
+  return api<{ ok: true; grantedBadges: string[] }>(`/admin/users/${encodeURIComponent(username)}/badges`, { method: 'POST', body: { badges } });
 }
 
 /** Admin: reset someone's display name (to their username) and/or clear their bio. */

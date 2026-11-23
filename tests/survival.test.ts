@@ -167,7 +167,7 @@ describe('survival room', () => {
     off.start(p);
     await waitFor(off, 'reading');
     expect(off.s.tossup?.q.id).toBeTruthy();
-    expect(off.s.tossup?.q.id.startsWith('s')).toBe(false);
+    expect(off.s.tossup?.q.id.startsWith('sample-')).toBe(false); // the built-in catalog, not the old sample packet
   });
 
   it('comes back from a restart paused, with its lives and questions', async () => {
