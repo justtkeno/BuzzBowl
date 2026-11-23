@@ -147,8 +147,9 @@ export class Accounts {
 
   /** Make a one-time link and email it. Quietly does nothing past the hourly limit. Returns whether it went out. */
   private async sendLink(u: User, kind: 'reset' | 'confirm', base: string) {
-    if (!u.email || !this.mailer) return false;
-    if ((await this.store.countTokens(u.id, kind, Date.now() - 3600_000)) >= LINKS_PER_HOUR) return false;
+    // Logged by username only (never the address), so a missing email can be traced.
+    if (!u.email || !this.mailer) { console.log(`No ${kind} email for @${u.username}: ${u.email ? 'email is not set up' : 'no email on the account'}`); return false; }
+    if ((await this.store.countTokens(u.id, kind, Date.now() - 3600_000)) >= LINKS_PER_HOUR) { console.log(`No ${kind} email for @${u.username}: ${LINKS_PER_HOUR} already sent this hour`); return false; }
     const token = randomBytes(32).toString('base64url');
     const minutes = kind === 'reset' ? RESET_MINUTES : CONFIRM_MINUTES;
     const now = Date.now();
@@ -176,6 +177,7 @@ export class Accounts {
       };
     try {
       await this.mailer.send({ to: u.email, ...mail });
+      console.log(`Sent a ${kind} email for @${u.username}`);
     } catch (e) {
       // It never reached them: don't let it use up one of the hour's links.
       await this.store.deleteToken(hash).catch(() => {});
@@ -491,6 +493,7 @@ export class Accounts {
       const u = !who ? null : who.includes('@') ? await this.store.userByEmail(who) : await this.store.userByName(who);
       // Same answer either way, so this can't be used to find out who has an account or which email they use.
       res.json({ ok: true });
+      if (!u) console.log(`Password reset asked for an unknown ${who.includes('@') ? 'email' : `username "${who.slice(0, 20)}"`}`);
       if (u) this.sendLink(u, 'reset', base).catch((e) => console.error('Could not send a password-reset email:', e?.message ?? e));
     }));
 
