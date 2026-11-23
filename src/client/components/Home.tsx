@@ -5,6 +5,7 @@ import { useAccount } from '../account';
 import { randomName } from '../names';
 import { prefs } from '../socket';
 import { AccountBar } from './Account';
+import { BoostChip } from './BoostChip';
 import { DailyCard } from './Daily';
 import { SurvivalCard } from './Survival';
 import { FriendsTab } from './Friends';
@@ -66,6 +67,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
       <div className="home-card">
         <AccountBar />
         <div className="brand"><Logo /> Trivio</div>
+        <BoostChip className="home-boost" />
         <p className="muted">Quiz bowl practice: questions read word by word, and you race to buzz in. Play with friends or on your own.<Info term="tossup" /></p>
 
         <label className="field">

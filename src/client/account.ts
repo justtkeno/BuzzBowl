@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Preset } from '../shared/presets';
 import type { Me, ProfileView } from '../shared/accounts';
 import type { TitleOption, Visibility } from '../shared/profile';
-import type { LevelInfo } from '../shared/levels';
+import type { BoostView, LevelInfo } from '../shared/levels';
 import { prefs, socket } from './socket';
 
 // The logged-in account, shared by every component. Guests have me = null.
@@ -226,7 +226,7 @@ window.addEventListener('qb-settings', (e) => {
 
 // ---------- XP from the last finished game ----------
 
-export interface XpNews { gained: number; before: LevelInfo; after: LevelInfo; unlocked: string[]; at: number }
+export interface XpNews { gained: number; before: LevelInfo; after: LevelInfo; unlocked: string[]; boost?: number; at: number }
 let xpNews: XpNews | null = null;
 const xpListeners = new Set<() => void>();
 
@@ -235,6 +235,17 @@ socket.on('account:xp', (x: Omit<XpNews, 'at'>) => {
   if (me) set({ ...me, level: x.after.level });
   xpListeners.forEach((l) => l());
 });
+
+// ---------- XP boost running now (an admin started it) ----------
+
+let boost: BoostView | null = null;
+const boostListeners = new Set<() => void>();
+socket.on('xp:boost', (b: BoostView | null) => { boost = b; boostListeners.forEach((l) => l()); });
+
+/** The XP boost on this player right now, or null. */
+export function useXpBoost() {
+  return useSyncExternalStore((l) => { boostListeners.add(l); return () => boostListeners.delete(l); }, () => boost);
+}
 
 // An admin changed this account's XP.
 socket.on('account:level', (level: number) => { if (me) set({ ...me, level }); });

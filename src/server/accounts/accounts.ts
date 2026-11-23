@@ -38,7 +38,7 @@ const XP_ADMIN_MAX = 10_000_000;
 export interface SocketAccount { id: string; username: string; admin: boolean; title?: string; level?: number; pic?: string }
 
 /** XP one account got from a finished game. */
-export interface XpGain { accountId: string; gained: number; before: LevelInfo; after: LevelInfo; unlocked: string[] }
+export interface XpGain { accountId: string; gained: number; before: LevelInfo; after: LevelInfo; unlocked: string[]; boost?: number }
 
 const LEVEL_REWARDS = [
   ...PROFILE_COLORS.map((r) => ({ ...r, kind: 'color' })),
@@ -251,6 +251,13 @@ export class Accounts {
     if (Object.keys(patch).length) await this.store.updateUser(u.id, patch);
   }
 
+  /** An account's id and exact username, for admin tools that name someone. */
+  async findAccount(username: string): Promise<{ id: string; username: string } | null> {
+    if (!this.ready) return null;
+    const u = await this.store.userByName(String(username ?? '').trim().replace(/^@/, ''));
+    return u ? { id: u.id, username: u.username } : null;
+  }
+
   /** Accounts matching a search, for the admin panel. Emails stay private: only whether one is set and confirmed. */
   async adminSearch(query: string) {
     const q = String(query ?? '').trim().replace(/^@/, '').slice(0, 20);
@@ -289,6 +296,8 @@ export class Accounts {
     });
   }
 
+  /** The XP boost on an account right now (1 when none), set by the server from `Boosts`. */
+  boostFor?: (accountId: string) => number;
   /** Called after an admin changes someone's XP, so their open screens and rooms show the new level. */
   onLevel?: (accountId: string, level: number) => void;
   /** Called after a username change, so other stores (leaderboards, live rooms) can follow. Never throws to the caller. */
@@ -377,6 +386,11 @@ export class Accounts {
   async record(entries: { accountId: string; game: GameRecord }[]): Promise<XpGain[]> {
     if (!this.ready || !entries.length) return [];
     try {
+      // A running XP boost is saved with the game, so its XP survives working the total out again.
+      entries = entries.map((e) => {
+        const m = this.boostFor?.(e.accountId) ?? 1;
+        return m > 1 ? { ...e, game: { ...e.game, xpBoost: m } } : e;
+      });
       await this.store.addGames(entries.map((e) => ({ userId: e.accountId, game: e.game })));
     } catch (e) {
       console.error('Could not save game results:', e);
@@ -395,7 +409,8 @@ export class Accounts {
           total = await this.xpOf(u);
         }
         const before = levelFor(total - n), after = levelFor(total);
-        out.push({ accountId, gained: n, before, after, unlocked: unlockedBetween(before.level, after.level, LEVEL_REWARDS) });
+        const boost = Math.max(1, ...entries.filter((e) => e.accountId === accountId).map((e) => e.game.xpBoost ?? 1));
+        out.push({ accountId, gained: n, before, after, unlocked: unlockedBetween(before.level, after.level, LEVEL_REWARDS), ...(boost > 1 ? { boost } : {}) });
       } catch (e) {
         console.error('Could not add XP:', e);
       }
