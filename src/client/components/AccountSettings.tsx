@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { EMAIL_RE, PASSWORD_MIN, USERNAME_COOLDOWN_DAYS, USERNAME_RE, type Me } from '../../shared/accounts';
-import { changePassword, changeUsername, logout, sendConfirmEmail, updateMe, useAccount } from '../account';
+import { changePassword, changeUsername, logout, savePresets, sendConfirmEmail, updateMe, useAccount } from '../account';
+import { PRESET_NAME_MAX, PRESET_SLOTS, cleanPresetName, presetSummary, type Preset } from '../../shared/presets';
+import { sharePreset } from './Presets';
 import { AccountDialog } from './Account';
 
 const DAY = 86_400_000;
@@ -32,6 +34,7 @@ export function AccountSettings({ onClose }: { onClose: () => void }) {
         <UsernameSection me={me} />
         <EmailSection me={me} />
         <PasswordSection />
+        <PresetsSection me={me} />
         <section className="as-group">
           <h3>Profile</h3>
           <p className="muted small">Display name, bio, colors, pinned stats and who can see your profile are under <a href={`/u/${me.username}`}>Edit profile</a>.</p>
@@ -184,5 +187,39 @@ function PasswordSection() {
       {f.err && <p className="error small">{f.err}</p>}
       {f.done && <p className="as-done small">{f.done}</p>}
     </form>
+  );
+}
+
+/** Their saved game presets: share, rename or delete. New ones are saved from a room's lobby. */
+function PresetsSection({ me }: { me: Me }) {
+  const f = useForm();
+  const list = me.presets;
+  const rename = (p: Preset) => {
+    const n = prompt(`New name (up to ${PRESET_NAME_MAX} characters):`, p.name);
+    const name = n === null ? '' : cleanPresetName(n);
+    if (name) void f.run(async () => { await savePresets(list.map((x) => (x.id === p.id ? { ...x, name } : x))); return `Renamed to “${name}”.`; });
+  };
+  const remove = (p: Preset) => {
+    if (confirm(`Delete the preset “${p.name}”?`)) void f.run(async () => { await savePresets(list.filter((x) => x.id !== p.id)); return `Deleted “${p.name}”.`; });
+  };
+  return (
+    <section className="as-group">
+      <h3>My game presets <span className="muted">({list.length}/{PRESET_SLOTS})</span></h3>
+      {!list.length && <small className="muted">None yet. In a room’s lobby, set the rules you like and choose “Save the current rules as a preset”.</small>}
+      <ul className="preset-slots compact">
+        {list.map((p) => (
+          <li key={p.id}>
+            <div className="preset-slot-use static"><b>{p.name}</b><small>{presetSummary(p.settings)}</small></div>
+            <div className="preset-slot-actions">
+              <button type="button" className="link small" onClick={() => void sharePreset(p.name, p.settings)}>Share</button>
+              <button type="button" className="link small" disabled={f.busy} onClick={() => rename(p)}>Rename</button>
+              <button type="button" className="link small danger" disabled={f.busy} onClick={() => remove(p)}>Delete</button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {f.err && <p className="error small">{f.err}</p>}
+      {f.done && <p className="as-done small">{f.done}</p>}
+    </section>
   );
 }

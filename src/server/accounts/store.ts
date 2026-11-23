@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import pg from 'pg';
+import type { Preset } from '../../shared/presets';
 import type { GameRecord } from '../../shared/accounts';
 import type { Visibility } from '../../shared/profile';
 
@@ -20,6 +21,8 @@ export interface User {
   emailVerified?: boolean;
   /** When the username last changed. */
   usernameChangedAt?: number;
+  /** Their own game presets (at most PRESET_SLOTS). */
+  presets?: Preset[];
   /** Who can see their profile stats. Missing means public. */
   visibility?: Visibility;
   /** Stat ids pinned to the top of their profile. */
@@ -37,7 +40,7 @@ export interface FriendLink { from: string; to: string; accepted: boolean; at: n
 /** A one-time emailed link: a password reset, or confirming an email address (`email` is the address it was sent to). */
 export interface AccountToken { hash: string; userId: string; kind: 'reset' | 'confirm'; email: string | null; expiresAt: number; createdAt: number }
 
-export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges' | 'color' | 'frame' | 'email' | 'emailVerified' | 'passwordHash'>>;
+export type UserPatch = Partial<Pick<User, 'displayName' | 'bio' | 'settings' | 'visibility' | 'pinned' | 'grantedBadges' | 'color' | 'frame' | 'email' | 'emailVerified' | 'passwordHash' | 'presets'>>;
 
 /** Where accounts live. Postgres in production, a JSON file for local development and tests. */
 export interface AccountStore {
@@ -295,6 +298,7 @@ CREATE INDEX IF NOT EXISTS friends_to ON friends (to_id);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS username_changed_at BIGINT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS presets JSONB;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email ON users (email) WHERE email IS NOT NULL;
 CREATE TABLE IF NOT EXISTS account_tokens (
   hash TEXT PRIMARY KEY,
@@ -310,7 +314,7 @@ CREATE INDEX IF NOT EXISTS account_tokens_user ON account_tokens (user_id, kind,
 interface UserRow {
   id: string; username: string; key: string; password_hash: string; display_name: string; bio: string;
   settings: Record<string, unknown> | null; created_at: string; visibility: Visibility | null; pinned: string[] | null; granted_badges: string[] | null;
-  color: string | null; frame: string | null; email: string | null; email_verified: boolean | null; username_changed_at: string | null;
+  color: string | null; frame: string | null; email: string | null; email_verified: boolean | null; username_changed_at: string | null; presets: Preset[] | null;
 }
 const fromRow = (r: UserRow | undefined): User | null => r ? {
   id: r.id, username: r.username, key: r.key, passwordHash: r.password_hash, displayName: r.display_name,
@@ -319,6 +323,7 @@ const fromRow = (r: UserRow | undefined): User | null => r ? {
   ...(r.color ? { color: r.color } : {}), ...(r.frame ? { frame: r.frame } : {}),
   email: r.email ?? null, emailVerified: !!r.email_verified,
   ...(r.username_changed_at ? { usernameChangedAt: Number(r.username_changed_at) } : {}),
+  ...(r.presets ? { presets: r.presets } : {}),
 } : null;
 
 export class PgAccountStore implements AccountStore {
@@ -371,7 +376,7 @@ export class PgAccountStore implements AccountStore {
   async updateUser(id: string, patch: UserPatch) {
     const cols: Record<keyof UserPatch, string> = {
       displayName: 'display_name', bio: 'bio', settings: 'settings', visibility: 'visibility', pinned: 'pinned', grantedBadges: 'granted_badges',
-      color: 'color', frame: 'frame', email: 'email', emailVerified: 'email_verified', passwordHash: 'password_hash',
+      color: 'color', frame: 'frame', email: 'email', emailVerified: 'email_verified', passwordHash: 'password_hash', presets: 'presets',
     };
     const keys = (Object.keys(patch) as (keyof UserPatch)[]).filter((k) => k in cols);
     if (!keys.length) return;

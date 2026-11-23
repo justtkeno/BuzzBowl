@@ -1,3 +1,4 @@
+import { Info } from './Info';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PublicPlayer, PublicState } from '../../shared/types';
 import { BOT_SKILLS } from '../../shared/types';
@@ -110,7 +111,7 @@ export function Scoreboard({ s }: { s: PublicState }) {
         ))
       ) : (
         <table className="ffa">
-          <thead><tr><th>Player</th><th className="num">P/10/N</th><th className="num">Pts</th>{r.isController && !r.fixed && <th />}</tr></thead>
+          <thead><tr><th>Player</th><th className="num">P/10/N<Info term="pn" /></th><th className="num">Pts</th>{r.isController && !r.fixed && <th />}</tr></thead>
           <tbody>{ffa.map((p) => row(p))}</tbody>
         </table>
       )}

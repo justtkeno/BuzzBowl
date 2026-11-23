@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useTheme } from '../App';
 import { Logo } from './Logo';
+import { PhoneTabs } from './PhoneTabs';
 
 const CONTACT = 'playtriviosupport@gmail.com';
 
@@ -9,7 +10,7 @@ export function Privacy() {
   useTheme();
   useEffect(() => { document.title = 'Privacy · Trivio'; }, []);
   return (
-    <div className="profile-page">
+    <div className="profile-page with-tabbar">
       <header className="profile-top">
         <a className="brand small" href="/"><Logo /> Trivio</a>
       </header>
@@ -55,6 +56,7 @@ export function Privacy() {
           <p><a className="btn" href="/">Back to Trivio</a></p>
         </section>
       </main>
+      <PhoneTabs active={null} />
     </div>
   );
 }

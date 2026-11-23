@@ -10,6 +10,9 @@ import { SettingsMenu } from './AppSettings';
 import { Announcement } from './Announcement';
 import { CategoryDot } from './CategoryChip';
 import { useTheme } from '../App';
+import { Info } from './Info';
+import { PhoneTabs } from './PhoneTabs';
+import type { TermId } from '../glossary';
 import { AccountBar, Avatar, CreatorBadge, tint } from './Account';
 import { FriendButton, FriendsTab, InviteBanner } from './Friends';
 import { Marks } from './Daily';
@@ -49,7 +52,7 @@ export function Profile({ username }: { username: string }) {
   const headTint = tint(look?.color);
 
   return (
-    <div className="profile-page">
+    <div className="profile-page with-tabbar">
       <header className="profile-top">
         <a className="brand small" href="/"><Logo /> Trivio</a>
         <AccountBar />
@@ -111,6 +114,7 @@ export function Profile({ username }: { username: string }) {
         )}
       </main>
       <FriendsTab />
+      <PhoneTabs active={mine ? 'profile' : null} />
       <InviteBanner />
       <Announcement />
     </div>
@@ -304,7 +308,7 @@ function Tiles({ p }: { p: PublicProfile }) {
       )}
       {tiles.map((x) => (
         <div key={x.label} className={`tile ${x.tone ?? ''}`}>
-          <div className="tile-label">{x.label}</div>
+          <div className="tile-label">{x.label}<TermTip label={x.label} /></div>
           <div className="tile-value">{x.value}</div>
           {x.sub && <div className="tile-sub">{x.sub}</div>}
         </div>
@@ -360,7 +364,7 @@ function DailySection({ d }: { d: DailyProfile }) {
       <div className="tiles">
         {tiles.map((x) => (
           <div key={x.label} className={`tile ${x.tone ?? ''}`}>
-            <div className="tile-label">{x.label}</div>
+            <div className="tile-label">{x.label}<TermTip label={x.label} /></div>
             <div className="tile-value">{x.value}</div>
             <div className="tile-sub">{x.sub}</div>
           </div>
@@ -398,7 +402,7 @@ function SurvivalSection({ sv }: { sv: SurvivalProfile }) {
       <div className="tiles">
         {tiles.map((x) => (
           <div key={x.label} className={`tile ${x.tone ?? ''}`}>
-            <div className="tile-label">{x.label}</div>
+            <div className="tile-label">{x.label}<TermTip label={x.label} /></div>
             <div className="tile-value">{x.value}</div>
             <div className="tile-sub">{x.sub}</div>
           </div>
@@ -452,7 +456,7 @@ function Pinned({ p, color, mine, onEdit }: { p: PublicProfile; color: string; m
         const v = s.get(p);
         return (
           <div key={s.id} className="tile pinned">
-            <div className="tile-label">{s.label}</div>
+            <div className="tile-label">{s.label}<TermTip label={s.label} /></div>
             <div className="tile-value">{v?.value ?? '–'}</div>
             {v?.sub && <div className="tile-sub">{v.sub}</div>}
           </div>
@@ -499,4 +503,14 @@ function Badges({ p, mine }: { p: PublicProfile; mine: boolean }) {
       </ul>
     </section>
   );
+}
+
+/** Stat names that get a ⓘ explaining them. */
+const LABEL_TERMS: Record<string, TermId> = {
+  'Points / game': 'ppg', 'Points / tossup': 'ppth', Powers: 'power', 'Buzz depth': 'depth', 'Bonus PPB': 'bonus',
+  'Daily 1st places': 'daily', 'Dailies played': 'daily', 'Best survival run': 'survival', 'Best run': 'survival',
+};
+function TermTip({ label }: { label: string }) {
+  const t = LABEL_TERMS[label];
+  return t ? <Info term={t} /> : null;
 }

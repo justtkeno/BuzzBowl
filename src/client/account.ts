@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { Preset } from '../shared/presets';
 import type { Me, ProfileView } from '../shared/accounts';
 import type { Visibility } from '../shared/profile';
 import { prefs, socket } from './socket';
@@ -88,6 +89,13 @@ export async function resetPassword(token: string, password: string) {
   prefs.setName(user.displayName);
   adopt(user);
   reconnect();
+}
+
+/** Saves this account's own game presets (at most PRESET_SLOTS). */
+export async function savePresets(presets: Preset[]) {
+  const { user } = await api<{ user: Me }>('/me', { method: 'PATCH', body: { presets } });
+  set(user);
+  return user.presets;
 }
 
 /** New username (once a week). Reconnects so rooms and friends see the new name. */

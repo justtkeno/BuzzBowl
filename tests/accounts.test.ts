@@ -317,6 +317,16 @@ describe('account settings: username and password', () => {
     } finally { Date.now = real; }
   });
 
+  it('saves up to five game presets on the account', async () => {
+    const cookie = cookieOf(await send('POST', '/login', { username: 'sam_two', password: 'hunter2hunter2' }));
+    const presets = Array.from({ length: 7 }, (_, i) => ({ id: `p${i}`, name: `Rules ${i}`, settings: { wpm: 300, source: 'upload', junk: true } }));
+    const res = await send('PATCH', '/me', { presets }, cookie);
+    const saved = (await res.json()).user.presets;
+    expect(saved).toHaveLength(5);
+    expect(saved[0]).toEqual({ id: 'p0', name: 'Rules 0', settings: { wpm: 300 } });
+    expect((await me(cookie)).presets).toHaveLength(5);
+  });
+
   it('changes the password with the current one, logging out other devices', async () => {
     const other = cookieOf(await send('POST', '/login', { username: 'sam_two', password: 'hunter2hunter2' }));
     const here = cookieOf(await send('POST', '/login', { username: 'sam_two', password: 'hunter2hunter2' }));

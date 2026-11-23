@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, PublicState } from '../shared/types';
+import type { PresetSettings } from '../shared/presets';
 import { Home } from './components/Home';
 import { ConfirmEmail, ResetPassword } from './components/Account';
 import { InviteBanner } from './components/Friends';
@@ -61,9 +62,11 @@ function Player() {
     if (codeFromPath() !== res.code) history.replaceState(null, '', `/r/${res.code}`);
   }
 
-  const create = useCallback(async (name: string, solo: boolean) => {
+  const create = useCallback(async (name: string, solo: boolean, preset?: PresetSettings) => {
     const res = await call<{ code: string; playerId: string; token: string; chat: ChatMessage[] }>('room:create', { name, solo, settings: prefs.settings() });
     afterJoin(res, name);
+    // A shared preset's rules go on top of the host's usual settings.
+    if (preset) await call('settings:update', preset).catch((e) => setError(e.message));
     if (solo) await call('game:start').catch((e) => setError(e.message));
   }, []);
 

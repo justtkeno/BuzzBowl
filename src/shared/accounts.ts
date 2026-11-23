@@ -1,5 +1,6 @@
 // Account and profile types shared by the server and the client. Plain JSON.
 
+import type { Preset } from './presets';
 import type { CategoryStats, Mode } from './types';
 import type { BadgeState, Visibility } from './profile';
 
@@ -30,6 +31,8 @@ export interface Me extends Look {
   emailVerified: boolean;
   /** When they last changed their username (null if never). The next change waits USERNAME_COOLDOWN_DAYS. */
   usernameChangedAt: number | null;
+  /** Their own game presets, saved on the account. */
+  presets: Preset[];
   createdAt: number;
   /** Site admin (the creator): can take the host seat in any room and moderate accounts. */
   admin: boolean;

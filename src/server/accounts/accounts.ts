@@ -10,6 +10,7 @@ import {
   BADGES, BADGE_BY_ID, VISIBILITIES, badgesFor, cleanPinned, colorById, earnedIds, frameById, isColor, isFrame, isUnlocked, lookFor,
   type Reward, type Visibility,
 } from '../../shared/profile';
+import { cleanPresets } from '../../shared/presets';
 import type { Mailer } from './mailer';
 import type { AccountStore, FriendLink, User, UserPatch } from './store';
 
@@ -102,7 +103,7 @@ const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt
 
 export function toMe(u: User): Me {
   return { id: u.id, username: u.username, displayName: u.displayName, bio: u.bio, createdAt: u.createdAt, admin: isAdmin(u), ...(isAdmin(u) ? { adminLocked } : {}), settings: u.settings,
-    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u), email: u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null };
+    visibility: u.visibility ?? 'public', pinned: cleanPinned(u.pinned), ...lookFor(u), email: u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null, presets: u.presets ?? [] };
 }
 
 /** Tiny in-memory limiter for login/signup attempts, per IP. */
@@ -474,6 +475,7 @@ export class Accounts {
         patch.visibility = b.visibility;
       }
       if ('pinned' in b) patch.pinned = cleanPinned(b.pinned);
+      if ('presets' in b) patch.presets = cleanPresets(b.presets);
       if ('color' in b && !isColor(b.color)) return res.status(400).json({ error: 'Pick a profile color.' });
       if ('frame' in b && !isFrame(b.frame)) return res.status(400).json({ error: 'Pick an avatar frame.' });
       const wanted: Reward[] = [];
