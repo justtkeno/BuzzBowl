@@ -31,7 +31,7 @@ const SECTIONS: { title: string; items: Faq[] }[] = [
   {
     title: 'Rooms and rules',
     items: [
-      { q: 'What are presets?', a: <>Ready-made sets of rules: <b>Casual</b>, <b>Tournament rules</b>, <b>Quick 10</b> and <b>Party</b>. The host picks one in the lobby, or opens <b>Room settings</b> to set every rule. Signed in, you can save up to 5 of your own presets and share any of them with a link.</> },
+      { q: 'What are presets?', a: <>Ready-made sets of rules: <b>Casual</b>, <b>Tournament rules</b>, <b>Quick 10</b> and <b>Party</b>. The host picks one in the lobby, or opens <b>Room settings</b> to set every rule. <b>Reset to default rules</b> undoes a preset and keeps your question choices. Signed in, you can save up to 5 of your own presets and share any of them with a link.</> },
       { q: 'Can the host change rules during a game?', a: <>Yes: <b>⋯ Menu → Room settings</b>. Longer or shorter timers apply right away, new question topics start with the next tossup, and everyone sees a note in chat.</> },
       { q: 'What does a reader do?', a: <>A reader is optional. They see each question early, read it out loud (in the room or on a call), control the pace and rule on answers. Without one, the app shows the question word by word.</> },
       { q: 'What’s the big-screen view?', a: <>A scoreboard and question view for a TV or projector: <b>⋯ Menu → Big-screen view</b>. It never plays, it just shows the game.</> },

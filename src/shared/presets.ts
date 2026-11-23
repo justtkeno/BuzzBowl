@@ -1,7 +1,7 @@
 // Game presets: named sets of room rules. A few built-in ones, plus up to PRESET_SLOTS of a signed-in player's own,
 // saved on their account. Any preset can be shared as a link (the rules travel in the link itself).
 
-import type { Filters, Settings } from './types';
+import { DEFAULT_SETTINGS, type Filters, type Settings } from './types';
 
 /** The rules a preset can carry. Everything in Settings except an uploaded packet, which only exists in one room. */
 export type PresetSettings = Partial<Omit<Settings, 'source' | 'filters'>> & { source?: 'qbreader' | 'sample' | 'lightning'; filters?: Filters };
@@ -31,6 +31,10 @@ export const DEFAULT_PRESETS: (Preset & { blurb: string })[] = [
     settings: { mode: 'ffa', topicVote: true, bounty: true, powers: true, negs: false, bonuses: false, wpm: 200, answerSeconds: 10, deadSeconds: 5, gameLength: 20 },
   },
 ];
+
+/** Trivio's usual rules, the ones a new room starts with. Leaves out the question source and filters, so a reset keeps the
+ *  host's topics and an uploaded packet. */
+export const DEFAULT_RULES: PresetSettings = (({ source: _s, filters: _f, ...rules }) => rules)(DEFAULT_SETTINGS);
 
 const NUMBERS = ['wpm', 'answerSeconds', 'bonusSeconds', 'deadSeconds', 'powerValue', 'tenValue', 'negValue', 'bonusPartValue', 'gameLength'] as const;
 const FLAGS = ['powers', 'negs', 'bonuses', 'showTextToPlayers', 'readerRules', 'topicVote', 'bounty'] as const;
