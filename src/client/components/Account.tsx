@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PASSWORD_MIN, USERNAME_RE } from '../../shared/accounts';
 import { DEFAULT_COLOR, DEFAULT_FRAME, colorById } from '../../shared/profile';
+import { titleFor } from '../../shared/levels';
 import { login, logout, signup, useAccount } from '../account';
 import '../accounts.css';
 import { SiteAdminPanel } from './SiteAdmin';
@@ -16,25 +17,34 @@ export function tint(color: string | undefined, force = false): { className?: st
   return { className: 'tinted', style: { '--c-light': c.light, '--c-dark': c.dark } as React.CSSProperties };
 }
 
-/** A player's avatar: the first letter of their name in their profile color, with their frame. */
-export function Avatar({ name, color, frame, size, className, force, children }: {
-  name: string; color?: string; frame?: string; size?: 'big'; className?: string; force?: boolean; children?: React.ReactNode;
+/** A player's avatar: their profile picture, or the first letter of their name in their profile color, with their frame. */
+export function Avatar({ name, color, frame, pic, size, className, force, children }: {
+  name: string; color?: string; frame?: string; pic?: string; size?: 'big'; className?: string; force?: boolean; children?: React.ReactNode;
 }) {
+  const [broken, setBroken] = useState<string | null>(null);
   const t = tint(color, force);
-  const cls = ['avatar', size, frame && frame !== DEFAULT_FRAME ? `frame-${frame}` : '', t.className, className].filter(Boolean).join(' ');
+  const showPic = !!pic && broken !== pic;
+  const cls = ['avatar', size, showPic ? 'has-pic' : '', frame && frame !== DEFAULT_FRAME ? `frame-${frame}` : '', t.className, className].filter(Boolean).join(' ');
   return (
     <span className={cls} style={t.style} aria-hidden="true">
-      {(Array.from(name.trim())[0] ?? '?').toUpperCase()}
+      {showPic ? <img src={pic} alt="" decoding="async" loading="lazy" onError={() => setBroken(pic!)} /> : (Array.from(name.trim())[0] ?? '?').toUpperCase()}
       {children}
     </span>
   );
 }
 
+/** A small level number by a name. */
+export function LevelChip({ level, className = '' }: { level?: number; className?: string }) {
+  if (!level) return null;
+  return <span className={`lvl ${className}`} title={`Level ${level} · ${titleFor(level)}`} aria-label={`Level ${level}`}>{level}</span>;
+}
+
 /** Small check mark next to a logged-in player's name, linking to their profile. Admins get a creator badge too. */
-export function Verified({ username, admin }: { username?: string; admin?: boolean }) {
+export function Verified({ username, admin, level }: { username?: string; admin?: boolean; level?: number }) {
   if (!username) return null;
   return (
     <>
+      <LevelChip level={level} />
       <a className="verified" href={`/u/${username}`} target="_blank" rel="noreferrer" title={`Signed in as @${username} · view profile`} aria-label={`Verified account @${username}, view profile`}>
         <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M8 0l1.9 1.4 2.3-.2.8 2.2 2 1.2-.6 2.3.6 2.3-2 1.2-.8 2.2-2.3-.2L8 16l-1.9-1.4-2.3.2-.8-2.2-2-1.2.6-2.3L1 6.8l2-1.2.8-2.2 2.3.2L8 0zm-1 10.6l4.6-4.6-1-1L7 8.6 5.4 7l-1 1L7 10.6z" /></svg>
       </a>
@@ -66,8 +76,9 @@ export function AccountBar() {
       {me ? (
         <>
           <a className="account-me" href={`/u/${me.username}`}>
-            <Avatar name={me.displayName} color={me.color} frame={me.frame} />
+            <Avatar name={me.displayName} color={me.color} frame={me.frame} pic={me.pic} />
             <span>{me.displayName}</span>
+            <LevelChip level={me.level} />
             {me.admin && <CreatorBadge />}
             <span className="muted small">@{me.username}</span>
           </a>

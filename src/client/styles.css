@@ -549,6 +549,9 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .delta.down { color: var(--bad); }
 @keyframes delta-float { 0% { opacity: 0; } 15% { opacity: .9; } 100% { opacity: 0; transform: translateY(-8px); } }
 .pdot { display: inline-block; width: .6em; height: .6em; border-radius: 50%; margin-right: .4rem; vertical-align: .05em; }
+.pdot.pic { width: 1.35em; height: 1.35em; vertical-align: -.35em; object-fit: cover; border: 2px solid; box-sizing: border-box; margin-right: .35rem; }
+/* Level by a name: a small number in a soft pill. */
+.lvl { display: inline-block; margin-left: .3rem; padding: 0 .38em; min-width: 1.5em; text-align: center; border-radius: 999px; font-size: .68rem; font-weight: 700; line-height: 1.45; vertical-align: .12em; background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); font-variant-numeric: tabular-nums; }
 .streak { margin-left: .35rem; font-size: .75rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
 .catbars { margin-top: .8rem; border-top: 1px solid var(--border); padding-top: .4rem; }
 .catbars h4 { margin: .3rem 0 .5rem; }

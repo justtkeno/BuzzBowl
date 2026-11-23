@@ -25,6 +25,8 @@ a.btn.primary { color: var(--accent-ink); }
   --ring: 1.5px; --gap: 1.5px; --mark: 12px;
 }
 .avatar.big { width: 64px; height: 64px; font-size: 1.8rem; --ring: 2.5px; --gap: 3px; --mark: 22px; }
+.avatar > img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.avatar.has-pic { background: var(--surface-2); }
 
 /* ---------- badge rewards: profile colors and avatar frames ---------- */
 /* A profile color: --c-light / --c-dark come from PROFILE_COLORS, set inline by tint(). */
@@ -62,6 +64,28 @@ a.btn.primary { color: var(--accent-ink); }
 .avatar.frame-flame::after, .avatar.frame-star::after { background: var(--accent); -webkit-mask: var(--glyph) center / 76% no-repeat; mask: var(--glyph) center / 76% no-repeat; }
 .avatar.frame-star { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 .8l2.2 4.6 5 .7-3.6 3.5.9 5L8 12.2l-4.5 2.4.9-5L.8 6.1l5-.7z'/%3E%3C/svg%3E"); }
 .avatar.frame-flame { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8.8.4c.6 2.6-.6 4-1.9 5.4C5.6 7.2 4.2 8.6 4.2 10.8c0 2.7 1.7 4.8 3.9 4.8s4.1-2 4.1-4.8c0-1.8-.8-3.2-1.8-4.2.1 1.3-.4 2.2-1.3 2.7C9.9 6.4 9.8 3 8.8.4zM8.1 14.2c-1 0-1.8-.8-1.8-1.9 0-1.2.8-1.9 1.7-2.9.2 1 .8 1.4 1.4 1.8.4.3.6.7.6 1.2 0 1-.9 1.8-1.9 1.8z'/%3E%3C/svg%3E"); }
+
+/* Level frames: metal rings (bronze, silver, gold), laurel and crown marks, and a slowly turning prism ring. */
+.avatar.frame-bronze, .avatar.frame-silver, .avatar.frame-gold, .avatar.frame-prism, .avatar.frame-laurel, .avatar.frame-crown { --metal: conic-gradient(#b87333, #e3a875 25%, #8c5426 50%, #e3a875 75%, #b87333); }
+.avatar.frame-silver { --metal: conic-gradient(#9aa3ad, #eef1f4 25%, #7d8690 50%, #eef1f4 75%, #9aa3ad); }
+.avatar.frame-gold, .avatar.frame-laurel, .avatar.frame-crown { --metal: conic-gradient(#c99a2e, #fbe39a 25%, #a6781a 50%, #fbe39a 75%, #c99a2e); }
+.avatar.frame-prism { --metal: conic-gradient(#ff6b6b, #fcc419, #51cf66, #22b8cf, #845ef7, #f06595, #ff6b6b); }
+.avatar.frame-bronze::before, .avatar.frame-silver::before, .avatar.frame-gold::before, .avatar.frame-prism::before, .avatar.frame-laurel::before, .avatar.frame-crown::before {
+  content: ''; position: absolute; inset: calc(-1 * (var(--gap) + var(--ring) + .5px)); padding: calc(var(--ring) + .5px); border-radius: 50%; pointer-events: none;
+  background: var(--metal);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.avatar.frame-gold::before { padding: calc(var(--ring) + 1px); inset: calc(-1 * (var(--gap) + var(--ring) + 1px)); }
+.avatar.frame-prism::before { animation: halo-turn 18s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .avatar.frame-prism::before { animation: none; } }
+/* Laurel and crown: the gold ring plus a small mark on top right. */
+.avatar.frame-laurel::after, .avatar.frame-crown::after {
+  content: ''; position: absolute; top: calc(var(--mark) * -.38); right: calc(var(--mark) * -.38); width: var(--mark); height: var(--mark); pointer-events: none;
+  border-radius: 50%; background: var(--surface) var(--glyph) center / 70% no-repeat;
+}
+.avatar.frame-laurel { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cg fill='%23c99a2e'%3E%3Cpath d='M8 14.5c-3.6-.6-5.8-3.4-5.6-7.3.4.1.8.3 1.1.5-.1 3 1.6 5.2 4.5 5.8zM8 14.5c3.6-.6 5.8-3.4 5.6-7.3-.4.1-.8.3-1.1.5.1 3-1.6 5.2-4.5 5.8z'/%3E%3Cellipse cx='3.2' cy='4.6' rx='1' ry='1.9' transform='rotate(-20 3.2 4.6)'/%3E%3Cellipse cx='12.8' cy='4.6' rx='1' ry='1.9' transform='rotate(20 12.8 4.6)'/%3E%3Cellipse cx='4.6' cy='8.9' rx='.9' ry='1.7' transform='rotate(-50 4.6 8.9)'/%3E%3Cellipse cx='11.4' cy='8.9' rx='.9' ry='1.7' transform='rotate(50 11.4 8.9)'/%3E%3C/g%3E%3C/svg%3E"); }
+.avatar.frame-crown { --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23d4a017' d='M1.5 4.5l3.4 3L8 2.5l3.1 5 3.4-3-1.4 8H2.9zM2.9 13.5h10.2V15H2.9z'/%3E%3C/svg%3E"); }
 
 /* Pickers in the Edit form */
 .reward-picker { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 2px; }
@@ -263,3 +287,36 @@ a.creator-badge:hover { filter: brightness(1.1); }
 }
 
 @media (max-width: 420px) { .profile-top .account-bar > .muted.grow { display: none; } }
+
+/* ---------- levels ---------- */
+.level-line { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; margin-top: .3rem; }
+.level-line .lvl { margin-left: 0; }
+.xp-bar { position: relative; display: inline-block; width: min(140px, 36vw); height: 6px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+.xp-bar > i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: inherit; transition: width .6s ease; }
+.levels-card h2 { margin: 0; }
+.level-rewards { list-style: none; padding: 0; margin: .4rem 0 0; display: grid; gap: .25rem; }
+.level-rewards li { display: flex; align-items: center; gap: .55rem; padding: .3rem .1rem; border-top: 1px solid var(--border); font-size: .9rem; color: var(--muted); }
+.level-rewards li.got { color: var(--text); }
+.level-rewards li .lvl { margin-left: 0; min-width: 2.1em; }
+.level-rewards li.got .lvl { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.level-rewards .ic, .level-rewards .lock { width: 14px; height: 14px; flex: none; }
+.level-rewards li.got .ic { color: var(--accent); }
+
+/* ---------- profile picture ---------- */
+.pic-row { align-items: center; flex-wrap: wrap; }
+.pic-row .avatar { width: 40px; height: 40px; font-size: 1.1rem; --ring: 2px; --gap: 2px; --mark: 15px; margin-right: .25rem; }
+.modal.photo-modal { width: min(360px, 100%); text-align: center; }
+.photo-modal .row.gap { justify-content: center; }
+.photo-view { position: relative; overflow: hidden; border-radius: 50%; margin: .6rem auto .4rem; background: #111; cursor: grab; touch-action: none; user-select: none; box-shadow: 0 0 0 1px var(--border); }
+.photo-view:active { cursor: grabbing; }
+.photo-view img { position: absolute; left: 0; top: 0; max-width: none; pointer-events: none; user-select: none; -webkit-user-drag: none; }
+.photo-zoom { display: flex; align-items: center; gap: .6rem; justify-content: center; }
+.photo-zoom input { width: min(200px, 60vw); accent-color: var(--accent); }
+
+/* XP after a game */
+.xp-news { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; justify-content: center; margin: .5rem auto 0; font-size: .88rem; }
+.xp-news .xp-gain { font-weight: 700; color: var(--accent); }
+.xp-news .level-up { padding: .1rem .5rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.xp-news .xp-bar > i { animation: xp-fill .9s ease both; }
+@keyframes xp-fill { from { width: var(--from, 0%); } }
+@media (prefers-reduced-motion: reduce) { .xp-news .xp-bar > i { animation: none; } }

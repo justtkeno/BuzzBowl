@@ -29,7 +29,7 @@ export interface RoomIO {
 }
 
 /** A logged-in player's account, attached when they join. */
-export interface JoinAccount { id: string; username: string; admin?: boolean }
+export interface JoinAccount { id: string; username: string; admin?: boolean; level?: number; pic?: string }
 
 export class ActionError extends Error {}
 const fail = (msg: string): never => { throw new ActionError(msg); };
@@ -81,7 +81,7 @@ export const TIMING = {
 };
 
 interface Player {
-  id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string; admin?: boolean;
+  id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string; admin?: boolean; level?: number; pic?: string;
   /** The host, reader or an admin stopped this player from chatting. */
   muted?: boolean;
   /** Admin troll: buzzes are silently ignored, until unfrozen (`frozen`) or for one tossup number (`frozenFor`). */
@@ -424,6 +424,7 @@ export class Room {
       existing.online = true;
       if (clean) existing.name = clean;
       if (account && !existing.accountId) { existing.accountId = account.id; existing.username = account.username; }
+      if (account && existing.accountId === account.id) { existing.level = account.level; existing.pic = account.pic; }
       // Admin powers need the admin to be logged in right now, not just a saved seat token.
       existing.admin = (account && existing.accountId === account.id && account.admin) || undefined;
       const hostAway = !this.s.hostId || !this.player(this.s.hostId)?.online;
@@ -436,13 +437,21 @@ export class Room {
     if (this.s.daily && this.s.players.length) fail('The daily challenge is played solo. Start your own from the home page.');
     if (this.s.survival && this.s.players.length) fail('Survival is played solo. Start your own run from the home page.');
     if (this.s.players.length >= 60) fail('This room is full.');
-    const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null, ...(account ? { accountId: account.id, username: account.username, ...(account.admin ? { admin: true } : {}) } : {}) };
+    const p: Player = { id: rid(), token: rid(24), name: clean, online: true, teamId: null, ...(account ? { accountId: account.id, username: account.username, ...(account.admin ? { admin: true } : {}), ...(account.level ? { level: account.level } : {}), ...(account.pic ? { pic: account.pic } : {}) } : {}) };
     this.s.players.push(p);
     if (this.s.settings.mode === 'teams') this.autoAssign(p);
     if (!this.s.hostId || (!this.player(this.s.hostId)?.online && Date.now() > this.hostReservedUntil)) this.s.hostId = p.id;
     this.system(`${p.name} joined.`);
     this.broadcast();
     return { playerId: p.id, token: p.token };
+  }
+
+  /** A signed-in player's level changed (after a game was saved): show the new one. */
+  setLevel(accountId: string, level: number) {
+    const p = this.s.players.find((x) => x.accountId === accountId);
+    if (!p || p.level === level) return;
+    p.level = level;
+    this.broadcast();
   }
 
   /** Give a reconnecting host or reader back the seat that was held for them. */
@@ -1738,7 +1747,7 @@ export class Room {
       ? this.s.teams.map((t) => ({ id: t.id, name: t.name, playerIds: t.playerIds, captainId: this.captainOf(t.id), ...computeTeamTotals(t.id, this.s.rulings, this.s.adjustments) }))
       : [];
     const streaks = this.streaks();
-    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}), ...(p.admin ? { admin: true } : {}), ...(p.muted ? { muted: true } : {}) }));
+    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}), ...(p.admin ? { admin: true } : {}), ...(p.level ? { level: p.level } : {}), ...(p.pic ? { pic: p.pic } : {}), ...(p.muted ? { muted: true } : {}) }));
     // FFA bonus totals live on each player's "team" (themselves).
     const ffaTeams = this.s.settings.mode === 'ffa'
       ? this.s.players.map((p) => ({ id: p.id, name: p.name, playerIds: [p.id], captainId: p.id, ...computeTeamTotals(p.id, this.s.rulings, this.s.adjustments) }))

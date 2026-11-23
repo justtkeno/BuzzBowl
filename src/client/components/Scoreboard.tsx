@@ -72,9 +72,11 @@ export function Scoreboard({ s }: { s: PublicState }) {
   const row = (p: PublicPlayer, captain?: boolean) => (
     <tr key={p.id} data-flip={p.id} className={`${p.online ? '' : 'offline'} ${p.id === r.me ? 'me' : ''}`}>
       <td className="name">
-        <span className="pdot" style={{ background: colorFor(p.id, order) }} />
+        {p.pic
+          ? <img className="pdot pic" src={p.pic} alt="" decoding="async" style={{ borderColor: colorFor(p.id, order) }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          : <span className="pdot" style={{ background: colorFor(p.id, order) }} />}
         {p.name}
-        <Verified username={p.username} admin={p.admin} />
+        <Verified username={p.username} admin={p.admin} level={p.level} />
         {p.streak >= 2 && <span className="streak" title={`${p.streak} tossups in a row`}>×{p.streak}</span>}
         {p.bot && <span className="badge" title={`Computer player · ${BOT_SKILLS[p.bot].blurb}`}>bot · {BOT_SKILLS[p.bot].label.toLowerCase()}</span>}
         {p.id === s.hostId && <span className="badge">host</span>}

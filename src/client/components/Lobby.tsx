@@ -92,7 +92,7 @@ export function Lobby({ s, fresh, onRename, onSettings, onBigInvite, onBigScreen
                     const p = s.players.find((x) => x.id === id);
                     return (
                       <li key={id} className={`${p?.online ? '' : 'offline'} ${r.isController ? 'gm-row' : ''}`}>
-                        <span className="gm-name">{p?.name}<Verified username={p?.username} admin={p?.admin} />{t.captainId === id && <span className="badge">captain</span>}</span>
+                        <span className="gm-name">{p?.name}<Verified username={p?.username} admin={p?.admin} level={p?.level} />{t.captainId === id && <span className="badge">captain</span>}</span>
                         {r.isController && <PlayerControls s={s} playerId={id} teamId={t.id} captain={t.captainId === id} />}
                       </li>
                     );
@@ -149,7 +149,7 @@ function Unassigned({ s }: { s: PublicState }) {
       <ul>
         {loose.map((p) => (
           <li key={p.id} className={`${p.online ? '' : 'offline'} ${r.isController ? 'gm-row' : ''}`}>
-            <span className="gm-name">{p.name}<Verified username={p.username} admin={p.admin} /></span>
+            <span className="gm-name">{p.name}<Verified username={p.username} admin={p.admin} level={p.level} /></span>
             {r.isController && <PlayerControls s={s} playerId={p.id} teamId={null} />}
           </li>
         ))}

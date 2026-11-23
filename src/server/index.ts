@@ -164,7 +164,18 @@ function roomIO(code: string): RoomIO {
       for (const id of playerIds) io.to(id === SPECTATOR ? `w:${code}` : `p:${code}:${id}`).emit(event, payload);
     },
     gameOver(records) {
-      accounts.record(records);
+      void accounts.record(records).then((gains) => {
+        for (const g of gains) {
+          // Their own screens show the XP they got; the room shows the new level by their name.
+          for (const s of io.sockets.sockets.values()) {
+            const a = accounts.of(s);
+            if (a?.id !== g.accountId) continue;
+            a.level = g.after.level;
+            s.emit('account:xp', { gained: g.gained, before: g.before, after: g.after, unlocked: g.unlocked });
+          }
+          store.get(code)?.setLevel(g.accountId, g.after.level);
+        }
+      });
     },
     remove(playerId) {
       detach(code, playerId);

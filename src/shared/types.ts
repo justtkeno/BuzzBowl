@@ -141,6 +141,9 @@ export interface PublicPlayer {
   username?: string;
   /** Logged in as a site admin (shown as a creator badge). */
   admin?: boolean;
+  /** Signed-in players: their level and profile picture. */
+  level?: number;
+  pic?: string;
   /** The host, reader or an admin muted this player in chat. */
   muted?: boolean;
 }
