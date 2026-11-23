@@ -136,12 +136,14 @@ function EmailSection({ me }: { me: Me }) {
 
 /** Whether the saved email is confirmed, and a way to send the (optional) confirmation link. */
 function EmailStatus({ email, changed }: { email: string; changed: boolean }) {
-  const { me } = useAccount();
+  const { me, emailOn } = useAccount();
   const [state, setState] = useState<'idle' | 'busy' | 'sent'>('idle');
   const [err, setErr] = useState<string | null>(null);
   if (!email) return <small className="muted">Without an email, a forgotten password can’t be reset.</small>;
+  if (me?.emailVerified && !changed) return <small className="email-ok">✓ Confirmed</small>;
+  // Until the server can send email, there's no link to offer: just keep the address.
+  if (!emailOn) return <small className="muted">{changed ? 'Enter your current password to save it.' : 'Saved for password resets.'}</small>;
   if (changed) return <small className="muted">Enter your current password to save it. We’ll email a link to confirm it; confirming is optional.</small>;
-  if (me?.emailVerified) return <small className="email-ok">✓ Confirmed</small>;
   const send = async () => {
     setState('busy'); setErr(null);
     try { await sendConfirmEmail(); setState('sent'); } catch (e: any) { setErr(e.message); setState('idle'); }
