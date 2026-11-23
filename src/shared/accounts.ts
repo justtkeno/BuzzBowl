@@ -3,6 +3,7 @@
 import type { Preset } from './presets';
 import type { CategoryStats, Mode } from './types';
 import type { BadgeState, Visibility } from './profile';
+import type { LevelInfo } from './levels';
 
 export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 export const PASSWORD_MIN = 8;
@@ -17,6 +18,10 @@ export const EMAIL_MAX = 254;
 export interface Look {
   color: string;
   frame: string;
+  /** Profile picture address, when they uploaded one. */
+  pic?: string;
+  /** Their level, once worked out. */
+  level?: number;
 }
 
 /** The logged-in user, as they see themselves. */
@@ -132,6 +137,8 @@ export interface PublicProfile extends Look {
   /** Stat ids they pinned to the top. */
   pinned: string[];
   badges: BadgeState[];
+  /** Level, XP and progress to the next level. */
+  levelInfo: LevelInfo;
   /** Only sent to the owner (and admins), who see the full profile whatever the setting. */
   visibility?: Visibility;
   /** Admins only: a site admin unlocked badges for this account. */

@@ -9,7 +9,7 @@ import { dayKey } from '../daily/daily';
 import { weekStart } from '../survival/survival';
 
 export interface Person { username: string; displayName: string; public: boolean }
-export interface Look { color: string; frame: string; title?: string }
+export interface Look { color: string; frame: string; pic?: string; title?: string }
 
 export interface LeaderboardSources {
   gameTotals(fromAt: number | null): Promise<GameTotal[]>;
@@ -69,7 +69,7 @@ export class Leaderboards {
       const l = looks.get(r.userId);
       return {
         rank: r.rank, username: p.username, displayName: p.displayName, color: l?.color ?? DEFAULT_COLOR, frame: l?.frame ?? DEFAULT_FRAME,
-        ...(l?.title ? { title: l.title } : {}), value: r.value, extra: r.extra,
+        ...(l?.pic ? { pic: l.pic } : {}), ...(l?.title ? { title: l.title } : {}), value: r.value, extra: r.extra,
       };
     };
     const view: BoardView = {

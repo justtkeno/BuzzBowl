@@ -3,6 +3,27 @@ import type { PublicState } from '../../shared/types';
 import { ScoreGraph } from './ScoreGraph';
 import { shareRecap } from '../recap';
 import { act, fmtPct, roles } from './util';
+import { useAccount, useXpNews } from '../account';
+
+/** "+86 XP", a bar to the next level, and what a level-up unlocked. Only for the signed-in player, after the game was saved. */
+function XpNews() {
+  const x = useXpNews();
+  const { me } = useAccount();
+  // Only news from this game: the server sends it a moment after the game ends.
+  const [since] = useState(() => Date.now() - 60_000);
+  if (!x || !me || x.at < since) return null;
+  const leveled = x.after.level > x.before.level;
+  const pctOf = (i: { into: number; need: number }) => (i.need ? Math.min(100, (i.into / i.need) * 100) : 100);
+  return (
+    <div className="xp-news" role="status">
+      <span className="xp-gain">+{x.gained} XP</span>
+      {leveled ? <span className="level-up">Level {x.after.level}!</span> : <span className="muted">Level {x.after.level}</span>}
+      <span className="xp-bar"><i style={{ width: `${pctOf(x.after)}%`, ['--from' as string]: leveled ? '0%' : `${pctOf(x.before)}%` }} /></span>
+      {x.after.need > 0 && <span className="muted small">{x.after.need - x.after.into} XP to level {x.after.level + 1}</span>}
+      {x.unlocked.length > 0 && <span className="small">Unlocked: {x.unlocked.join(', ')} · <a href={`/u/${me.username}`}>Edit profile</a></span>}
+    </div>
+  );
+}
 
 export function Summary({ s }: { s: PublicState }) {
   const r = roles(s);
@@ -18,6 +39,7 @@ export function Summary({ s }: { s: PublicState }) {
       <p className="muted">{heard} tossup{heard === 1 ? '' : 's'} heard.</p>
 
       <Podium s={s} />
+      <XpNews />
 
       {s.highlights.length > 0 && (
         <div className="highlights">

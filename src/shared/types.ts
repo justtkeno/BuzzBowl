@@ -140,6 +140,9 @@ export interface PublicPlayer {
   admin?: boolean;
   /** The title they equipped on their account, shown with their name. */
   title?: string;
+  /** Signed-in players: their level and profile picture. */
+  level?: number;
+  pic?: string;
   /** The host, reader or an admin muted this player in chat. */
   muted?: boolean;
 }

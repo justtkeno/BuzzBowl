@@ -36,6 +36,10 @@ export interface User {
   titles?: string[];
   /** The title they show with their name (a key from titleOptions), or null for none. */
   title?: string | null;
+  /** When they last uploaded a profile picture (the picture itself is stored apart). Missing: no picture. */
+  avatarAt?: number | null;
+  /** Total XP from saved games. Missing or null: not worked out yet (see Accounts.xpOf). */
+  xp?: number | null;
 }
 
 /** A friend request from `from` to `to`; once accepted, the two are friends. */
@@ -101,6 +105,15 @@ export interface AccountStore {
   acceptFriend(from: string, to: string): Promise<boolean>;
   /** Removes any link between the two, in both directions. */
   removeFriend(a: string, b: string): Promise<void>;
+  /** Save (or with null, remove) a profile picture and stamp the user's avatarAt. */
+  setAvatar(userId: string, jpeg: Buffer | null, at: number): Promise<void>;
+  avatar(userId: string): Promise<Buffer | null>;
+  /** Adds XP to a running total. Does nothing while the total isn't worked out yet. Returns the new total, or null. */
+  addXp(userId: string, n: number): Promise<number | null>;
+  /** Sets the total if it isn't set yet. Returns the total now stored. */
+  initXp(userId: string, xp: number): Promise<number>;
+  /** Ids of accounts whose XP total isn't worked out yet. */
+  usersWithoutXp(): Promise<string[]>;
   readonly kind: string;
 }
 
@@ -112,11 +125,13 @@ interface FileData {
   games: { userId: string; game: GameRecord }[];
   tokens: AccountToken[];
   friends: FriendLink[];
+  /** Profile pictures, base64 JPEG by user id. */
+  avatars: Record<string, string>;
 }
 
 export class FileAccountStore implements AccountStore {
   readonly kind = 'file';
-  private d: FileData = { users: [], sessions: [], games: [], tokens: [], friends: [] };
+  private d: FileData = { users: [], sessions: [], games: [], tokens: [], friends: [], avatars: {} };
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private file: string | null) {}
@@ -124,7 +139,7 @@ export class FileAccountStore implements AccountStore {
   async init() {
     if (!this.file || !existsSync(this.file)) return;
     try {
-      this.d = { users: [], sessions: [], games: [], tokens: [], friends: [], ...JSON.parse(readFileSync(this.file, 'utf8')) };
+      this.d = { users: [], sessions: [], games: [], tokens: [], friends: [], avatars: {}, ...JSON.parse(readFileSync(this.file, 'utf8')) };
       for (const u of this.d.users) u.email ??= null;
     } catch (e) {
       console.error(`Could not read ${this.file}:`, e);
@@ -200,6 +215,7 @@ export class FileAccountStore implements AccountStore {
     this.d.games = this.d.games.filter((g) => g.userId !== id);
     this.d.tokens = this.d.tokens.filter((t) => t.userId !== id);
     this.d.friends = this.d.friends.filter((f) => f.from !== id && f.to !== id);
+    delete this.d.avatars[id];
     this.save();
   }
   async createSession(hash: string, userId: string, expiresAt: number) {
@@ -285,6 +301,31 @@ export class FileAccountStore implements AccountStore {
     this.d.friends = this.d.friends.filter((f) => !((f.from === a && f.to === b) || (f.from === b && f.to === a)));
     this.save();
   }
+  async setAvatar(userId: string, jpeg: Buffer | null, at: number) {
+    const u = this.d.users.find((x) => x.id === userId);
+    if (!u) return;
+    if (jpeg) { this.d.avatars[userId] = jpeg.toString('base64'); u.avatarAt = at; }
+    else { delete this.d.avatars[userId]; u.avatarAt = null; }
+    this.save();
+  }
+  async avatar(userId: string) {
+    const b = this.d.avatars[userId];
+    return b ? Buffer.from(b, 'base64') : null;
+  }
+  async addXp(userId: string, n: number) {
+    const u = this.d.users.find((x) => x.id === userId);
+    if (!u || u.xp == null) return null;
+    u.xp += n;
+    this.save();
+    return u.xp;
+  }
+  async initXp(userId: string, xp: number) {
+    const u = this.d.users.find((x) => x.id === userId);
+    if (!u) return xp;
+    if (u.xp == null) { u.xp = xp; this.save(); }
+    return u.xp;
+  }
+  async usersWithoutXp() { return this.d.users.filter((u) => u.xp == null).map((u) => u.id); }
 }
 
 // ---------- Postgres (production) ----------
@@ -307,6 +348,12 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS color TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS frame TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS titles JSONB;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_at BIGINT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS xp BIGINT;
+CREATE TABLE IF NOT EXISTS avatars (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  data BYTEA NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sessions (
   hash TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -348,7 +395,7 @@ interface UserRow {
   id: string; username: string; key: string; password_hash: string; display_name: string; bio: string;
   settings: Record<string, unknown> | null; created_at: string; visibility: Visibility | null; pinned: string[] | null; granted_badges: string[] | null;
   color: string | null; frame: string | null; email: string | null; email_verified: boolean | null; username_changed_at: string | null; presets: Preset[] | null;
-  titles: string[] | null; title: string | null;
+  titles: string[] | null; title: string | null; avatar_at: string | null; xp: string | null;
 }
 const fromRow = (r: UserRow | undefined): User | null => r ? {
   id: r.id, username: r.username, key: r.key, passwordHash: r.password_hash, displayName: r.display_name,
@@ -359,6 +406,7 @@ const fromRow = (r: UserRow | undefined): User | null => r ? {
   email: r.email ?? null, emailVerified: !!r.email_verified,
   ...(r.username_changed_at ? { usernameChangedAt: Number(r.username_changed_at) } : {}),
   ...(r.presets ? { presets: r.presets } : {}),
+  avatarAt: r.avatar_at == null ? null : Number(r.avatar_at), xp: r.xp == null ? null : Number(r.xp),
 } : null;
 
 export class PgAccountStore implements AccountStore {
@@ -506,5 +554,30 @@ export class PgAccountStore implements AccountStore {
   }
   async removeFriend(a: string, b: string) {
     await this.pool.query('DELETE FROM friends WHERE (from_id = $1 AND to_id = $2) OR (from_id = $2 AND to_id = $1)', [a, b]);
+  }
+  async setAvatar(userId: string, jpeg: Buffer | null, at: number) {
+    if (jpeg) {
+      await this.pool.query('INSERT INTO avatars (user_id, data) VALUES ($1,$2) ON CONFLICT (user_id) DO UPDATE SET data = EXCLUDED.data', [userId, jpeg]);
+      await this.pool.query('UPDATE users SET avatar_at = $2 WHERE id = $1', [userId, at]);
+    } else {
+      await this.pool.query('DELETE FROM avatars WHERE user_id = $1', [userId]);
+      await this.pool.query('UPDATE users SET avatar_at = NULL WHERE id = $1', [userId]);
+    }
+  }
+  async avatar(userId: string) {
+    const r = await this.pool.query<{ data: Buffer }>('SELECT data FROM avatars WHERE user_id = $1', [userId]);
+    return r.rows[0]?.data ?? null;
+  }
+  async addXp(userId: string, n: number) {
+    const r = await this.pool.query<{ xp: string }>('UPDATE users SET xp = xp + $2 WHERE id = $1 AND xp IS NOT NULL RETURNING xp', [userId, n]);
+    return r.rows[0] ? Number(r.rows[0].xp) : null;
+  }
+  async initXp(userId: string, xp: number) {
+    await this.pool.query('UPDATE users SET xp = $2 WHERE id = $1 AND xp IS NULL', [userId, xp]);
+    const r = await this.pool.query<{ xp: string | null }>('SELECT xp FROM users WHERE id = $1', [userId]);
+    return r.rows[0]?.xp != null ? Number(r.rows[0].xp) : xp;
+  }
+  async usersWithoutXp() {
+    return (await this.pool.query<{ id: string }>('SELECT id FROM users WHERE xp IS NULL')).rows.map((r) => r.id);
   }
 }

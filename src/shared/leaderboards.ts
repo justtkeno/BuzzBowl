@@ -28,6 +28,8 @@ export interface BoardEntry {
   displayName: string;
   color: string;
   frame: string;
+  /** Profile picture address, when they uploaded one. */
+  pic?: string;
   title?: string;
   /** Wins, correct answers, or daily points. */
   value: number;

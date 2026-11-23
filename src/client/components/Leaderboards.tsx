@@ -134,7 +134,7 @@ function Row({ board, e, me }: { board: BoardKind; e: BoardEntry; me: boolean })
     <li className={`board-row ${me ? 'me' : ''} ${e.rank <= 3 ? `top top-${e.rank}` : ''}`}>
       <span className="board-rank" aria-label={`Place ${e.rank}`}>{e.rank}</span>
       <a className="board-who" href={`/u/${e.username}`}>
-        <Avatar name={e.displayName} color={e.color} frame={e.frame} />
+        <Avatar name={e.displayName} color={e.color} frame={e.frame} pic={e.pic} />
         <span className="board-name">
           <b>{e.displayName}{me && <span className="muted"> (you)</span>}</b>
           <span className="board-sub"><span className="board-user">@{e.username}</span><TitleTag title={e.title} /></span>
