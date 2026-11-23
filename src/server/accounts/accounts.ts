@@ -147,8 +147,9 @@ export class Accounts {
 
   /** Make a one-time link and email it. Quietly does nothing past the hourly limit. Returns whether it went out. */
   private async sendLink(u: User, kind: 'reset' | 'confirm', base: string) {
-    if (!u.email || !this.mailer) return false;
-    if ((await this.store.countTokens(u.id, kind, Date.now() - 3600_000)) >= LINKS_PER_HOUR) return false;
+    // Logged by username only (never the address), so a missing email can be traced.
+    if (!u.email || !this.mailer) { console.log(`No ${kind} email for @${u.username}: ${u.email ? 'email is not set up' : 'no email on the account'}`); return false; }
+    if ((await this.store.countTokens(u.id, kind, Date.now() - 3600_000)) >= LINKS_PER_HOUR) { console.log(`No ${kind} email for @${u.username}: ${LINKS_PER_HOUR} already sent this hour`); return false; }
     const token = randomBytes(32).toString('base64url');
     const minutes = kind === 'reset' ? RESET_MINUTES : CONFIRM_MINUTES;
     const now = Date.now();
@@ -176,6 +177,7 @@ export class Accounts {
       };
     try {
       await this.mailer.send({ to: u.email, ...mail });
+      console.log(`Sent a ${kind} email for @${u.username}`);
     } catch (e) {
       // It never reached them: don't let it use up one of the hour's links.
       await this.store.deleteToken(hash).catch(() => {});
@@ -189,6 +191,48 @@ export class Accounts {
     const base = this.linkBase(req);
     if (!u.email || !base) return;
     this.sendLink(u, 'confirm', base).catch((e) => console.error('Could not send a confirmation email:', e?.message ?? e));
+  }
+
+  // ---------- site admin ----------
+
+  /** How account email goes out: gmail, smtp, console, or off. */
+  get mailKind() { return this.mailer ? this.mailer.kind ?? 'custom' : 'off'; }
+
+  /** Accounts matching a search, for the admin panel. Emails stay private: only whether one is set and confirmed. */
+  async adminSearch(query: string) {
+    const q = String(query ?? '').trim().replace(/^@/, '').slice(0, 20);
+    if (!this.ready || !q) return [];
+    return (await this.store.searchUsers(q, 25)).map((u) => ({
+      id: u.id, username: u.username, displayName: u.displayName, createdAt: u.createdAt, admin: isAdmin(u),
+      email: !!u.email, emailVerified: !!u.email && !!u.emailVerified, usernameChangedAt: u.usernameChangedAt ?? null,
+    }));
+  }
+
+  async adminCounts() {
+    if (!this.ready) return null;
+    return this.store.userCounts(Date.now() - 7 * 86_400_000);
+  }
+
+  /** Ends every session of an account. Returns its id (so live sockets can be dropped too), or null. */
+  async adminLogout(username: string) {
+    const u = this.ready ? await this.store.userByName(String(username ?? '')) : null;
+    if (!u) return null;
+    if (isAdmin(u)) throw new Error('Admin accounts can’t be logged out from here.');
+    await this.store.deleteSessionsOf(u.id);
+    console.log(`Admin logged out @${u.username} everywhere`);
+    return u.id;
+  }
+
+  /** Sends a test email to this admin's own address. Throws with the reason when it can't. */
+  async testEmail(accountId: string) {
+    const u = await this.store.userById(accountId);
+    if (!u?.email) throw new Error('Add an email to your account first (gear → Account settings).');
+    if (!this.mailer) throw new Error('Email isn’t set up on this server.');
+    await this.mailer.send({
+      to: u.email, subject: 'Trivio test email',
+      text: `This is a test from the Trivio admin panel, sent ${new Date().toUTCString()}. If you can read it, account emails work.\n`,
+      html: `<p>This is a test from the Trivio admin panel, sent ${new Date().toUTCString()}.</p><p>If you can read it, account emails work.</p>`,
+    });
   }
 
   /** Called after a username change, so other stores (leaderboards, live rooms) can follow. Never throws to the caller. */
@@ -491,6 +535,7 @@ export class Accounts {
       const u = !who ? null : who.includes('@') ? await this.store.userByEmail(who) : await this.store.userByName(who);
       // Same answer either way, so this can't be used to find out who has an account or which email they use.
       res.json({ ok: true });
+      if (!u) console.log(`Password reset asked for an unknown ${who.includes('@') ? 'email' : `username "${who.slice(0, 20)}"`}`);
       if (u) this.sendLink(u, 'reset', base).catch((e) => console.error('Could not send a password-reset email:', e?.message ?? e));
     }));
 

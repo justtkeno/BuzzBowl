@@ -4,7 +4,7 @@ import type { ChatMessage, PublicState } from '../../shared/types';
 import { SettingsMenu } from './AppSettings';
 import { prefs } from '../socket';
 
-import { AdminPanel } from './AdminPanel';
+import { SiteAdminPanel } from './SiteAdmin';
 import { Announcement } from './Announcement';
 import { PlayersPanel } from './PlayersPanel';
 import { Chat } from './Chat';
@@ -221,7 +221,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
       {showQuestions && <SettingsPanel s={s} only="questions" onClose={() => setShowQuestions(false)} />}
       {showReview && <Review s={s} onClose={() => setShowReview(false)} />}
       {showFeedback && <SendFeedback where={`room ${s.code}`} onClose={() => setShowFeedback(false)} />}
-      {showAdmin && isAdmin && <AdminPanel s={s} onClose={() => setShowAdmin(false)} onPlayers={() => { setShowAdmin(false); setShowPlayers(true); }} />}
+      {showAdmin && isAdmin && <SiteAdminPanel room={{ s, onPlayers: () => { setShowAdmin(false); setShowPlayers(true); } }} onClose={() => setShowAdmin(false)} />}
       {showPlayers && canModerate && <PlayersPanel s={s} onClose={() => setShowPlayers(false)} />}
       {/* Off screen while questions are being read, so it never gets in the way of buzzing. */}
       <FriendsTab hidden={midGame || drawer} currentCode={s.code} onJoin={onJoinRoom} disabled={!connected} canInvite={!r.fixed} />

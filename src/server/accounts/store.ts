@@ -47,6 +47,10 @@ export interface AccountStore {
   userById(id: string): Promise<User | null>;
   userByName(username: string): Promise<User | null>;
   userByEmail(email: string): Promise<User | null>;
+  /** Usernames containing `query` (case-insensitive), names starting with it first. */
+  searchUsers(query: string, limit: number): Promise<User[]>;
+  /** Account totals for the admin panel. */
+  userCounts(since: number): Promise<{ total: number; withEmail: number; confirmed: number; newSince: number }>;
   updateUser(id: string, patch: UserPatch): Promise<void>;
   /** Changes the username. False when someone else has it. */
   renameUser(id: string, username: string, at: number): Promise<boolean>;
@@ -141,6 +145,16 @@ export class FileAccountStore implements AccountStore {
   async userByName(username: string) {
     const key = username.toLowerCase();
     return structuredClone(this.d.users.find((u) => u.key === key) ?? null);
+  }
+  async searchUsers(query: string, limit: number) {
+    const q = query.toLowerCase();
+    const hits = this.d.users.filter((u) => u.key.includes(q));
+    hits.sort((a, b) => Number(!a.key.startsWith(q)) - Number(!b.key.startsWith(q)) || a.key.localeCompare(b.key));
+    return structuredClone(hits.slice(0, limit));
+  }
+  async userCounts(since: number) {
+    const u = this.d.users;
+    return { total: u.length, withEmail: u.filter((x) => x.email).length, confirmed: u.filter((x) => x.email && x.emailVerified).length, newSince: u.filter((x) => x.createdAt >= since).length };
   }
   async userByEmail(email: string) {
     const e = email.toLowerCase();
@@ -337,6 +351,19 @@ export class PgAccountStore implements AccountStore {
   }
   async userByName(username: string) {
     return fromRow((await this.pool.query<UserRow>('SELECT * FROM users WHERE key = $1', [username.toLowerCase()])).rows[0]);
+  }
+  async searchUsers(query: string, limit: number) {
+    const q = query.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`);
+    const r = await this.pool.query<UserRow>(
+      "SELECT * FROM users WHERE key LIKE '%' || $1 || '%' ORDER BY (key LIKE $1 || '%') DESC, key LIMIT $2", [q, limit]);
+    return r.rows.map((x) => fromRow(x)!);
+  }
+  async userCounts(since: number) {
+    const r = await this.pool.query<{ total: number; with_email: number; confirmed: number; new_since: number }>(
+      `SELECT count(*)::int AS total, count(email)::int AS with_email, count(*) FILTER (WHERE email IS NOT NULL AND email_verified)::int AS confirmed,
+       count(*) FILTER (WHERE created_at >= $1)::int AS new_since FROM users`, [since]);
+    const x = r.rows[0];
+    return { total: x.total, withEmail: x.with_email, confirmed: x.confirmed, newSince: x.new_since };
   }
   async userByEmail(email: string) {
     return fromRow((await this.pool.query<UserRow>('SELECT * FROM users WHERE email = $1', [email.toLowerCase()])).rows[0]);
