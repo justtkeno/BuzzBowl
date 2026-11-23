@@ -12,7 +12,7 @@ import {
 } from '../../shared/profile';
 import { cleanPresets } from '../../shared/presets';
 import type { Mailer } from './mailer';
-import type { AccountStore, FriendLink, User, UserPatch } from './store';
+import type { AccountStore, FriendLink, GameTotal, User, UserPatch } from './store';
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number) => Promise<Buffer>;
 
@@ -358,6 +358,30 @@ export class Accounts {
   async titleOf(u: User): Promise<string | null> {
     if (!u.title) return null;
     return titleName(u.title, u.titles, u.title.startsWith('badge:') ? await this.earnedBadges(u) : new Set());
+  }
+
+  /** Leaderboard totals over saved games (see `GameTotal`). */
+  async gameTotals(fromAt: number | null): Promise<GameTotal[]> { return this.ready ? this.store.gameTotals(fromAt) : []; }
+
+  /** The account a request's cookie belongs to, if any. */
+  requestUser(cookieHeader: string | undefined): Promise<User | null> { return this.userFrom(cookieHeader).catch(() => null); }
+
+  /** Leaderboards: who these accounts are, and whether their profile is public (only those are listed). */
+  async boardPeople(ids: string[]): Promise<Map<string, { username: string; displayName: string; public: boolean }>> {
+    const users = ids.length ? await this.store.usersByIds(ids) : [];
+    return new Map(users.map((u) => [u.id, { username: u.username, displayName: u.displayName, public: (u.visibility ?? 'public') === 'public' }]));
+  }
+
+  /** Leaderboards: each account's avatar look and equipped title, as their profile shows them. */
+  async boardLooks(ids: string[]): Promise<Map<string, { color: string; frame: string; title?: string }>> {
+    const users = ids.length ? await this.store.usersByIds(ids) : [];
+    const out = new Map<string, { color: string; frame: string; title?: string }>();
+    await Promise.all(users.map(async (u) => {
+      const earned = await this.earnedBadges(u).catch(() => new Set<string>());
+      const title = titleName(u.title, u.titles, earned);
+      out.set(u.id, { ...lookFor(u, earned), ...(title ? { title } : {}) });
+    }));
+    return out;
   }
 
   /** The badges an account has now: earned from games and daily results, or granted by an admin. */

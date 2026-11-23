@@ -31,7 +31,7 @@ const SECTIONS: { title: string; items: Faq[] }[] = [
   {
     title: 'Rooms and rules',
     items: [
-      { q: 'What are presets?', a: <>Ready-made sets of rules: <b>Casual</b>, <b>Tournament rules</b>, <b>Quick 10</b> and <b>Party</b>. The host picks one in the lobby, or opens <b>Room settings</b> to set every rule. Signed in, you can save up to 5 of your own presets and share any of them with a link.</> },
+      { q: 'What are presets?', a: <>Ready-made sets of rules: <b>Casual</b>, <b>Tournament rules</b>, <b>Quick 10</b> and <b>Party</b>. The host picks one in the lobby, or opens <b>Room settings</b> to set every rule. <b>Reset to default rules</b> undoes a preset and keeps your question choices. Signed in, you can save up to 5 of your own presets and share any of them with a link.</> },
       { q: 'Can the host change rules during a game?', a: <>Yes: <b>⋯ Menu → Room settings</b>. Longer or shorter timers apply right away, new question topics start with the next tossup, and everyone sees a note in chat.</> },
       { q: 'What does a reader do?', a: <>A reader is optional. They see each question early, read it out loud (in the room or on a call), control the pace and rule on answers. Without one, the app shows the question word by word.</> },
       { q: 'What’s the big-screen view?', a: <>A scoreboard and question view for a TV or projector: <b>⋯ Menu → Big-screen view</b>. It never plays, it just shows the game.</> },
@@ -44,6 +44,7 @@ const SECTIONS: { title: string; items: Faq[] }[] = [
       { q: 'I forgot my password.', a: <>Tap <b>Log in → Forgot password?</b> and enter your username or email. A reset link goes to the email on your account, and works for an hour. Without an email on the account, the password can’t be reset, so add one in <b>gear → Account settings</b>.</> },
       { q: 'Can I change my username?', a: <>Yes, in <b>gear → Account settings</b>. After changing it, you have to wait 7 days to change it again. Your profile link, leaderboard entries and friends follow the new name.</> },
       { q: 'Who can see my email?', a: <>Nobody. It’s only used to send password-reset and confirmation links. See the <a href="/privacy">privacy page</a> for everything Trivio keeps.</> },
+      { q: 'How do the leaderboards work?', a: <>Open <b>Leaderboards</b> (the trophy tab, or the link at the bottom of the home page). <b>Wins</b> counts first places in games against at least one other person, <b>Correct</b> counts tossups you got right in any game, and <b>Daily</b> adds up your daily-challenge points. Pick today, this week, this month or all time. You need an account and a public profile to be listed.</> },
       { q: 'Who can see my stats?', a: <>Everyone by default. In <b>Edit profile</b> you can limit them to friends, or to just you.</> },
       { q: 'Can I install Trivio as an app?', a: <>Yes. On the home screen, tap <b>Install app</b> if it shows, or use your browser’s “Add to Home Screen”.</> },
     ],

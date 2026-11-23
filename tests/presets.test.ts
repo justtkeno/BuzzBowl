@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS } from '../src/shared/types';
 import {
-  DEFAULT_PRESETS, PRESET_SLOTS, cleanPresetSettings, cleanPresets, decodePreset, encodePreset, presetFrom, presetMatches, presetSummary,
+  DEFAULT_PRESETS, DEFAULT_RULES, PRESET_SLOTS, cleanPresetSettings, cleanPresets, decodePreset, encodePreset, presetFrom, presetMatches, presetSummary,
 } from '../src/shared/presets';
 
 describe('presets', () => {
@@ -39,5 +39,13 @@ describe('presets', () => {
   it('describes a preset in plain words', () => {
     expect(presetSummary(DEFAULT_PRESETS.find((p) => p.id === 'tournament')!.settings)).toBe('Powers 15 · negs −5 · bonuses · 20 tossups · 220 wpm · 7s to answer');
     expect(presetSummary(DEFAULT_PRESETS.find((p) => p.id === 'casual')!.settings)).toBe('Powers · no negs · 20 tossups · 180 wpm · 12s to answer');
+  });
+
+  it('default rules undo a preset but keep the questions', () => {
+    const picked = { ...DEFAULT_SETTINGS, ...DEFAULT_PRESETS.find((p) => p.id === 'party')!.settings, source: 'lightning' as const, filters: { ...DEFAULT_SETTINGS.filters, categories: ['Science'] } };
+    expect(presetMatches(DEFAULT_RULES, picked)).toBe(false);
+    const reset = { ...picked, ...DEFAULT_RULES };
+    expect(presetMatches(DEFAULT_RULES, reset)).toBe(true);
+    expect(reset).toEqual({ ...DEFAULT_SETTINGS, source: 'lightning', filters: picked.filters });
   });
 });

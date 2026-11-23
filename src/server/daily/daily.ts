@@ -63,6 +63,9 @@ export class Daily {
   constructor(private store: DailyStore, private qbreader: QuestionProvider) {
     this.ready = store.init().catch((e) => console.error('Daily challenge storage failed to start:', e));
   }
+  /** Accounts' summed daily results from `fromDay` on, for the leaderboards. */
+  async totals(fromDay: string | null) { await this.ready; return this.store.totals(fromDay); }
+
 
   today() { return dayKey(); }
 

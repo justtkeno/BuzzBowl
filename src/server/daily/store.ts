@@ -35,7 +35,11 @@ export interface DailyStore {
   history(playerKey: string): Promise<DailyPlace[]>;
   /** An account changed its username: follow it on this player's saved rows (the shown name too, where it was the username). */
   rename(playerKey: string, username: string): Promise<void>;
+  /** Accounts' (`a:` keys) summed daily results from `fromDay` on (null = all time), for the leaderboards. */
+  totals(fromDay: string | null): Promise<DailyTotal[]>;
 }
+
+export interface DailyTotal { playerKey: string; days: number; points: number; powers: number }
 
 export interface DailyPlace { row: DailyRow; rank: number; players: number }
 
@@ -85,6 +89,18 @@ export class FileDailyStore implements DailyStore {
         return { row, rank: 1 + day.filter((r) => r.playerKey !== key && better(r, row) < 0).length, players: day.length };
       })
       .sort((a, b) => b.row.day.localeCompare(a.row.day));
+  }
+  async totals(fromDay: string | null) {
+    const by = new Map<string, DailyTotal>();
+    for (const r of this.d.results) {
+      if (!r.playerKey.startsWith('a:') || (fromDay && r.day < fromDay)) continue;
+      let t = by.get(r.playerKey);
+      if (!t) by.set(r.playerKey, (t = { playerKey: r.playerKey, days: 0, points: 0, powers: 0 }));
+      t.days++;
+      t.points += r.points;
+      t.powers += r.powers;
+    }
+    return [...by.values()];
   }
   async rename(key: string, username: string) {
     for (const r of this.d.results) if (r.playerKey === key) { if (r.name === r.username) r.name = username; r.username = username; }
@@ -177,6 +193,14 @@ export class PgDailyStore implements DailyStore {
       [key],
     );
     return r.rows.map((x) => ({ row: fromDb(x), rank: x.place as number, players: x.players as number }));
+  }
+  async totals(fromDay: string | null) {
+    const r = await this.pool.query(
+      `SELECT player_key, count(*)::int AS days, COALESCE(sum(points), 0)::int AS points, COALESCE(sum(powers), 0)::int AS powers
+       FROM daily_results WHERE player_key LIKE 'a:%' AND ($1::text IS NULL OR day >= $1::text) GROUP BY player_key`,
+      [fromDay],
+    );
+    return r.rows.map((x: any): DailyTotal => ({ playerKey: x.player_key, days: x.days, points: x.points, powers: x.powers }));
   }
   async rename(key: string, username: string) {
     await this.pool.query('UPDATE daily_results SET name = CASE WHEN name = username THEN $2 ELSE name END, username = $2 WHERE player_key = $1', [key, username]);

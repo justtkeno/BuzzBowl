@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CATEGORIES, DIFFICULTIES, VOTE_SECONDS, type PublicState, type Settings } from '../../shared/types';
 import { TOPICS } from '../../shared/topics';
+import { DEFAULT_RULES, presetMatches } from '../../shared/presets';
 import { call } from '../socket';
 import { act, toast } from './util';
 import { Icon } from './Icon';
@@ -19,6 +20,10 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
   const setTab = (t: Tab) => { lastTab[only ?? 'all'] = t; setTabState(t); };
   const filterCount = (f.filters.topics?.length ?? 0) + f.filters.categories.length + f.filters.subcategories.length
     + f.filters.difficulties.length + (f.filters.minYear ? 1 : 0) + (f.filters.maxYear ? 1 : 0);
+
+  // Back to the rules a new room starts with. Questions stay; mid-game the format can't change, so it stays too.
+  const rules = midGame ? { ...DEFAULT_RULES, mode: f.mode } : DEFAULT_RULES;
+  const isDefault = presetMatches(rules, f);
 
   const save = async () => {
     try {
@@ -204,10 +209,13 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
         )}
         </div>
 
-        <div className="row gap end settings-foot">
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary" onClick={save}>{only ? 'Use these questions' : 'Save'}</button>
-          {s.phase === 'lobby' && !only && <button className="btn primary" onClick={async () => { await save(); act('game:start'); }}>Save &amp; start</button>}
+        <div className="settings-foot">
+          {!only && <button type="button" className="link small settings-reset" disabled={isDefault} onClick={() => setF((x) => ({ ...x, ...rules }))} title="Sets every rule back to how a new room starts. Your question choices stay. Nothing changes until you save.">Reset to defaults</button>}
+          <div className="row gap end">
+            <button className="btn ghost" onClick={onClose}>Cancel</button>
+            <button className="btn primary" onClick={save}>{only ? 'Use these questions' : 'Save'}</button>
+            {s.phase === 'lobby' && !only && <button className="btn primary" onClick={async () => { await save(); act('game:start'); }}>Save &amp; start</button>}
+          </div>
         </div>
       </div>
     </div>

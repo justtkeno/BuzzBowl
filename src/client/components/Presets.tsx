@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Settings } from '../../shared/types';
 import {
-  DEFAULT_PRESETS, PRESET_NAME_MAX, PRESET_SLOTS, cleanPresetName, decodePreset, encodePreset, presetFrom, presetMatches, presetSummary,
+  DEFAULT_PRESETS, DEFAULT_RULES, PRESET_NAME_MAX, PRESET_SLOTS, cleanPresetName, decodePreset, encodePreset, presetFrom, presetMatches, presetSummary,
   type Preset, type PresetSettings,
 } from '../../shared/presets';
 import { savePresets, useAccount } from '../account';
@@ -66,6 +66,11 @@ export function PresetPicker({ settings, canApply }: { settings: Settings; canAp
             </button>
           );
         })}
+      </div>
+      <div className="preset-reset">
+        {presetMatches(DEFAULT_RULES, settings)
+          ? <span className="muted small">Using the default rules</span>
+          : <button className="link small" disabled={!canApply} onClick={() => apply(DEFAULT_RULES)} title="Sets every rule back to how a new room starts. Your question choices stay.">Reset to default rules</button>}
       </div>
 
       <div className="preset-mine-head">

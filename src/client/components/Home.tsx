@@ -117,6 +117,8 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
           <nav className="home-links" aria-label="More">
             <button className="link" onClick={() => setTour(true)}>How to play</button>
             <span aria-hidden="true">·</span>
+            <a className="link" href="/leaderboards">Leaderboards</a>
+            <span aria-hidden="true">·</span>
             <a className="link" href="/help">Help</a>
             <span aria-hidden="true">·</span>
             <button className="link" onClick={() => setFeedback(true)}>Feedback</button>
@@ -130,7 +132,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
       {tour && <Tutorial onClose={() => setTour(false)} onPlay={initialCode ? undefined : () => run(() => onCreate(name.trim(), true))} />}
       {feedback && <SendFeedback where="home" name={name.trim()} onClose={() => setFeedback(false)} />}
       <FriendsTab disabled={busy || !connected} onJoin={(c) => run(() => onJoin(c, name.trim()))} />
-      <PhoneTabs active={open === 'daily' ? 'daily' : 'play'} />
+      <PhoneTabs active="play" />
     </div>
   );
 }

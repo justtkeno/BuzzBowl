@@ -186,6 +186,12 @@ export interface RoomState {
   seatHold?: { host?: { id: string; until: number }; reader?: { id: string; until: number } };
   /** This game's results were already saved to players' profiles. */
   recorded?: boolean;
+  /**
+   * Something in this game changed a score by hand or let players see answers early: a score adjustment,
+   * a reversed ruling, a reader accepting an answer the checker rejected, or an uploaded packet.
+   * Its results still go on profiles, but not on the leaderboards.
+   */
+  unranked?: boolean;
   /** Open topic vote between tossups (topicVote setting, no reader). */
   vote?: { options: string[]; votes: Record<string, string>; deadline: number } | null;
   /** The category players voted for; used by the next tossup only. */
@@ -623,6 +629,7 @@ export class Room {
   setPeek(by: string, on: boolean) {
     const me = this.mustAdmin(by);
     me.peek = on || undefined;
+    if (on && this.s.phase !== 'lobby') this.s.unranked = true; // seeing answers early: off the leaderboards, quietly
     this.broadcast();
   }
 
@@ -958,6 +965,7 @@ export class Room {
     this.s.paused = false;
     this.s.pausedAt = null;
     this.s.recorded = false;
+    this.s.unranked = this.s.players.some((p) => p.peek);
     this.system('Game started. Good luck!');
     void this.loadTossup();
   }
@@ -1151,6 +1159,10 @@ export class Room {
     // Competing sides: teams with someone who played, or (free-for-all) players other than the reader who played.
     const sides = teams.filter((t) => (teamsMode ? t.playerIds.some(played) : t.id !== this.s.readerId && played(t.id)));
     const ranked = [...sides].sort((a, b) => b.points - a.points);
+    const human = (id: string) => { const p = this.player(id); return !!p && !p.bot; };
+    const humanSide = (t: (typeof sides)[number]) => t.playerIds.some((id) => human(id) && played(id));
+    // Leaderboards count ordinary games only: the daily and survival have boards of their own.
+    const boardGame = !this.s.daily && !this.s.survival && !this.s.unranked && set.source !== 'upload';
     const records: { accountId: string; game: GameRecord }[] = [];
     for (const p of this.s.players) {
       if (!p.accountId || !played(p.id)) continue;
@@ -1167,6 +1179,12 @@ export class Room {
           ...(abandoned ? { abandoned: true } : {}),
           ...(this.s.daily ? { daily: this.s.daily.number } : {}),
           ...(this.s.survival ? { survival: true } : {}),
+          ...((): Partial<GameRecord> => {
+            if (!boardGame) return {};
+            const versus = !!side && sides.some((t) => t.id !== side.id && humanSide(t));
+            const won = versus && !abandoned && side!.points > 0 && !sides.some((t) => t.points > side!.points);
+            return { ranked: true, ...(versus ? { versus: true } : {}), ...(won ? { won: true } : {}) };
+          })(),
           tossups: this.s.heard.length,
           points: st.points, powers: st.powers, tens: st.tens, negs: st.negs, buzzes: st.buzzes, heard: st.heard,
           correctDepthSum: st.avgCorrectDepth != null ? st.avgCorrectDepth * correct : 0,
@@ -1220,6 +1238,7 @@ export class Room {
   private async loadTossup() {
     // Every way to the next tossup (Next, a closed vote, a skipped or finished bonus) ends here after the last one.
     if (this.lengthReached()) return this.finishGame();
+    if (this.s.settings.source === 'upload') this.s.unranked = true; // whoever uploaded the packet knows the answers
     this.dispose();
     this.pending = [];
     const gen = ++this.loadGen;
@@ -1445,6 +1464,8 @@ export class Room {
   rule(by: string, verdict: Verdict) {
     if (by !== this.s.readerId && by !== this.s.hostId) fail('Only the reader rules on answers.');
     if (!['correct', 'prompt', 'incorrect'].includes(verdict)) fail('Unknown ruling.');
+    const waiting = this.s.buzz?.awaiting ?? this.s.bonus?.awaiting;
+    if (waiting && verdict === 'correct' && waiting.suggestion !== 'correct') this.s.unranked = true;
     if (this.s.buzz?.awaiting) this.applyTossupVerdict(verdict, this.s.buzz.awaiting.given);
     else if (this.s.bonus?.awaiting) this.applyBonusVerdict(verdict, this.s.bonus.awaiting.given);
     else fail('There is nothing to rule on.');
@@ -1732,6 +1753,7 @@ export class Room {
 
   private flipRuling(rulingId: string) {
     const r = this.s.rulings.find((x) => x.id === rulingId) ?? fail('No such ruling.');
+    this.s.unranked = true;
     if (r!.type !== 'tossup') {
       r!.correct = !r!.correct;
       r!.overridden = !r!.overridden;
@@ -1790,6 +1812,7 @@ export class Room {
     const d = clamp(delta, -50, 50, 0);
     if (!d) return;
     this.s.adjustments.push({ playerId, teamId: teamId!, delta: d, num: this.s.tossupNum });
+    this.s.unranked = true;
     this.system(`${this.player(playerId)?.name} ${d > 0 ? '+' : ''}${d} (score adjustment).`);
     this.broadcast();
   }

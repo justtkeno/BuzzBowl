@@ -65,6 +65,12 @@ export interface GameRecord {
   daily?: number;
   /** True when this game was a survival run. */
   survival?: boolean;
+  /** Counts for the leaderboards: an ordinary game with no scores changed by hand and no uploaded packet. */
+  ranked?: boolean;
+  /** A leaderboard game with at least one other person (not a bot) on another side. */
+  versus?: boolean;
+  /** A leaderboard win: first place (ties included) with points, against another person, in a game that finished. */
+  won?: boolean;
   tossups: number;
   points: number;
   powers: number;
