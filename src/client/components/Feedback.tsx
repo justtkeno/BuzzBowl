@@ -54,11 +54,14 @@ export function useFeedback(s: PublicState): Flash | null {
   useEffect(() => {
     const b = s.buzz;
     const bn = s.bonus;
-    const mine = b && b.playerId === me ? { key: `t${s.tossup?.num}`, n: b.prompts }
-      : bn && teams && bn.teamId === myTeam && !bn.done ? { key: `b${bn.num}-${bn.current}`, n: bn.prompts }
+    const mine = b && b.playerId === me ? { key: `t${s.tossup?.num}`, n: b.prompts, spelling: !!b.spelling }
+      : bn && teams && bn.teamId === myTeam && !bn.done ? { key: `b${bn.num}-${bn.current}`, n: bn.prompts, spelling: !!bn.spelling }
         : null;
     if (!mine) return;
-    if (mine.key === prompts.current.key && mine.n > prompts.current.n) show('prompt', 'Prompt', 'Be more specific');
+    if (mine.key === prompts.current.key && mine.n > prompts.current.n) {
+      if (mine.spelling) show('prompt', 'Almost', 'Check your spelling');
+      else show('prompt', 'Prompt', 'Be more specific');
+    }
     prompts.current = mine;
   }, [s.buzz?.prompts, s.buzz?.playerId, s.bonus?.prompts, s.bonus?.current]);
 

@@ -70,13 +70,62 @@ export function levenshtein(a: string, b: string): number {
 /** "mississipi" and "misissippi" both become "misisipi": doubled letters are the most common misspelling. */
 const undouble = (s: string) => s.replace(/(.)\1+/g, '$1');
 
-/** Typo-tolerant equality for normalized strings. Numbers must match exactly. */
-export function fuzzyEq(a: string, b: string): boolean {
+/** Keys next to each other on a QWERTY keyboard, where most phone typos land. */
+const ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+const NEIGHBORS = new Map<string, Set<string>>();
+ROWS.forEach((row, r) => [...row].forEach((ch, c) => {
+  const near = new Set<string>();
+  for (const dr of [-1, 0, 1]) {
+    const other = ROWS[r + dr];
+    if (!other) continue;
+    // Rows are staggered: the row below sits half a key to the right.
+    const cols = dr === 0 ? [c - 1, c + 1] : dr === 1 ? [c - 1, c] : [c, c + 1];
+    for (const k of cols) if (other[k]) near.add(other[k]);
+  }
+  NEIGHBORS.set(ch, near);
+}));
+const near = (x: string, y: string | undefined) => !!y && !!NEIGHBORS.get(x)?.has(y);
+
+/**
+ * Edit distance in half-typos, counting how phone keyboards fail: hitting the key next to the right one
+ * ("jupitet"), or brushing it on the way ("jupiyter"), costs half a typo; any other slip costs a whole one.
+ * `a` is what was typed, `b` the answer.
+ */
+export function typoCost(a: string, b: string): number {
+  if (a === b) return 0;
+  let prev2: number[] = [];
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j * 2);
+  for (let i = 1; i <= a.length; i++) {
+    const x = a[i - 1];
+    const cur = [i * 2];
+    for (let j = 1; j <= b.length; j++) {
+      const y = b[j - 1];
+      const sub = x === y ? 0 : near(x, y) ? 1 : 2;
+      // An extra key typed next to the letter it sits beside.
+      const extra = near(x, b[j - 1]) || near(x, b[j]) ? 1 : 2;
+      cur[j] = Math.min(prev[j] + extra, cur[j - 1] + 2, prev[j - 1] + sub);
+      if (i > 1 && j > 1 && x === b[j - 2] && a[i - 2] === y) cur[j] = Math.min(cur[j], prev2[j - 2] + 2);
+    }
+    prev2 = prev;
+    prev = cur;
+  }
+  return prev[b.length] / 2;
+}
+
+/** How many typos a word of this length may have. */
+const typoBudget = (len: number) => (len <= 3 ? 0 : len <= 6 ? 1 : len <= 10 ? 2 : Math.floor(len * 0.2));
+
+/**
+ * Typo-tolerant equality for normalized strings (`a` typed, `b` the answer). Numbers must match exactly.
+ * `loose` allows one more typo in words of five or more letters: close enough to ask the player to check
+ * their spelling, never enough to accept.
+ */
+export function fuzzyEq(a: string, b: string, loose = false): boolean {
   if (a === b) return true;
   const at = a.split(' ');
   const bt = b.split(' ');
   // Same number of words: compare word by word so "vitamin b" never matches "vitamin a".
-  if (at.length > 1 && at.length === bt.length) return at.every((w, i) => fuzzyWord(w, bt[i]));
+  if (at.length > 1 && at.length === bt.length) return at.every((w, i) => fuzzyWord(w, bt[i], loose));
   // Spacing slips: "vangogh" for "van gogh", "new york city" for "newyork city".
   if (at.length !== bt.length) {
     const as = a.replace(/ /g, '');
@@ -84,27 +133,32 @@ export function fuzzyEq(a: string, b: string): boolean {
     // A one- or two-letter word ("vitamin a", "type b") is the whole point of the answer: no typos there.
     const hasTiny = [...at, ...bt].some((w) => w.length <= 2);
     if (/\d/.test(as + bs) || hasTiny) return as === bs || undouble(as) === undouble(bs);
-    return fuzzyWord(as, bs);
+    return fuzzyWord(as, bs, loose);
   }
-  return fuzzyWord(a, b);
+  return fuzzyWord(a, b, loose);
 }
 
 /** Small linking words inside answers ("moons of Jupiter", "Leonardo da Vinci"). */
 const CONNECTORS = new Set(['of', 'and', 'in', 'on', 'for', 'to', 'the', 'de', 'la', 'le', 'du', 'des', 'del', 'von', 'van']);
 
 /** `a` is what the player typed, `b` the answer's word. */
-function fuzzyWord(a: string, b: string): boolean {
+function fuzzyWord(a: string, b: string, loose = false): boolean {
   if (a === b) return true;
   if (/\d/.test(a) || /\d/.test(b)) return false;
   // A slip on a linking word ("moons od jupiter") is still the answer, unless they typed a different
   // linking word ("in" for "on"), which can change the meaning.
   if (CONNECTORS.has(b) && !CONNECTORS.has(a) && a.length === b.length && levenshtein(a, b) <= 1) return true;
-  const len = Math.max(a.length, b.length);
-  const allowed = len <= 3 ? 0 : len <= 6 ? 1 : len <= 10 ? 2 : Math.floor(len * 0.2);
-  if (levenshtein(a, b) <= allowed) return true;
+  // Loose only for slips that keep the length ("dickens" is not a misspelled "dickinson").
+  const extra = loose && Math.max(a.length, b.length) >= 5 && Math.abs(a.length - b.length) <= 1 ? 1 : 0;
+  if (closeEnough(a, b, extra)) return true;
   // Doubled-letter mistakes are free: "colosseum"/"coloseum", "gandhi"/"ghandi" still needs the h swap.
   const ua = undouble(a), ub = undouble(b);
   if (ua === a && ub === b) return false;
-  const ulen = Math.max(ua.length, ub.length);
-  return ulen > 3 && levenshtein(ua, ub) <= (ulen <= 6 ? 1 : ulen <= 10 ? 2 : Math.floor(ulen * 0.2));
+  return Math.max(ua.length, ub.length) > 3 && closeEnough(ua, ub, extra);
+}
+
+/** Within the word's typo budget, where neighbouring-key slips count half but buy at most one extra slip. */
+function closeEnough(a: string, b: string, extra: number): boolean {
+  const budget = typoBudget(Math.max(a.length, b.length)) + extra;
+  return typoCost(a, b) <= budget && levenshtein(a, b) <= budget + 1;
 }

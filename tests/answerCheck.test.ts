@@ -13,6 +13,25 @@ describe('normalize / fuzzy', () => {
     expect(normalize("Hammurabi's Code")).toBe('hammurabis code');
   });
   it('keeps a trailing "a" in vitamin A', () => expect(normalize('vitamin A')).toBe('vitamin a'));
+  it('counts slips onto neighbouring phone keys as half a typo', () => {
+    expect(fuzzyEq('hupiter', 'jupiter')).toBe(true);
+    expect(fuzzyEq('jupitet', 'jupiter')).toBe(true);
+    expect(fuzzyEq('jupoiter', 'jupiter')).toBe(true);
+    expect(fuzzyEq('nitocgonsria', 'mitochondria')).toBe(true);
+    expect(fuzzyEq('cat', 'car')).toBe(false); // three-letter words stay exact
+    expect(fuzzyEq('jipiyrt', 'jupiter')).toBe(false); // half-cost slips buy at most one extra
+  });
+
+  it('asks to check the spelling of a near miss, never of a different answer', () => {
+    const J = '<b><u>moons of Jupiter</u></b> (accept <b><u>Jovian moons</u></b>)';
+    expect(checkAnswerDetailed('moons of jipiyrt', J)).toEqual({ verdict: 'prompt', spelling: true });
+    expect(checkAnswerDetailed('hrgal', '<b><u>Hegel</u></b>')).toEqual({ verdict: 'prompt', spelling: true });
+    expect(checkAnswerDetailed('moons of saturn', J).verdict).toBe('incorrect');
+    expect(checkAnswerDetailed('dickens', '<b><u>Dickinson</u></b>').verdict).toBe('incorrect');
+    expect(checkAnswerDetailed('bush', '<b><u>Bach</u></b>').verdict).toBe('incorrect');
+    expect(checkAnswerDetailed('austrai', '<b><u>Australia</u></b> [do not accept "Austria"]').verdict).toBe('incorrect');
+  });
+
   it('tolerates small typos but not short-word swaps', () => {
     expect(fuzzyEq('mitocondria', 'mitochondria')).toBe(true);
     expect(fuzzyEq('vitamin b', 'vitamin a')).toBe(false);

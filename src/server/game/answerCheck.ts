@@ -4,8 +4,8 @@ import { fuzzyEq, normalize } from './text';
 
 const STOPWORDS = new Set(['of', 'and', 'in', 'on', 'for', 'to', 'a', 'an', 'the', 'de', 'la', 'le', 'von', 'van']);
 
-function tokensMatch(given: string[], wanted: string[]): boolean {
-  return wanted.every((w) => given.some((g) => fuzzyEq(g, w)));
+function tokensMatch(given: string[], wanted: string[], loose = false): boolean {
+  return wanted.every((w) => given.some((g) => fuzzyEq(g, w, loose)));
 }
 
 /** Abbreviations the player clearly meant as such: in capitals ("DC", "US") or dotted ("D.C.", "u.s."). */
@@ -57,20 +57,21 @@ export function matchesAlt(g: string, alt: Alt, exactOnly = false, typed?: Set<s
   return !!spelled && matchesPlain(spelled, alt, false);
 }
 
-function matchesPlain(g: string, alt: Alt, exactOnly: boolean): boolean {
-  if (fuzzyEq(g, alt.full) || fuzzyEq(g, alt.required.join(' '))) return true;
-  if (alt.required.length === 1 && fuzzyEq(g, alt.required[0])) return true;
+/** `loose`: one typo past what's accepted (see `fuzzyEq`), for asking the player to check their spelling. */
+function matchesPlain(g: string, alt: Alt, exactOnly: boolean, loose = false): boolean {
+  if (fuzzyEq(g, alt.full, loose) || fuzzyEq(g, alt.required.join(' '), loose)) return true;
+  if (alt.required.length === 1 && fuzzyEq(g, alt.required[0], loose)) return true;
   if (exactOnly) return false;
 
   const gt = g.split(' ');
   const fullTokens = alt.full.split(' ');
   // Every word the player typed must belong to the full answer (ignoring small words),
   // so "tolstoy dostoevsky" does not count as "Leo Tolstoy".
-  const allBelong = gt.every((t) => STOPWORDS.has(t) || fullTokens.some((f) => fuzzyEq(t, f)));
+  const allBelong = gt.every((t) => STOPWORDS.has(t) || fullTokens.some((f) => fuzzyEq(t, f, loose)));
   if (!allBelong) return false;
-  if (alt.required.every((seg) => tokensMatch(gt, seg.split(' ')))) return true;
+  if (alt.required.every((seg) => tokensMatch(gt, seg.split(' '), loose))) return true;
   // With several underlined pieces, the last one alone is usually enough (surnames, "Battle of Hastings").
-  if (alt.required.length > 1 && tokensMatch(gt, alt.required[alt.required.length - 1].split(' '))) return true;
+  if (alt.required.length > 1 && tokensMatch(gt, alt.required[alt.required.length - 1].split(' '), loose)) return true;
   return false;
 }
 
@@ -78,6 +79,8 @@ export interface CheckResult {
   verdict: Verdict;
   /** Set when a misspelled answer was accepted: what it was read as ("mitochondria"). */
   correctedTo?: string;
+  /** A 'prompt' because the answer is one typo too far from an accepted one: ask them to check their spelling. */
+  spelling?: boolean;
 }
 
 /** True when the player typed one of the alternative's words exactly, so no auto-correction happened. */
@@ -96,6 +99,10 @@ export function checkDetailed(given: string, line: AnswerLine): CheckResult {
   // An abbreviation isn't a typo, so "Washington DC" needs no "accepted as …" note.
   if (hit) return exactly(expandInitials(g, hit, typed) ?? g, hit) ? { verdict: 'correct' } : { verdict: 'correct', correctedTo: hit.display ?? hit.full };
   if (line.prompt.some((a) => matchesAlt(g, a, false, typed))) return { verdict: 'prompt' };
+  // Nearly an accepted answer (and not nearly a rejected one): most likely a slip on a phone keyboard.
+  if (line.accept.some((a) => matchesPlain(g, a, false, true)) && !line.reject.some((a) => matchesPlain(g, a, false, true))) {
+    return { verdict: 'prompt', spelling: true };
+  }
   return { verdict: 'incorrect' };
 }
 
