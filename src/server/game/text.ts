@@ -89,9 +89,16 @@ export function fuzzyEq(a: string, b: string): boolean {
   return fuzzyWord(a, b);
 }
 
+/** Small linking words inside answers ("moons of Jupiter", "Leonardo da Vinci"). */
+const CONNECTORS = new Set(['of', 'and', 'in', 'on', 'for', 'to', 'the', 'de', 'la', 'le', 'du', 'des', 'del', 'von', 'van']);
+
+/** `a` is what the player typed, `b` the answer's word. */
 function fuzzyWord(a: string, b: string): boolean {
   if (a === b) return true;
   if (/\d/.test(a) || /\d/.test(b)) return false;
+  // A slip on a linking word ("moons od jupiter") is still the answer, unless they typed a different
+  // linking word ("in" for "on"), which can change the meaning.
+  if (CONNECTORS.has(b) && !CONNECTORS.has(a) && a.length === b.length && levenshtein(a, b) <= 1) return true;
   const len = Math.max(a.length, b.length);
   const allowed = len <= 3 ? 0 : len <= 6 ? 1 : len <= 10 ? 2 : Math.floor(len * 0.2);
   if (levenshtein(a, b) <= allowed) return true;

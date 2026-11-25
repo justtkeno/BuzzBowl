@@ -17,6 +17,9 @@ describe('normalize / fuzzy', () => {
     expect(fuzzyEq('mitocondria', 'mitochondria')).toBe(true);
     expect(fuzzyEq('vitamin b', 'vitamin a')).toBe(false);
     expect(fuzzyEq('cat', 'car')).toBe(false);
+    expect(fuzzyEq('od', 'of')).toBe(true);
+    expect(fuzzyEq('in', 'on')).toBe(false);
+    expect(fuzzyEq('two', 'to')).toBe(false);
   });
   it('requires exact numbers', () => expect(fuzzyEq('1798', '1789')).toBe(false));
 });
@@ -58,6 +61,8 @@ describe('checkAnswer', () => {
     ['the great gatsby', '<b><u>The Great Gatsby</u></b>', 'correct'],
     ['vitamin b', '<b><u>vitamin A</u></b>', 'incorrect'],
     ['hastings', 'Battle of <b><u>Hastings</u></b>', 'correct'],
+    ['moons od jupiter', '<b><u>moons of Jupiter</u></b> [accept <b><u>Jovian moons</u></b>; prompt on partial answers]', 'correct'],
+    ['battle pf hastings', '<b><u>Battle of Hastings</u></b>', 'correct'],
     ['Theodore Roosevelt', 'Franklin Delano <b><u>Roosevelt</u></b> [or <b><u>FDR</u></b>; do not accept "Theodore Roosevelt"]', 'incorrect'],
     ['FDR', 'Franklin Delano <b><u>Roosevelt</u></b> [or <b><u>FDR</u></b>; do not accept "Theodore Roosevelt"]', 'correct'],
     ['Sikhism', '<b><u>Sikh</u></b>ism [or <b><u>Sikhi</u></b>]', 'correct'],
