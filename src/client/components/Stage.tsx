@@ -95,7 +95,7 @@ export function Stage({ s }: { s: PublicState }) {
         <input ref={keeper} className="keyboard-keeper" aria-hidden="true" tabIndex={-1} autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} />
         {iAmAnswering && (
           <AnswerBox key={`${t?.num}-${s.buzz?.prompts}`} event="answer:submit" keeper={keeper} deadline={s.buzz!.deadline} total={s.buzz!.prompts ? 5 : s.settings.answerSeconds}
-            prompted={s.buzz!.prompts > 0} lastGiven={t?.buzzes.filter((b) => b.playerId === r.me).at(-1)?.given} paused={s.paused} />
+            prompted={s.buzz!.prompts > 0} spelling={s.buzz!.spelling} lastGiven={t?.buzzes.filter((b) => b.playerId === r.me).at(-1)?.given} paused={s.paused} />
         )}
         {s.buzz?.awaitingRuling && r.isReader && <RulingBox given={s.buzz.awaitingRuling.given} suggestion={s.buzz.awaitingRuling.suggestion} />}
         {s.phase === 'reading' && !r.isReader && (
@@ -336,7 +336,7 @@ function BuzzStatus({ s }: { s: PublicState }) {
   const mine = b.playerId === s.you;
   return (
     <div className="status buzz-status" style={{ ['--pc' as string]: colorFor(b.playerId) }}>
-      <span><span className="who-dot" /><b>{mine ? 'You' : b.playerName}</b> buzzed{b.prompts ? ' — prompted, say more' : ''}</span>
+      <span><span className="who-dot" /><b>{mine ? 'You' : b.playerName}</b> buzzed{b.spelling ? ' — checking spelling' : b.prompts ? ' — prompted, say more' : ''}</span>
       {!mine && <span className="typing">{b.awaitingRuling ? `“${b.awaitingRuling.given}”` : b.typing ? `“${b.typing}”` : '…'}</span>}
       {b.awaitingRuling ? <span className="muted">Waiting for the reader’s ruling</span> : !mine && <Countdown deadline={b.deadline} total={b.prompts ? 5 : s.settings.answerSeconds} frozen={s.paused} />}
     </div>
@@ -370,22 +370,28 @@ function EndSummary({ s }: { s: PublicState }) {
   );
 }
 
-function AnswerBox({ event, deadline, total, prompted, placeholder, lastGiven, paused, keeper }: {
+function AnswerBox({ event, deadline, total, prompted, spelling, placeholder, lastGiven, paused, keeper }: {
   event: string; deadline: number | null; total?: number; prompted: boolean; placeholder?: string; lastGiven?: string; paused?: boolean;
+  /** A spelling check: what they typed, put back in the box to fix. */
+  spelling?: string;
   /** The hidden input that opened the phone keyboard on the buzz tap; anything typed into it carries over. */
   keeper?: React.RefObject<HTMLInputElement>;
 }) {
   const [text, setText] = useState(() => {
     const early = keeper?.current?.value ?? '';
     if (keeper?.current) keeper.current.value = '';
-    if (early) socket.emit('answer:typing', early);
-    return early;
+    const start = early || spelling || '';
+    if (start) socket.emit('answer:typing', start);
+    return start;
   });
   const sent = useRef(false);
   const box = useRef<HTMLFormElement>(null);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    input.current?.focus({ preventScroll: true });
+    const el = input.current;
+    el?.focus({ preventScroll: true });
+    // Put the cursor after any carried-over text so a typo is a backspace away.
+    if (el?.value) el.setSelectionRange(el.value.length, el.value.length);
     // Keep the box visible above the phone keyboard.
     const t = setTimeout(() => box.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250);
     return () => clearTimeout(t);
@@ -397,14 +403,18 @@ function AnswerBox({ event, deadline, total, prompted, placeholder, lastGiven, p
   };
   return (
     <form ref={box} className={`answerbox ${prompted ? 'prompted' : ''}`} onSubmit={(e) => { e.preventDefault(); submit(); }}>
-      {prompted && (
+      {prompted && (spelling ? (
+        <div className="prompt-note">
+          <b>Almost — check your spelling.</b> <span>Fix the typo and send it again.</span>
+        </div>
+      ) : (
         <div className="prompt-note">
           <b>Prompt — be more specific.</b>
           {lastGiven && <span> You said “{lastGiven}”.</span>}
         </div>
-      )}
+      ))}
       <div className="row gap answer-row">
-        <input ref={input} className="grow big" value={text} placeholder={placeholder ?? (prompted ? 'More specific answer…' : 'Type your answer')}
+        <input ref={input} className="grow big" value={text} placeholder={placeholder ?? (spelling ? 'Your answer, spelled right' : prompted ? 'More specific answer…' : 'Type your answer')}
           autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="send" aria-label="Your answer"
           onChange={(e) => { setText(e.target.value); socket.emit('answer:typing', e.target.value); }} />
         <button className="btn primary big">Submit</button>
@@ -537,7 +547,7 @@ export function BonusCard({ s }: { s: PublicState }) {
         </div>
       )}
       {iAmCaptain && answering && (
-        <AnswerBox key={`${bn.num}-${bn.current}-${bn.prompts}`} event="bonus:submit" deadline={null} prompted={bn.prompts > 0} placeholder="Team answer" />
+        <AnswerBox key={`${bn.num}-${bn.current}-${bn.prompts}`} event="bonus:submit" deadline={null} prompted={bn.prompts > 0} spelling={bn.spelling} placeholder="Team answer" />
       )}
       {bn.awaitingRuling && (r.isReader
         ? <RulingBox given={bn.awaitingRuling.given} suggestion={bn.awaitingRuling.suggestion} />

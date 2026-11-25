@@ -206,6 +206,8 @@ export interface PublicBuzz {
   prompts: number;
   /** Set when the reader must rule: the submitted answer and the auto-checker's suggestion. */
   awaitingRuling?: { given: string; suggestion: Verdict };
+  /** The current prompt is a spelling check: what they typed, nearly an accepted answer. */
+  spelling?: string;
 }
 
 export interface PublicBonusPart {
@@ -230,6 +232,8 @@ export interface PublicBonus {
   done: boolean;
   category: string;
   awaitingRuling?: { given: string; suggestion: Verdict };
+  /** The current prompt is a spelling check: what the captain typed. */
+  spelling?: string;
   /** Reader only: all part texts and answers ahead of time. */
   readerParts?: { text: string; answerHtml: string }[];
 }

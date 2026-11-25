@@ -162,7 +162,7 @@ Pick **⚡ Lightning round** as the question source in Settings for fast one-lin
 
 ### Answer checking
 
-`src/server/game/answerCheck.ts` normalizes case, accents, punctuation and articles, tolerates small typos (Levenshtein, word by word, exact numbers), and reads answer lines: bold/underlined text is the required part, `[or …]`/`accept …` add alternatives, `prompt on …` triggers a prompt (up to 2, 5 seconds each), and `do not accept …` rejects.
+`src/server/game/answerCheck.ts` normalizes case, accents, punctuation and articles, tolerates small typos (Levenshtein, word by word, exact numbers; a slip onto a neighbouring phone key counts half; a near miss gets one "check your spelling" retry with the typed answer kept), and reads answer lines: bold/underlined text is the required part, `[or …]`/`accept …` add alternatives, `prompt on …` triggers a prompt (up to 2, 5 seconds each), and `do not accept …` rejects.
 
 ## How the timing stays fair
 

@@ -14,7 +14,7 @@ const SECTIONS: { title: string; items: Faq[] }[] = [
     items: [
       { q: 'How do I play with friends?', a: <>On the home screen, open <b>Play with friends</b> and tap <b>Create a room</b>. Share the link or let people scan the QR code: they join right away, no account needed. Pick the rules (a preset is the quickest), then tap <b>Start game</b>.</> },
       { q: 'How do I join someone’s room?', a: <>Open the link they sent, scan their QR code, or type the 4-letter room code under <b>Play with friends → join with a code</b>.</> },
-      { q: 'How do I buzz and answer?', a: <>Tap <b>Buzz</b> (or press Space on a keyboard) as soon as you know it, then type your answer and press Enter. Spelling doesn’t have to be perfect.</> },
+      { q: 'How do I buzz and answer?', a: <>Tap <b>Buzz</b> (or press Space on a keyboard) as soon as you know it, then type your answer and press Enter. Spelling doesn’t have to be perfect, and if you’re one typo too far off you get one chance to fix it.</> },
       { q: 'Do I need an account?', a: <>No. Anyone can play as a guest. An account adds a profile with your stats and badges, friends, your own game presets, and remembers your name and settings on any device.</> },
       { q: 'Can I play alone?', a: <>Yes: <b>Play solo → Practice</b> for questions at your own pace (you can add computer opponents in the room), or <b>Survival</b> to see how long you last. There’s also <b>Today’s challenge</b>, the same 10 tossups for everyone each day.</> },
     ],

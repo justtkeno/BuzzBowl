@@ -130,6 +130,9 @@ interface LiveBuzz {
   typing: string;
   prompts: number;
   awaiting?: { given: string; suggestion: Verdict };
+  /** Asked to check their spelling of this answer (once per answer); cleared by the next prompt. */
+  spelling?: string;
+  spellingUsed?: boolean;
 }
 
 interface LiveBonus {
@@ -146,6 +149,8 @@ interface LiveBonus {
   revealing: boolean;
   done: boolean;
   awaiting?: { given: string; suggestion: Verdict };
+  spelling?: string;
+  spellingUsed?: boolean;
 }
 
 /** Everything about a room. Plain data except the Sets, so it can move to Redis later. */
@@ -1460,13 +1465,13 @@ export class Room {
     if (!timedOut) this.notPaused();
     const given = String(text ?? '').trim().slice(0, 200);
     this.clearTimer('answer');
-    const { verdict, correctedTo } = given ? checkAnswerDetailed(given, this.s.tossup!.q.answer) : { verdict: 'incorrect' as const, correctedTo: undefined };
+    const { verdict, correctedTo, spelling } = given ? checkAnswerDetailed(given, this.s.tossup!.q.answer) : { verdict: 'incorrect' as const, correctedTo: undefined, spelling: false };
     if (given && this.s.settings.readerRules && this.readerOnline()) {
       b!.awaiting = { given, suggestion: verdict };
       b!.deadline = null;
       return this.broadcast();
     }
-    this.applyTossupVerdict(verdict, given, correctedTo);
+    this.applyTossupVerdict(spelling && b!.spellingUsed ? 'incorrect' : verdict, given, correctedTo, spelling);
   }
 
   /** The reader's ruling on the current tossup or bonus answer. */
@@ -1480,7 +1485,8 @@ export class Room {
     else fail('There is nothing to rule on.');
   }
 
-  private applyTossupVerdict(verdict: Verdict, given: string, correctedTo?: string) {
+  /** `spelling`: a near miss, so the player gets one chance to fix a typo (`spelling` holds what they typed). */
+  private applyTossupVerdict(verdict: Verdict, given: string, correctedTo?: string, spelling = false) {
     const t = this.s.tossup!;
     const b = this.s.buzz!;
     const marker = t.markers[t.markers.length - 1];
@@ -1489,6 +1495,8 @@ export class Room {
       b.prompts++;
       b.awaiting = undefined;
       b.typing = '';
+      b.spelling = spelling ? given : undefined;
+      if (spelling) b.spellingUsed = true;
       b.deadline = Date.now() + TIMING.promptSeconds * 1000;
       marker.result = 'prompt';
       this.setTimer('answer', TIMING.promptSeconds * 1000, () => this.submitAnswer(b.playerId, this.s.buzz?.typing ?? '', true));
@@ -1654,7 +1662,7 @@ export class Room {
 
   private startBonusPart() {
     const bn = this.s.bonus!;
-    Object.assign(bn, { typing: '', prompts: 0, revealing: false, awaiting: undefined });
+    Object.assign(bn, { typing: '', prompts: 0, revealing: false, awaiting: undefined, spelling: undefined, spellingUsed: false });
     bn.deadline = Date.now() + this.s.settings.bonusSeconds * 1000;
     this.setTimer('bonus', this.s.settings.bonusSeconds * 1000, () => this.bonusSubmit(this.captainOf(bn.teamId) ?? '', bn.typing, true));
     this.broadcast();
@@ -1667,21 +1675,23 @@ export class Room {
     if (!timedOut) this.notPaused();
     this.clearTimer('bonus');
     const given = String(text ?? '').trim().slice(0, 200);
-    const { verdict, correctedTo } = given ? checkAnswerDetailed(given, bn!.q.answers[bn!.current]) : { verdict: 'incorrect' as const, correctedTo: undefined };
+    const { verdict, correctedTo, spelling } = given ? checkAnswerDetailed(given, bn!.q.answers[bn!.current]) : { verdict: 'incorrect' as const, correctedTo: undefined, spelling: false };
     if (given && this.s.settings.readerRules && this.readerOnline()) {
       bn!.awaiting = { given, suggestion: verdict };
       bn!.deadline = null;
       return this.broadcast();
     }
-    this.applyBonusVerdict(verdict, given, correctedTo);
+    this.applyBonusVerdict(spelling && bn!.spellingUsed ? 'incorrect' : verdict, given, correctedTo, spelling);
   }
 
-  private applyBonusVerdict(verdict: Verdict, given: string, correctedTo?: string) {
+  private applyBonusVerdict(verdict: Verdict, given: string, correctedTo?: string, spelling = false) {
     const bn = this.s.bonus!;
     bn.awaiting = undefined;
     if (verdict === 'prompt' && bn.prompts < TIMING.maxPrompts) {
       bn.prompts++;
       bn.typing = '';
+      bn.spelling = spelling ? given : undefined;
+      if (spelling) bn.spellingUsed = true;
       bn.deadline = Date.now() + TIMING.promptSeconds * 1000;
       this.setTimer('bonus', TIMING.promptSeconds * 1000, () => this.bonusSubmit(this.captainOf(bn.teamId) ?? '', bn.typing, true));
       return this.broadcast();
@@ -2053,6 +2063,7 @@ export class Room {
       buzz: s.buzz && {
         playerId: s.buzz.playerId, playerName: this.player(s.buzz.playerId)?.name ?? '?', wordIndex: s.buzz.wordIndex,
         deadline: s.buzz.deadline, typing: s.buzz.typing, prompts: s.buzz.prompts, awaitingRuling: s.buzz.awaiting,
+        ...(s.buzz.spelling ? { spelling: s.buzz.spelling } : {}),
       },
       bonus: bn && {
         num: bn.num, teamId: bn.teamId, teamName: this.teamName(bn.teamId), category: bn.q.category,
@@ -2069,6 +2080,7 @@ export class Room {
         }),
         current: bn.current, deadline: bn.deadline, typing: seesBonusTyping ? bn.typing : '', prompts: bn.prompts,
         revealing: bn.revealing, done: bn.done, awaitingRuling: bn.awaiting,
+        ...(bn.spelling && seesBonusTyping ? { spelling: bn.spelling } : {}),
         readerParts: isReader ? bn.q.parts.map((text, i) => ({ text, answerHtml: safeAnswerHtml(bn.q.answers[i]) })) : undefined,
       },
       players: shared.players,

@@ -117,6 +117,28 @@ describe('tossup flow', () => {
     expect(room.s.rulings[0].kind).toBe('ten');
   });
 
+  it('asks once to check the spelling of a near miss, with the typed answer kept', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 7);
+    room.buzz(ids[0], 7);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    room.submitAnswer(ids[0], 'motocondira');
+    expect(room.s.phase).toBe('buzz');
+    expect(room.snapshot(ids[0]).buzz).toMatchObject({ prompts: 1, spelling: 'motocondira' });
+    room.submitAnswer(ids[0], 'mitocondira');
+    expect(room.s.rulings[0]).toMatchObject({ correct: true, correctedTo: 'mitochondria' });
+  });
+
+  it('gives only one spelling check per answer', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 7);
+    room.buzz(ids[0], 7);
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    room.submitAnswer(ids[0], 'motocondira');
+    room.submitAnswer(ids[0], 'mitocxadria');
+    expect(room.s.rulings[0]).toMatchObject({ correct: false });
+  });
+
   it('closes the tossup after the dead window', async () => {
     const { room } = await setup();
     await readTo(room, 10);
