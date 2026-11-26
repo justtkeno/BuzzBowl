@@ -60,7 +60,7 @@ export function Spectate({ code }: { code: string }) {
     <div className="watch">
       <Announcement />
       <header className="watch-top">
-        <div className="brand"><Logo /> Trivio</div>
+        <a className="brand brand-home" href="/"><Logo /> Trivio</a>
         <div className="watch-join">Join at <b>{inviteUrl(s.code).replace(/^https?:\/\//, '').replace(/\/r\/.*/, '')}</b> · code <b className="watch-code">{s.code}</b></div>
         {!connected && <span className="badge warn">Reconnecting…</span>}
         <button className="btn ghost small icon watch-gear" onClick={() => setSettings(true)} title="Settings: text size, theme, sound" aria-label="Settings"><Icon name="gear" /></button>

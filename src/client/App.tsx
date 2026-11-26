@@ -200,6 +200,9 @@ export function useTheme() {
       if (t === 'auto') document.documentElement.removeAttribute('data-theme');
       else document.documentElement.setAttribute('data-theme', t);
       document.documentElement.setAttribute('data-text', prefs.textSize());
+      const a = prefs.accent();
+      if (a === 'ember' || !ACCENTS.some(([k]) => k === a)) document.documentElement.removeAttribute('data-accent');
+      else document.documentElement.setAttribute('data-accent', a);
       // The phone's status bar matches the top bar, in the theme the player picked.
       const light = t === 'dark' ? DARK_BAR : LIGHT_BAR, dark = t === 'light' ? LIGHT_BAR : DARK_BAR;
       document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
@@ -217,6 +220,15 @@ export const TEXT_SIZE_LABEL = { s: 'Small', m: 'Medium', l: 'Large' } as const;
 /** Pick a question text size for this device (the Display panel). */
 export function setTextSizeChoice(t: 's' | 'm' | 'l') {
   prefs.setTextSize(t);
+  window.dispatchEvent(new Event('qb-theme'));
+}
+
+/** Accent colors a player can pick for this device. The values live in styles.css (`[data-accent=…]`). */
+export const ACCENTS = [['ember', 'Ember'], ['ocean', 'Ocean'], ['rose', 'Rose'], ['teal', 'Teal'], ['mono', 'Mono']] as const;
+export type Accent = (typeof ACCENTS)[number][0];
+
+export function setAccentChoice(a: Accent) {
+  prefs.setAccent(a);
   window.dispatchEvent(new Event('qb-theme'));
 }
 

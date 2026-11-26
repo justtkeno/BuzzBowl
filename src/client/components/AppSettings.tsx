@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { TEXT_SIZE_LABEL, setTextSizeChoice, setThemeChoice } from '../App';
+import { ACCENTS, TEXT_SIZE_LABEL, setAccentChoice, setTextSizeChoice, setThemeChoice, type Accent } from '../App';
 import { prefs } from '../socket';
 import { BUZZ_SOUNDS, buzzSound, play, setBuzzSound, setSoundOn, setVolume, soundOn, volume, type BuzzSound } from '../sounds';
 import { useAccount } from '../account';
@@ -80,6 +80,7 @@ function GameSettings({ onClose }: { onClose: () => void }) {
   const [vibe, setVibe] = useState(vibrationOn());
   const [size, setSize] = useState<Size>(prefs.textSize());
   const [theme, setTheme] = useState<Theme>((prefs.theme() as Theme) ?? 'auto');
+  const [accent, setAccent] = useState<Accent>(() => (ACCENTS.find(([k]) => k === prefs.accent())?.[0] ?? 'ember'));
 
   const toggleSound = (on: boolean) => { setSoundOn(on); setSound(on); if (on) play('correct'); };
   const pickBuzz = (v: BuzzSound) => { setBuzzSound(v); setBuzz(v); };
@@ -139,6 +140,15 @@ function GameSettings({ onClose }: { onClose: () => void }) {
             <div className="seg display-seg" role="radiogroup" aria-label="Theme">
               {THEMES.map(([k, label]) => (
                 <button key={k} role="radio" aria-checked={theme === k} className={theme === k ? 'on' : ''} onClick={() => { setThemeChoice(k); setTheme(k); }}>{label}</button>
+              ))}
+            </div>
+            <span className="as-label">Color <small>{ACCENTS.find(([k]) => k === accent)?.[1]}</small></span>
+            <div className="swatches" role="radiogroup" aria-label="Color">
+              {ACCENTS.map(([k, label]) => (
+                <button key={k} role="radio" aria-checked={accent === k} aria-label={label} title={label} className={`swatch sw-${k} ${accent === k ? 'on' : ''}`}
+                  onClick={() => { setAccentChoice(k); setAccent(k); }}>
+                  {accent === k && <Icon name="check" />}
+                </button>
               ))}
             </div>
           </section>

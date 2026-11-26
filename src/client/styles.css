@@ -54,6 +54,22 @@
   --shadow-lg: 0 2px 8px rgb(0 0 0 / 40%), 0 28px 64px -12px rgb(0 0 0 / 70%); --highlight: inset 0 1px 0 rgb(255 255 255 / 5%); color-scheme: dark;
 }
 
+/* Accent colors (Game settings → Color, per device). Ember, the orange above, is the default. Each needs light and dark values. */
+:root[data-accent='ocean'] { --accent: #1c6fd1; --accent-ink: #ffffff; --accent-soft: #e2eefc; }
+:root[data-accent='rose'] { --accent: #d6336c; --accent-ink: #ffffff; --accent-soft: #fce4ec; }
+:root[data-accent='teal'] { --accent: #0b7f8c; --accent-ink: #ffffff; --accent-soft: #dcf2f4; }
+:root[data-accent='mono'] { --accent: #2b2a27; --accent-ink: #ffffff; --accent-soft: #ebe9e4; }
+@media (prefers-color-scheme: dark) {
+  :root[data-accent='ocean']:not([data-theme='light']) { --accent: #5aa2f5; --accent-ink: #04111f; --accent-soft: #142a44; }
+  :root[data-accent='rose']:not([data-theme='light']) { --accent: #f06595; --accent-ink: #22040f; --accent-soft: #3d1626; }
+  :root[data-accent='teal']:not([data-theme='light']) { --accent: #3bc9db; --accent-ink: #022226; --accent-soft: #12343a; }
+  :root[data-accent='mono']:not([data-theme='light']) { --accent: #ecebe8; --accent-ink: #1a1917; --accent-soft: #34312d; }
+}
+:root[data-theme='dark'][data-accent='ocean'] { --accent: #5aa2f5; --accent-ink: #04111f; --accent-soft: #142a44; }
+:root[data-theme='dark'][data-accent='rose'] { --accent: #f06595; --accent-ink: #22040f; --accent-soft: #3d1626; }
+:root[data-theme='dark'][data-accent='teal'] { --accent: #3bc9db; --accent-ink: #022226; --accent-soft: #12343a; }
+:root[data-theme='dark'][data-accent='mono'] { --accent: #ecebe8; --accent-ink: #1a1917; --accent-soft: #34312d; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; -webkit-tap-highlight-color: transparent; }
@@ -146,6 +162,12 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .home-card { width: min(440px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1.75rem; box-shadow: var(--shadow), var(--highlight); display: flex; flex-direction: column; gap: .9rem; animation: rise-in var(--dur-slow) var(--ease-out) both; }
 .brand { display: flex; align-items: center; gap: .55rem; font-weight: 750; font-size: 1.35rem; letter-spacing: -.02em; }
 .brand.small { font-size: 1rem; }
+/* The logo as a way home (room top bar, big-screen view). */
+.brand-home { background: none; border: 0; padding: .2rem .35rem; margin: -.2rem -.35rem; border-radius: 10px; color: var(--text); text-decoration: none; cursor: pointer; font: inherit; font-weight: 750; letter-spacing: -.02em;
+  transition: background-color var(--dur-fast) var(--ease-out), transform var(--dur) var(--ease-spring); }
+.brand-home.small { font-size: 1rem; }
+.brand-home:hover { background: var(--surface-2); }
+.brand-home:active { transform: scale(.95); transition-duration: 60ms; }
 .logo { display: block; flex: none; width: 1.8em; height: 1.8em; }
 .field { display: flex; flex-direction: column; gap: .3rem; }
 .field > span { font-size: .85rem; color: var(--muted); }
@@ -1086,3 +1108,18 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
   .btn, .chip, .phone-tabs button, .phone-tabs button::before { transition-property: background-color, border-color, color, box-shadow, opacity; }
   .btn:active:not(:disabled), .chip:active, .phone-tabs button:active { transform: none; }
 }
+
+/* ---------- Game settings: color swatches ---------- */
+/* Each swatch shows its own accent, whatever the current one is. */
+.swatches { display: flex; flex-wrap: wrap; gap: .6rem; }
+.swatch { --sw: #d9480f; width: 40px; height: 40px; border-radius: 999px; border: 0; padding: 0; cursor: pointer; display: grid; place-items: center; color: #fff;
+  background: var(--sw); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%), inset 0 1px 0 rgb(255 255 255 / 20%);
+  transition: transform var(--dur) var(--ease-spring), box-shadow var(--dur) var(--ease-out); }
+.swatch:hover { transform: scale(1.06); }
+.swatch:active { transform: scale(.92); transition-duration: 60ms; }
+.swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--sw); }
+.swatch .ic { width: 20px; height: 20px; stroke-width: 2.6; }
+.sw-ember { --sw: #d9480f; } .sw-ocean { --sw: #1c6fd1; } .sw-rose { --sw: #d6336c; } .sw-teal { --sw: #0b7f8c; } .sw-mono { --sw: #2b2a27; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .sw-mono { --sw: #ecebe8; color: #1a1917; } }
+:root[data-theme='dark'] .sw-mono { --sw: #ecebe8; color: #1a1917; }
+@media (prefers-reduced-motion: reduce) { .swatch, .brand-home { transition: none; } .swatch:hover, .swatch:active, .brand-home:active { transform: none; } }

@@ -117,7 +117,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
     <div className={`room ${s.phase === 'reading' ? 'is-reading' : ''}`}>
       {!connected && <div className="conn-banner" role="status"><span className="spinner" /> Connection lost — reconnecting…</div>}
       <header className="topbar" ref={topbar}>
-        <div className="brand small"><Logo /><span className="hide-sm">Trivio</span></div>
+        <button className="brand small brand-home" onClick={leave} aria-label="Leave room and go home" title="Home"><Logo /><span className="hide-sm">Trivio</span></button>
         {s.daily ? (
           <span className="chip daily-chip">Daily <b>#{s.daily.number}</b>{s.tossup && s.phase !== 'gameOver' ? ` · ${s.tossup.num}/${s.daily.total}` : ''}</span>
         ) : s.survival ? <SurvivalChip s={s} /> : (
