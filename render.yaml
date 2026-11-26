@@ -1,6 +1,7 @@
 services:
   - type: web
-    name: playtrivio
+    name: playtrivioqb
+    region: virginia
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build
@@ -25,4 +26,4 @@ services:
         sync: false
       # Where reset and confirmation links point.
       - key: PUBLIC_URL
-        value: https://playtrivio.onrender.com
+        value: https://playtrivioqb.onrender.com
