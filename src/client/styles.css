@@ -70,6 +70,21 @@
 :root[data-theme='dark'][data-accent='teal'] { --accent: #3bc9db; --accent-ink: #022226; --accent-soft: #12343a; }
 :root[data-theme='dark'][data-accent='mono'] { --accent: #ecebe8; --accent-ink: #1a1917; --accent-soft: #34312d; }
 
+/* Full themes (Game settings → Theme). Each sits on light or dark mode (App.tsx sets data-theme to the mode) and swaps the surfaces;
+   accents still come from the rules above. Must stay after the dark blocks so these win. */
+:root[data-palette='midnight'] {
+  --bg: #0b1020; --surface: #121a2e; --surface-2: #1a2440; --text: #e6ebf5; --muted: #8f9bb5; --border: #26314f; --border-strong: #364266;
+  --bad-soft: #3a1d26; --ok-soft: #13291f; --power-soft: #241f4a;
+  --shadow: 0 1px 2px rgb(0 0 0 / 45%), 0 8px 24px -8px rgb(0 0 10 / 60%); --highlight: inset 0 1px 0 rgb(180 200 255 / 6%);
+}
+:root[data-palette='sand'] {
+  --bg: #f3ead9; --surface: #fbf6ec; --surface-2: #efe4d0; --text: #2a2118; --muted: #75685a; --border: #e0d3bb; --border-strong: #cdbd9f;
+}
+:root[data-palette='slate'] {
+  --bg: #eef1f5; --surface: #ffffff; --surface-2: #e6eaf0; --text: #1a1f29; --muted: #5f6b7d; --border: #d8dee8; --border-strong: #c3cbd8;
+  --shadow: 0 1px 2px rgb(20 30 50 / 6%), 0 6px 20px -6px rgb(20 30 50 / 12%);
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--text); font: 15px/1.5 var(--font); -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; -webkit-tap-highlight-color: transparent; }
@@ -1123,3 +1138,25 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .sw-mono { --sw: #ecebe8; color: #1a1917; } }
 :root[data-theme='dark'] .sw-mono { --sw: #ecebe8; color: #1a1917; }
 @media (prefers-reduced-motion: reduce) { .swatch, .brand-home { transition: none; } .swatch:hover, .swatch:active, .brand-home:active { transform: none; } }
+
+/* ---------- Game settings: theme tiles ---------- */
+/* Each preview shows its own theme's colors, with the current accent. */
+.theme-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
+.theme-tile { display: flex; flex-direction: column; align-items: stretch; gap: .35rem; padding: .4rem .4rem .45rem; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); color: var(--text); font: 500 .82rem/1.2 var(--font); cursor: pointer; text-align: center;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur) var(--ease-out), transform var(--dur) var(--ease-spring); }
+.theme-tile:hover { border-color: var(--border-strong); }
+.theme-tile:active { transform: scale(.96); transition-duration: 60ms; }
+.theme-tile.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); font-weight: 650; }
+.tp { --tp-bg: #f6f5f2; --tp-card: #ffffff; --tp-ink: #1d1c1a; display: flex; align-items: flex-end; height: 44px; padding: 8px 8px 0; border-radius: 8px; background: var(--tp-bg); box-shadow: inset 0 0 0 1px rgb(0 0 0 / 8%); overflow: hidden; }
+.tp-card { flex: 1; height: 100%; border-radius: 6px 6px 0 0; background: var(--tp-card); padding: 7px 7px 0; display: flex; flex-direction: column; gap: 4px; }
+.tp-card i { display: block; height: 4px; border-radius: 2px; background: var(--tp-ink); opacity: .55; width: 80%; }
+.tp-card i + i { background: var(--accent); opacity: 1; width: 45%; }
+.tp-dark { --tp-bg: #141312; --tp-card: #1d1c1a; --tp-ink: #ecebe8; }
+.tp-auto { background: linear-gradient(135deg, #f6f5f2 50%, #141312 50%); }
+.tp-auto .tp-card { background: linear-gradient(135deg, #ffffff 50%, #1d1c1a 50%); }
+.tp-auto .tp-card i:first-child { background: linear-gradient(90deg, #1d1c1a 50%, #ecebe8 50%); }
+.tp-midnight { --tp-bg: #0b1020; --tp-card: #121a2e; --tp-ink: #e6ebf5; }
+.tp-sand { --tp-bg: #f3ead9; --tp-card: #fbf6ec; --tp-ink: #2a2118; }
+.tp-slate { --tp-bg: #eef1f5; --tp-card: #ffffff; --tp-ink: #1a1f29; }
+@media (prefers-reduced-motion: reduce) { .theme-tile { transition: none; } .theme-tile:active { transform: none; } }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ACCENTS, TEXT_SIZE_LABEL, setAccentChoice, setTextSizeChoice, setThemeChoice, type Accent } from '../App';
+import { ACCENTS, THEMES, TEXT_SIZE_LABEL, setAccentChoice, setTextSizeChoice, setThemeChoice, type Accent, type Theme } from '../App';
 import { prefs } from '../socket';
 import { BUZZ_SOUNDS, buzzSound, play, setBuzzSound, setSoundOn, setVolume, soundOn, volume, type BuzzSound } from '../sounds';
 import { useAccount } from '../account';
@@ -9,8 +9,6 @@ import { Icon } from './Icon';
 import { canVibrate, setVibrationOn, vibrate, vibrationOn } from './util';
 
 type Size = keyof typeof TEXT_SIZE_LABEL;
-type Theme = 'auto' | 'light' | 'dark';
-const THEMES: [Theme, string][] = [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']];
 
 export type SettingsView = 'menu' | 'account' | 'game' | 'keys';
 
@@ -79,7 +77,7 @@ function GameSettings({ onClose }: { onClose: () => void }) {
   const [buzz, setBuzz] = useState<BuzzSound>(buzzSound());
   const [vibe, setVibe] = useState(vibrationOn());
   const [size, setSize] = useState<Size>(prefs.textSize());
-  const [theme, setTheme] = useState<Theme>((prefs.theme() as Theme) ?? 'auto');
+  const [theme, setTheme] = useState<Theme>(() => (THEMES.find((t) => t.id === prefs.theme())?.id ?? 'auto'));
   const [accent, setAccent] = useState<Accent>(() => (ACCENTS.find(([k]) => k === prefs.accent())?.[0] ?? 'ember'));
 
   const toggleSound = (on: boolean) => { setSoundOn(on); setSound(on); if (on) play('correct'); };
@@ -137,9 +135,12 @@ function GameSettings({ onClose }: { onClose: () => void }) {
             </div>
             <p className="qtext display-preview">This planet’s two small moons are named for the sons of a war god.</p>
             <span className="as-label">Theme <small>Auto follows your phone or computer’s light or dark setting</small></span>
-            <div className="seg display-seg" role="radiogroup" aria-label="Theme">
-              {THEMES.map(([k, label]) => (
-                <button key={k} role="radio" aria-checked={theme === k} className={theme === k ? 'on' : ''} onClick={() => { setThemeChoice(k); setTheme(k); }}>{label}</button>
+            <div className="theme-tiles" role="radiogroup" aria-label="Theme">
+              {THEMES.map(({ id, label }) => (
+                <button key={id} role="radio" aria-checked={theme === id} className={`theme-tile ${theme === id ? 'on' : ''}`} onClick={() => { setThemeChoice(id); setTheme(id); }}>
+                  <span className={`tp tp-${id}`} aria-hidden="true"><span className="tp-card"><i /><i /></span></span>
+                  {label}
+                </button>
               ))}
             </div>
             <span className="as-label">Color <small>{ACCENTS.find(([k]) => k === accent)?.[1]}</small></span>

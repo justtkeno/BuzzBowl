@@ -40,7 +40,8 @@ export const prefs = {
   setName: (n: string) => store.set('qb:name', n),
   token: (code: string) => store.get(`qb:token:${code}`) ?? undefined,
   setToken: (code: string, t: string) => store.set(`qb:token:${code}`, t),
-  theme: () => (store.get('qb:theme') as 'auto' | 'light' | 'dark' | null) ?? 'auto',
+  /** 'auto' | 'light' | 'dark', or a full theme from THEMES in App.tsx (midnight, sand, slate). */
+  theme: () => store.get('qb:theme') ?? 'auto',
   /** Question text size on this device. */
   textSize: () => (store.get('qb:textSize') as 's' | 'm' | 'l' | null) ?? 'm',
   setTextSize: (t: 's' | 'm' | 'l') => store.set('qb:textSize', t),
