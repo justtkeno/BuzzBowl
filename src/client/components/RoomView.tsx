@@ -23,6 +23,7 @@ import { Stage } from './Stage';
 import { Summary } from './Summary';
 import { act, roles, toast } from './util';
 import { SendFeedback } from './SendFeedback';
+import { PingChip } from './Ping';
 import { Icon } from './Icon';
 import { Tutorial } from './Tutorial';
 
@@ -126,6 +127,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
         )}
         <span className={`phase phase-${s.phase}`}>{s.paused ? 'Paused' : phaseLabel[s.phase]}</span>
         <div className="grow" />
+        <PingChip />
         {r.isController && midGame && !r.fixed && (
           <button className={`btn ${s.paused ? 'primary' : 'ghost'} pause-btn`} onClick={() => act('game:hold', !s.paused)} title={s.paused ? 'Resume the game' : 'Pause the whole game'}>
             {s.paused ? <><Icon name="play" /> Resume</> : <Icon name="pause" />}<span className="hide-sm">{s.paused ? '' : ' Pause'}</span>

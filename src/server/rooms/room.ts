@@ -1,5 +1,5 @@
 import {
-  CATEGORIES, DEFAULT_SETTINGS, SPECTATOR, SURVIVAL_LIVES, VOTE_SECONDS, buzzWindowSeconds,
+  CATEGORIES, DEFAULT_SETTINGS, SPECTATOR, SURVIVAL_LIVES, VOTE_SECONDS, buzzWindowSeconds, pingQuality,
   type AnswerKey, type BotSkill, type BuzzKind, type BuzzMarker, type ChatMessage, type Highlight, type Phase, type PlayerStats, type Protest, type PublicState, type ReviewItem,
   type Filters, type Ruling, type ScorePoint, type Settings, type Verdict,
 } from '../../shared/types';
@@ -85,7 +85,7 @@ export const TIMING = {
 };
 
 interface Player {
-  id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string; admin?: boolean; level?: number; pic?: string;
+  id: string; token: string; name: string; online: boolean; teamId: string | null; bot?: BotSkill; accountId?: string; username?: string; admin?: boolean; level?: number; pic?: string; ping?: number;
   /** The title they equipped on their account (shown with their name). */
   title?: string;
   /** The host, reader or an admin stopped this player from chatting. */
@@ -474,6 +474,18 @@ export class Room {
   }
 
   /** A signed-in player's level changed (after a game was saved): show the new one. */
+  /**
+   * The server measured this player's round trip. Smoothed, and only broadcast when it moves between good, ok and bad,
+   * so measuring doesn't flood the room with updates. Display only: rulings never look at it.
+   */
+  setPing(playerId: string, ms: number) {
+    const p = this.player(playerId);
+    if (!p || p.bot || !Number.isFinite(ms) || ms < 0) return;
+    const before = p.ping;
+    p.ping = before == null ? ms : before * 0.6 + ms * 0.4;
+    if (before == null || pingQuality(before) !== pingQuality(p.ping)) this.broadcast();
+  }
+
   setLevel(accountId: string, level: number) {
     const p = this.s.players.find((x) => x.accountId === accountId);
     if (!p || p.level === level) return;
@@ -1862,7 +1874,7 @@ export class Room {
       ? this.s.teams.map((t) => ({ id: t.id, name: t.name, playerIds: t.playerIds, captainId: this.captainOf(t.id), ...computeTeamTotals(t.id, this.s.rulings, this.s.adjustments) }))
       : [];
     const streaks = this.streaks();
-    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}), ...(p.admin ? { admin: true } : {}), ...(p.title ? { title: p.title } : {}), ...(p.level ? { level: p.level } : {}), ...(p.pic ? { pic: p.pic } : {}), ...(p.muted ? { muted: true } : {}) }));
+    const players = this.s.players.map((p) => ({ id: p.id, name: p.name, online: p.online, teamId: this.teamOf(p.id), stats: stats[p.id], ...streaks[p.id], ...(p.bot ? { bot: p.bot } : {}), ...(p.username ? { username: p.username } : {}), ...(p.admin ? { admin: true } : {}), ...(p.title ? { title: p.title } : {}), ...(p.level ? { level: p.level } : {}), ...(p.pic ? { pic: p.pic } : {}), ...(p.ping != null && p.online && !p.bot ? { ping: Math.round(p.ping) } : {}), ...(p.muted ? { muted: true } : {}) }));
     // FFA bonus totals live on each player's "team" (themselves).
     const ffaTeams = this.s.settings.mode === 'ffa'
       ? this.s.players.map((p) => ({ id: p.id, name: p.name, playerIds: [p.id], captainId: p.id, ...computeTeamTotals(p.id, this.s.rulings, this.s.adjustments) }))

@@ -82,6 +82,20 @@ boosts.onChange = () => {
   for (const s of io.sockets.sockets.values()) s.emit('xp:boost', boosts.viewFor(accounts.of(s)?.id));
 };
 
+// Everyone's ping, measured here so nobody can fake theirs: each seated socket answers a tiny message every 10 s.
+// Shown next to names in Scores; it never affects buzzes or rulings.
+const PING_EVERY_MS = 10_000;
+setInterval(() => {
+  for (const s of io.sockets.sockets.values()) {
+    const { code, playerId } = s.data as { code?: string; playerId?: string };
+    if (!code || !playerId) continue;
+    const sent = Date.now();
+    s.timeout(5000).emit('net:ping', (err: Error | null) => {
+      if (!err) store.get(code)?.setPing(playerId, Date.now() - sent);
+    });
+  }
+}, PING_EVERY_MS).unref();
+
 // An admin changed someone's XP: their open screens and any room they're in show the new level.
 accounts.onLevel = (accountId, level) => {
   for (const s of io.sockets.sockets.values()) {
@@ -330,6 +344,8 @@ io.use(accounts.socketMiddleware);
 
 io.on('connection', (socket) => {
   socket.on('time', (ack: (t: number) => void) => typeof ack === 'function' && ack(Date.now()));
+  // The client's own ping chip times this round trip.
+  socket.on('net:echo', (ack: () => void) => typeof ack === 'function' && ack());
   void boosts.ready.then(() => socket.emit('xp:boost', boosts.viewFor(accounts.of(socket)?.id)));
 
   /** Moving to another room: stop getting the old room's updates, and go offline there unless another tab is still in it. */
