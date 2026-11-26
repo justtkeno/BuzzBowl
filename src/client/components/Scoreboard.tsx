@@ -1,4 +1,5 @@
 import { Info } from './Info';
+import { PlayerPing } from './Ping';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { PublicPlayer, PublicState } from '../../shared/types';
 import { BOT_SKILLS } from '../../shared/types';
@@ -77,7 +78,8 @@ export function Scoreboard({ s }: { s: PublicState }) {
           ? <img className="pdot pic" src={p.pic} alt="" decoding="async" style={{ borderColor: colorFor(p.id, order) }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           : <span className="pdot" style={{ background: colorFor(p.id, order) }} />}
         {p.name}
-        <Verified username={p.username} admin={p.admin} level={p.level} /><TitleTag title={p.title} />
+        <Verified username={p.username} admin={p.admin} level={p.level} />
+        {p.online && !p.bot && <PlayerPing ms={p.ping} />}<TitleTag title={p.title} />
         {p.streak >= 2 && <span className="streak" title={`${p.streak} tossups in a row`}>×{p.streak}</span>}
         {p.bot && <span className="badge" title={`Computer player · ${BOT_SKILLS[p.bot].blurb}`}>bot · {BOT_SKILLS[p.bot].label.toLowerCase()}</span>}
         {p.id === s.hostId && <span className="badge">host</span>}

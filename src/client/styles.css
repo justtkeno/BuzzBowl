@@ -1022,3 +1022,14 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .menu .menu-label:first-child { padding-top: .3rem; }
 .settings-choice { text-decoration: none; }
 .menu .menu-hint { display: block; margin: .1rem 0 0 calc(1.15em + .6rem); }
+
+/* Ping: tiny bars, quiet colors (green good, amber a little slow, red slow) */
+.ping-chip { display: inline-flex; align-items: center; gap: .3rem; font-size: .75rem; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; padding: 0 .2rem; }
+.ping-bars { width: 12px; height: 10px; flex: none; }
+.ping-bars rect { fill: var(--border); }
+.ping-chip.good .ping-bars rect.on, .player-ping.good .ping-bars rect.on { fill: var(--ok); }
+.ping-chip.ok .ping-bars rect.on, .player-ping.ok .ping-bars rect.on { fill: var(--warn); }
+.ping-chip.bad .ping-bars rect.on, .player-ping.bad .ping-bars rect.on { fill: var(--bad); }
+.ping-chip.bad { color: var(--bad); }
+.player-ping { display: inline-flex; margin-left: .3rem; vertical-align: -.05em; }
+@media (max-width: 480px) { .hide-xs { display: none; } .ping-chip { gap: .2rem; padding: 0; } }

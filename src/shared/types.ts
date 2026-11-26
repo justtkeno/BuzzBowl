@@ -143,6 +143,8 @@ export interface PublicPlayer {
   /** Signed-in players: their level and profile picture. */
   level?: number;
   pic?: string;
+  /** Round trip to the server in ms, measured by the server (online people only). Display only: it never changes a ruling. */
+  ping?: number;
   /** The host, reader or an admin muted this player in chat. */
   muted?: boolean;
 }
@@ -485,3 +487,7 @@ export const DIFFICULTIES: Record<number, string> = {
   9: 'National College',
   10: 'Open',
 };
+
+/** Connection quality for a round trip: good under 100 ms, ok under 250 ms, bad above. */
+export type PingQuality = 'good' | 'ok' | 'bad';
+export const pingQuality = (ms: number): PingQuality => (ms < 100 ? 'good' : ms < 250 ? 'ok' : 'bad');
