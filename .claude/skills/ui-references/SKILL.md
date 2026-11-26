@@ -12,6 +12,19 @@ The owner wants Trivio to feel **engaging, smooth and polished, but minimal: not
 2. Take "before" screenshots at **375 × 812**, in light and dark, of every screen you'll touch (see "Screenshots" below).
 3. Change design tokens in `src/client/styles.css` `:root` first (color, radius, shadow, motion). Only touch components after that.
 
+## The top goal: it must not look AI-generated
+The owner's main reason for the revamp is that Trivio shouldn't look "clearly AI generated". Polish isn't enough. It needs a point of view that comes from quiz bowl itself. Before finishing any UI change, check the screen against these tells and remove any you find:
+- the default system/Inter-style font as the only typeface, with a heavy wordmark
+- a pastel rounded-square icon, then a title, a gray subtitle and a chevron (the stock "feature card")
+- everything inside one centered, rounded, soft-shadowed card on a beige or near-white background
+- warm beige with burnt orange, or purple-to-blue gradients
+- glossy gradient sheen on buttons, colored glow shadows, soft radial background glows
+- numbered step circles, ⓘ bubbles everywhere, pills and chips for every label
+- uniform 12–16px radii on everything, with every element equally rounded
+- copy that explains every heading in a gray subtitle; generic phrases ("at your own pace", "see how you rank")
+- stock line icons doing the work that type, layout or a real illustration should do
+What to do instead: a distinctive typeface pairing, layout with hierarchy and asymmetry (not stacks of equal cards), details drawn from quiz bowl (packets, score sheets, buzzer hardware, scoreboards), varied radii (sharp where things are "printed"), short copy with a voice, and one accent used sparingly.
+
 ## Rules that always apply
 - **Phones first.** Most players are on phones. Everything must work at 375px with no sideways scroll, and every tap target must be at least 44px tall.
 - **Light and dark.** Every color is a token defined in all three places in `styles.css`: `:root`, the `prefers-color-scheme: dark` block and `[data-theme='dark']`. Never hard-code a color in a component.
