@@ -9,6 +9,7 @@
     "dev": "concurrently -k -n server,client -c blue,green \"tsx watch src/server/index.ts\" \"vite\"",
     "build": "vite build",
     "serve": "NODE_ENV=production tsx src/server/index.ts",
+    "serve:moved": "NODE_ENV=production tsx src/server/moved.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
