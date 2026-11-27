@@ -1,3 +1,6 @@
+# Trivio's chosen direction: Packet
+The owner picked **Packet**: a printed quiz bowl question packet plus a score sheet. White paper and ink blue, with a red pencil for marks and stamps. A serif for headings and questions, condensed sans for the interface, mono for labels. Square, printed corners, ruled lines, an index card for the daily challenge, and a hard-edged BUZZ button. They tried a yellow legal pad and rejected it, so keep the paper white. New screens should look like they belong in that packet.
+
 # Reference brands
 
 Principles to borrow, with concrete values. Don't copy logos, mascots, illustrations, brand colors or exact layouts.
