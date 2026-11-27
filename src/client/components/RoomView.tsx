@@ -305,8 +305,10 @@ function MobileStrip({ s, unread, protests, onOpen }: { s: PublicState; unread: 
     ? [...s.teams].sort((a, b) => b.points - a.points).map((t) => ({ id: t.id, name: t.name, pts: t.points }))
     : s.players.filter((p) => p.id !== s.readerId).sort((a, b) => b.stats.points - a.stats.points).map((p) => ({ id: p.id, name: p.name, pts: p.stats.points }));
   const mineId = teams ? r.myTeam : r.me;
-  const rank = sides.findIndex((x) => x.id === mineId);
-  const mine = sides[rank];
+  const mine = sides.find((x) => x.id === mineId);
+  // Players on the same score share a place (1 + everyone strictly ahead).
+  const rank = mine ? sides.filter((x) => x.pts > mine.pts).length : -1;
+  const tied = mine ? sides.filter((x) => x.pts === mine.pts).length > 1 : false;
   const leader = sides[0];
   const me = s.players.find((p) => p.id === r.me);
   return (
@@ -315,10 +317,10 @@ function MobileStrip({ s, unread, protests, onOpen }: { s: PublicState; unread: 
         {mine ? (
           <>
             <AnimatedScore value={mine.pts} className="ms-pts" />
-            <span className="ms-sub">{ordinal(rank + 1)} of {sides.length}{me && me.streak >= 2 ? ` · ${me.streak} in a row` : ''}</span>
+            <span className="ms-sub">{tied ? 'Tied ' : ''}{ordinal(rank + 1)} of {sides.length}{me && me.streak >= 2 ? ` · ${me.streak} in a row` : ''}</span>
           </>
         ) : <span className="ms-sub">{r.isReader ? <><Icon name="mic" /> Reading</> : 'Spectating'}</span>}
-        {leader && leader.id !== mineId && <span className="ms-lead">Leader: {leader.name} {leader.pts}</span>}
+        {leader && leader.id !== mineId && (!mine || leader.pts > mine.pts) && <span className="ms-lead">Leader: {leader.name} {leader.pts}</span>}
       </button>
       <button className="btn ms-btn" onClick={() => onOpen('board')}>Scores</button>
       <button className="btn ms-btn" onClick={() => onOpen('chat')}>Chat{unread ? <span className="dot">{unread}</span> : null}</button>

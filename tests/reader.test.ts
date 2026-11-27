@@ -76,3 +76,36 @@ describe('reader look-ahead', () => {
     expect(room.s.phase).toBe('gameOver');
   });
 });
+
+describe('a reader who walks away (still connected)', () => {
+  const FIVE_MIN = 5 * 60_000;
+
+  it('moves on by itself after 5 minutes at the end of a question', async () => {
+    const { room, reader } = await setup();
+    room.start(reader);
+    await flush();
+    await vi.advanceTimersByTimeAsync(2000);
+    room.next(reader); // skip: the tossup ends and waits for the reader
+    expect(room.s.phase).toBe('tossupEnd');
+    await vi.advanceTimersByTimeAsync(FIVE_MIN - 1000);
+    expect(room.s.phase).toBe('tossupEnd');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(room.s.phase).not.toBe('tossupEnd');
+    expect(room.s.tossupNum).toBe(2);
+  });
+
+  it('lets the automatic check rule after 5 minutes when the reader rules on answers', async () => {
+    const { room, reader, player } = await setup();
+    room.updateSettings(reader, { readerRules: true });
+    room.start(reader);
+    await flush();
+    while ((room.s.tossup?.revealed ?? 0) < 2) await vi.advanceTimersByTimeAsync(50);
+    room.buzz(player, room.s.tossup!.revealed);
+    await vi.advanceTimersByTimeAsync(200);
+    room.submitAnswer(player, 'answer t1');
+    expect(room.s.buzz?.awaiting).toBeTruthy();
+    await vi.advanceTimersByTimeAsync(FIVE_MIN + 1000);
+    expect(room.s.buzz?.awaiting).toBeFalsy();
+    expect(room.s.rulings.at(-1)).toMatchObject({ playerId: player, correct: true });
+  });
+});

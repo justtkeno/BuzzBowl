@@ -62,13 +62,34 @@ const SETTING_LABELS: [keyof Settings, string, string][] = [
   ['bounty', 'bounty tossups', ''],
 ];
 
+/**
+ * A display name: one line, at most 24 characters (whole emoji, never half of one), and never only invisible
+ * characters such as zero-width spaces, which would leave a blank player everywhere.
+ */
+export function cleanName(name: unknown): string {
+  const one = String(name ?? '').replace(/[\u200B\u200C\u2060\uFEFF\u00AD]/g, '').replace(/\s+/g, ' ').trim();
+  const s = Array.from(one).slice(0, 24).join('').trim();
+  return /[^\s\p{Cf}\p{M}]/u.test(s) ? s : '';
+}
+
 export const TIMING = {
   /** A host or reader who drops gets their seat back if they reconnect within this long. */
   seatHoldMs: 3 * 60_000,
   /** After the first buzz arrives, wait this long for earlier (laggier) buzzes before awarding it. */
   graceMs: 120,
-  /** A client may claim it buzzed before a word only if that word went out at most this long ago. */
+  /**
+   * A client may claim it buzzed before a word only if that word went out at most this long ago. The window is
+   * sized to the player's own measured connection (`lagAllowance`): an honest claim is never older than about one
+   * round trip, so a fast connection can't claim the whole window to win close buzzes and extra powers.
+   */
   maxLagMs: 1200,
+  /** The smallest window, and the extra on top of 1.5 round trips (jitter, a word arriving mid-press). */
+  lagFloorMs: 300,
+  lagMarginMs: 200,
+  /** A pause (the whole game, or the reading) ends by itself after this long, so a host who walks away can't freeze the room. */
+  pauseLimitMs: 5 * 60_000,
+  /** No ping measured: every player is pinged when they sit down, so only a client that won't answer pings gets this. */
+  lagUnknownMs: 300,
   promptSeconds: 5,
   partRevealMs: 3000,
   startDelayMs: 900,
@@ -394,8 +415,38 @@ export class Room {
       this.s.paused = true;
       this.s.pausedAt = Date.now();
       for (const t of this.timers.values()) if (t.h) { clearTimeout(t.h); t.h = null; }
+      this.armPauseLimit('game');
       this.system(`${this.player(by)?.name ?? 'The host'} paused the game.`);
     } else {
+      this.resumeGame('Game resumed.');
+      return;
+    }
+    this.broadcast();
+  }
+
+  /**
+   * The timers that end a pause on their own (TIMING.pauseLimitMs). They're plain timeouts, not `setTimer`, because
+   * they have to keep running while the game is paused: freezing them is exactly what the whole-game pause does.
+   */
+  private pauseLimits: { game?: ReturnType<typeof setTimeout>; reading?: ReturnType<typeof setTimeout> } = {};
+  private armPauseLimit(kind: 'game' | 'reading') {
+    clearTimeout(this.pauseLimits[kind]);
+    this.pauseLimits[kind] = setTimeout(() => {
+      this.pauseLimits[kind] = undefined;
+      if (kind === 'game') { if (this.s.paused) this.resumeGame('The pause ran out after 5 minutes, so the game carried on.'); return; }
+      const t = this.s.tossup;
+      if (!t?.paused || this.s.phase !== 'reading') return;
+      if (this.s.paused) { this.armPauseLimit('reading'); return; } // whole game is paused too: that limit comes first
+      this.system('The pause ran out after 5 minutes, so the reading carried on.');
+      this.unpauseReading();
+    }, TIMING.pauseLimitMs);
+  }
+  private clearPauseLimit(kind: 'game' | 'reading') { clearTimeout(this.pauseLimits[kind]); this.pauseLimits[kind] = undefined; }
+
+  private resumeGame(message: string) {
+    if (!this.s.paused) return;
+    this.clearPauseLimit('game');
+    {
       const shift = Date.now() - (this.s.pausedAt ?? Date.now());
       this.s.paused = false;
       this.s.pausedAt = null;
@@ -405,11 +456,11 @@ export class Room {
       if (b?.deadline) b.deadline += shift;
       if (bn?.deadline) bn.deadline += shift;
       if (this.s.vote) this.s.vote.deadline += shift;
-      this.system('Game resumed.');
+      this.system(message);
     }
     this.broadcast();
   }
-  dispose() { for (const n of [...this.timers.keys()]) this.clearTimer(n); }
+  dispose() { for (const n of [...this.timers.keys()]) this.clearTimer(n); this.clearPauseLimit('game'); this.clearPauseLimit('reading'); }
 
   private wordMs(word: string) {
     const base = 60_000 / this.s.settings.wpm;
@@ -434,7 +485,7 @@ export class Room {
   // ---------- membership ----------
 
   join(name: string, token?: string, account?: JoinAccount): { playerId: string; token: string } {
-    const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
+    const clean = cleanName(name);
     const ban = this.s.banned;
     if (ban && ((token && ban.tokens.includes(token)) || (account && ban.accounts.includes(account.id)))) fail('You were banned from this room.');
     let existing = token ? this.s.players.find((p) => p.token === token) : undefined;
@@ -476,7 +527,7 @@ export class Room {
   /** A signed-in player's level changed (after a game was saved): show the new one. */
   /**
    * The server measured this player's round trip. Smoothed, and only broadcast when it moves between good, ok and bad,
-   * so measuring doesn't flood the room with updates. Display only: rulings never look at it.
+   * so measuring doesn't flood the room with updates. Rulings never look at it; it only sizes how far back a buzz may claim (`lagAllowance`).
    */
   setPing(playerId: string, ms: number) {
     const p = this.player(playerId);
@@ -739,7 +790,7 @@ export class Room {
 
   renamePlayer(playerId: string, name: string) {
     const p = this.mustPlayer(playerId);
-    const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
+    const clean = cleanName(name);
     if (!clean) fail('Pick a display name.');
     if (clean === p.name) return;
     const old = p.name;
@@ -755,7 +806,9 @@ export class Room {
     const until = Date.now() + TIMING.seatHoldMs;
     if (this.s.hostId === playerId) {
       this.s.hostId = this.s.players.find((x) => x.online && !x.bot)?.id ?? playerId;
-      if (this.s.hostId !== playerId) (this.s.seatHold ??= {}).host = { id: playerId, until };
+      // A stand-in host who leaves too doesn't overwrite the claim of the host who left first and may still return.
+      const held = this.s.seatHold?.host;
+      if (this.s.hostId !== playerId && !(held && held.until > Date.now() && held.id !== playerId)) (this.s.seatHold ??= {}).host = { id: playerId, until };
     }
     if (this.s.readerId === playerId) {
       // The app reads on its own meanwhile; the reader gets the seat back if they reconnect in time.
@@ -775,8 +828,13 @@ export class Room {
   private autoAssign(p: Player) {
     if (p.id === this.s.readerId) return;
     this.ensureTeams();
-    const open = [...this.s.teams].sort((a, b) => a.playerIds.length - b.playerIds.length).find((t) => t.playerIds.length < TIMING.teamSize);
+    const open = [...this.s.teams].sort((a, b) => this.seatedOnline(a) - this.seatedOnline(b)).find((t) => this.seatedOnline(t) < TIMING.teamSize);
     if (open) { open.playerIds.push(p.id); p.teamId = open.id; }
+  }
+
+  /** Players on a team who are here now. Seats of people who left don't fill a team, so newcomers can still play. */
+  private seatedOnline(team: { playerIds: string[] }): number {
+    return team.playerIds.filter((id) => this.player(id)?.online).length;
   }
 
   private ensureTeams() {
@@ -815,6 +873,8 @@ export class Room {
     if (!this.isController(by)) fail('Only the host or reader can change settings.');
     if (this.s.daily) fail('The daily challenge uses the same settings for everyone.');
     if (this.s.survival) fail('Survival uses the same settings for everyone.');
+    // Check everything that can refuse before changing anything, so a refused update changes nothing.
+    if (patch.source === 'upload' && !this.uploadProvider) fail('Upload a packet first.');
     const s = this.s.settings;
     const questionsKey = this.questionsKey();
     const before = { ...s };
@@ -841,7 +901,6 @@ export class Room {
     if (patch.negValue !== undefined) s.negValue = clamp(patch.negValue, -50, 0, s.negValue);
     if (patch.bonusPartValue !== undefined) s.bonusPartValue = clamp(patch.bonusPartValue, 0, 50, s.bonusPartValue);
     if (patch.source && ['qbreader', 'sample', 'upload', 'lightning'].includes(patch.source)) {
-      if (patch.source === 'upload' && !this.uploadProvider) fail('Upload a packet first.');
       s.source = patch.source;
     }
     if (patch.filters) {
@@ -900,7 +959,7 @@ export class Room {
   renameTeam(by: string, teamId: string, name: string) {
     const team = this.s.teams.find((t) => t.id === teamId) ?? fail('No such team.');
     if (!this.isController(by) && !team.playerIds.includes(by)) fail('Only team members, the host or the reader can rename a team.');
-    const clean = String(name ?? '').trim().slice(0, 24);
+    const clean = cleanName(name);
     if (clean) team.name = clean;
     this.broadcast();
   }
@@ -922,7 +981,7 @@ export class Room {
     if (this.s.phase === 'buzz' || this.s.phase === 'bonus') fail('Switch teams between questions.');
     const team = this.s.teams.find((t) => t.id === teamId) ?? fail('No such team.');
     if (team.playerIds.includes(by)) return;
-    if (team.playerIds.length >= TIMING.teamSize) fail(`Teams have at most ${TIMING.teamSize} players.`);
+    if (this.seatedOnline(team) >= TIMING.teamSize) fail(`Teams have at most ${TIMING.teamSize} players.`);
     this.removeFromTeam(p);
     team.playerIds.push(by);
     p.teamId = team.id;
@@ -939,7 +998,7 @@ export class Room {
     if (teamId === null) { this.removeFromTeam(p); this.broadcast(); return; }
     const team = this.s.teams.find((t) => t.id === teamId) ?? fail('No such team.');
     if (team.playerIds.includes(p.id)) return;
-    if (team.playerIds.length >= TIMING.teamSize) fail(`Teams have at most ${TIMING.teamSize} players.`);
+    if (this.seatedOnline(team) >= TIMING.teamSize) fail(`Teams have at most ${TIMING.teamSize} players.`);
     this.removeFromTeam(p);
     team.playerIds.push(p.id);
     p.teamId = team.id;
@@ -1162,6 +1221,13 @@ export class Room {
   recordIfUnfinished() {
     // A survival run left open ends where it stands: the tossups already played count, nothing more.
     if (this.s.survival && !this.s.survival.done && this.s.phase !== 'lobby') this.finishSurvival();
+    // So does a daily challenge left half played: it's recorded as it stands (unplayed tossups count as misses),
+    // otherwise its room being cleaned up would let the player start it again, already knowing the answers.
+    if (this.s.daily && !this.s.daily.done && this.s.phase !== 'lobby') {
+      this.s.daily.done = true;
+      const outcome = this.dailyOutcome();
+      if (outcome) this.onDailyDone?.(outcome);
+    }
     if (this.s.phase !== 'lobby' && this.s.phase !== 'gameOver' && this.s.heard.length >= 3) this.recordResults(true);
   }
 
@@ -1224,6 +1290,7 @@ export class Room {
   }
 
   next(by: string) {
+    this.clearTimer('readerWait');
     const admin = !!this.player(by)?.admin;
     if (!this.canDirect(by) && !admin) fail('The reader decides when to move on.');
     this.notPaused();
@@ -1396,9 +1463,18 @@ export class Room {
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading') fail('Nothing is being read.');
     if (t!.paused === paused) return;
-    t!.paused = paused;
-    if (paused) { this.clearTimer('read', 'dead'); t!.deadline = undefined; this.broadcast(); }
-    else if (t!.revealed >= t!.words.length) this.openDeadWindow();
+    if (paused) { t!.paused = true; this.clearTimer('read', 'dead'); t!.deadline = undefined; this.armPauseLimit('reading'); this.broadcast(); }
+    else this.unpauseReading();
+  }
+
+  private unpauseReading() {
+    const t = this.s.tossup;
+    if (!t) return;
+    t.paused = false;
+    this.clearPauseLimit('reading');
+    // A buzz is waiting to be decided: reading stays stopped; resolveBuzz takes it from here.
+    if (this.pending.length) this.broadcast();
+    else if (t.revealed >= t.words.length) this.openDeadWindow();
     else { this.broadcast(); this.setTimer('read', 150, () => this.readNext()); }
   }
 
@@ -1418,6 +1494,7 @@ export class Room {
   buzz(by: string, clientCount: number) {
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading' || t.ended) fail('You cannot buzz right now.');
+    if (t!.revealed === 0) fail('Wait for the first word.');
     this.notPaused();
     const teamId = this.teamOf(by) ?? fail(by === this.s.readerId ? 'The reader cannot buzz.' : 'Join a team to buzz.');
     // A frozen buzzer just does nothing: no error, no buzz.
@@ -1427,13 +1504,20 @@ export class Room {
     const now = Date.now();
     // Trust the client's word count only as far back as plausible network lag allows.
     let count = Math.max(0, Math.min(Math.floor(Number(clientCount)) || 0, t!.revealed));
-    while (count < t!.revealed && now - t!.revealTimes[count] > TIMING.maxLagMs) count++;
+    const allowed = this.lagAllowance(this.player(by)!.ping);
+    while (count < t!.revealed && now - t!.revealTimes[count] > allowed) count++;
     if (this.player(by)!.slowed) count = Math.min(t!.revealed, count + SLOW_WORDS);
     this.pending.push({ playerId: by, teamId, count, at: now });
     if (this.pending.length === 1) {
       this.clearTimer('read', 'dead');
       this.setTimer('grace', TIMING.graceMs, () => this.resolveBuzz());
     }
+  }
+
+  /** How far back (ms) this player's buzz may claim to have been pressed, from their measured round trip. */
+  private lagAllowance(ping: number | undefined): number {
+    if (ping == null || !Number.isFinite(ping)) return TIMING.lagUnknownMs;
+    return Math.min(TIMING.maxLagMs, Math.max(TIMING.lagFloorMs, ping * 1.5 + TIMING.lagMarginMs));
   }
 
   private resolveBuzz() {
@@ -1443,6 +1527,8 @@ export class Room {
     if (!t || !candidates.length) return;
     candidates.sort((a, b) => a.count - b.count || a.at - b.at);
     const win = candidates[0];
+    // Whatever restarted the reading or dead-window timers during the grace period, the buzz stops them now.
+    this.clearTimer('read', 'dead');
     const name = this.player(win.playerId)!.name;
     this.s.buzz = {
       playerId: win.playerId, teamId: win.teamId, wordIndex: win.count,
@@ -1481,14 +1567,42 @@ export class Room {
     if (given && this.s.settings.readerRules && this.readerOnline()) {
       b!.awaiting = { given, suggestion: verdict };
       b!.deadline = null;
+      this.armReaderWait();
       return this.broadcast();
     }
     this.applyTossupVerdict(spelling && b!.spellingUsed ? 'incorrect' : verdict, given, correctedTo, spelling);
   }
 
+  /**
+   * While a reader is seated, only they (or the host) move on after a question and rule on answers, so a reader who
+   * walks away with their phone still connected would hold the room forever. After TIMING.pauseLimitMs of waiting on
+   * them, the game carries on: a pending answer gets the automatic check's ruling, a finished question moves on.
+   * A `setTimer`, so a whole-game pause freezes it too.
+   */
+  private armReaderWait() {
+    if (this.readerOnline()) this.setTimer('readerWait', TIMING.pauseLimitMs, () => this.readerTimedOut());
+  }
+  private readerTimedOut() {
+    if (!this.readerOnline() || this.s.paused) return;
+    const b = this.s.buzz, bn = this.s.bonus;
+    if (b?.awaiting) {
+      this.system('The reader didn’t rule for 5 minutes, so the automatic check decided.');
+      return this.applyTossupVerdict(b.awaiting.suggestion, b.awaiting.given);
+    }
+    if (bn?.awaiting) {
+      this.system('The reader didn’t rule for 5 minutes, so the automatic check decided.');
+      return this.applyBonusVerdict(bn.awaiting.suggestion, bn.awaiting.given);
+    }
+    if (this.s.phase === 'tossupEnd' || (this.s.phase === 'bonus' && bn?.done)) {
+      this.system('The reader stepped away for 5 minutes, so the game moved on.');
+      try { this.next(this.s.readerId!); } catch { /* nothing to move on to */ }
+    }
+  }
+
   /** The reader's ruling on the current tossup or bonus answer. */
   rule(by: string, verdict: Verdict) {
     if (by !== this.s.readerId && by !== this.s.hostId) fail('Only the reader rules on answers.');
+    this.clearTimer('readerWait');
     if (!['correct', 'prompt', 'incorrect'].includes(verdict)) fail('Unknown ruling.');
     const waiting = this.s.buzz?.awaiting ?? this.s.bonus?.awaiting;
     if (waiting && verdict === 'correct' && waiting.suggestion !== 'correct') this.s.unranked = true;
@@ -1564,6 +1678,7 @@ export class Room {
     t.bonusTeam = winnerTeam && this.s.settings.bonuses && this.s.settings.source !== 'lightning' ? winnerTeam : null;
     if (this.s.survival && !this.s.survival.done) this.survivalTossupOver(t.num, !!winnerTeam);
     this.s.phase = 'tossupEnd';
+    this.armReaderWait();
     if (!t.bonusTeam) this.openVote();
     this.broadcast();
   }
@@ -1690,6 +1805,7 @@ export class Room {
     const { verdict, correctedTo, spelling } = given ? checkAnswerDetailed(given, bn!.q.answers[bn!.current]) : { verdict: 'incorrect' as const, correctedTo: undefined, spelling: false };
     if (given && this.s.settings.readerRules && this.readerOnline()) {
       bn!.awaiting = { given, suggestion: verdict };
+      this.armReaderWait();
       bn!.deadline = null;
       return this.broadcast();
     }
@@ -1726,7 +1842,7 @@ export class Room {
     const bn = this.s.bonus;
     if (!bn) return;
     bn.current++;
-    if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.openVote(); this.broadcast(); }
+    if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.openVote(); this.armReaderWait(); this.broadcast(); }
     else this.startBonusPart();
   }
 
@@ -1985,6 +2101,9 @@ export class Room {
     if (room.s.upload) room.uploadProvider = new LocalProvider(room.s.upload.tossups, room.s.upload.bonuses);
     if (room.s.survival) room.useSurvivalQuestions();
     room.rearm();
+    // A restored game comes back paused; that pause runs out like any other.
+    if (room.s.paused) room.armPauseLimit('game');
+    if (room.s.tossup?.paused && room.s.phase === 'reading') room.armPauseLimit('reading');
     return room;
   }
 

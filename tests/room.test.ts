@@ -92,6 +92,82 @@ describe('tossup flow', () => {
     expect(room.s.rulings[0].kind).toBe('ten');
   });
 
+  it('sizes the lag window to the buzzer\'s measured connection, so a fast one cannot rewind a whole second', async () => {
+    const { room, ids } = await setup();
+    room.setPing(ids[0], 40); // honest, fast connection
+    room.setPing(ids[1], 40); // fast connection that lies about its word count
+    await readTo(room, 8);
+    const now = Date.now();
+    // What a 40 ms connection may honestly claim: words revealed within 1.5 round trips + margin (at least the floor).
+    const allowed = Math.max(TIMING.lagFloorMs, 40 * 1.5 + TIMING.lagMarginMs);
+    let honest = 8;
+    while (honest > 0 && now - room.s.tossup!.revealTimes[honest - 1] <= allowed) honest--;
+    room.buzz(ids[0], 8); // pressed now
+    room.buzz(ids[1], 0); // pressed a moment later, claims it saw nothing
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(room.s.buzz!.wordIndex).toBeGreaterThanOrEqual(honest); // clamped to its own window, not the full 1.2 s
+    expect(room.s.buzz!.wordIndex).toBeGreaterThan(0); // the lie bought at most a few words, not the whole question
+  });
+
+  it('refuses a buzz before the first word is read', async () => {
+    const { room, ids } = await setup();
+    expect(room.s.tossup!.revealed).toBe(0);
+    expect(() => room.buzz(ids[0], 0)).toThrow(/first word|cannot buzz/);
+  });
+
+  it('keeps the whole answer clock when reading resumes during the buzz grace period', async () => {
+    const { room, ids } = await setup();
+    const t = room.s.tossup!;
+    while (t.revealed < t.words.length) await vi.advanceTimersByTimeAsync(20);
+    room.setPaused(ids[0], true);
+    room.buzz(ids[1], t.revealed);
+    room.setPaused(ids[0], false); // resumed inside the grace period: used to leave a dead-window timer running
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(room.s.phase).toBe('buzz');
+    await vi.advanceTimersByTimeAsync(room.s.settings.deadSeconds * 1000 + 200);
+    expect(room.s.phase).toBe('buzz'); // still answering: the tossup didn't end under them
+    expect(room.s.buzz?.playerId).toBe(ids[1]);
+  });
+
+  it('changes nothing when a settings update is refused', async () => {
+    const { room, ids } = await setup();
+    const wpm = room.s.settings.wpm;
+    expect(() => room.updateSettings(ids[0], { wpm: 555, answerSeconds: 3, source: 'upload' })).toThrow(/Upload a packet/);
+    expect(room.s.settings.wpm).toBe(wpm);
+    expect(room.s.settings.answerSeconds).not.toBe(3);
+  });
+
+  it('does not count players who left toward a team\'s size, so a newcomer still gets a team', async () => {
+    const room = new Room('TEAM', io, { qbreader: fakeProvider() });
+    const ids = Array.from({ length: 8 }, (_, i) => room.join(`P${i}`).playerId);
+    room.updateSettings(ids[0], { mode: 'teams' });
+    for (const id of ids.slice(1)) room.disconnect(id); // seven leave; their seats stay on the teams
+    const newcomer = room.join('New').playerId;
+    expect(room.s.players.find((p) => p.id === newcomer)!.teamId).toBeTruthy();
+  });
+
+  it('ends a whole-game pause by itself after 5 minutes, so an idle host can\'t freeze the room', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 3);
+    room.pauseGame(ids[0], true);
+    await vi.advanceTimersByTimeAsync(TIMING.pauseLimitMs - 1000);
+    expect(room.s.paused).toBe(true);
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(room.s.paused).toBe(false);
+    const before = room.s.tossup!.revealed;
+    await vi.advanceTimersByTimeAsync(300);
+    expect(room.s.tossup!.revealed).toBeGreaterThan(before); // reading carried on
+  });
+
+  it('ends a reading pause by itself after 5 minutes', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 3);
+    room.setPaused(ids[0], true);
+    await vi.advanceTimersByTimeAsync(TIMING.pauseLimitMs + 1000);
+    expect(room.s.tossup!.paused).toBe(false);
+    expect(room.s.tossup!.revealed).toBeGreaterThan(3);
+  });
+
   it('times out to a wrong answer and ends when everyone is locked out', async () => {
     const { room, ids } = await setup();
     await readTo(room, 10);

@@ -82,19 +82,19 @@ boosts.onChange = () => {
   for (const s of io.sockets.sockets.values()) s.emit('xp:boost', boosts.viewFor(accounts.of(s)?.id));
 };
 
-// Everyone's ping, measured here so nobody can fake theirs: each seated socket answers a tiny message every 10 s.
-// Shown next to names in Scores; it never affects buzzes or rulings.
+// Everyone's ping, measured here: each seated socket answers a tiny message when it sits down and every 10 s after.
+// A client can only make its ping look slower (by answering late), never faster. Shown next to names in Scores, and
+// it sizes how far back that player's buzz may claim to have been pressed (Room.lagAllowance); rulings never use it.
 const PING_EVERY_MS = 10_000;
-setInterval(() => {
-  for (const s of io.sockets.sockets.values()) {
-    const { code, playerId } = s.data as { code?: string; playerId?: string };
-    if (!code || !playerId) continue;
-    const sent = Date.now();
-    s.timeout(5000).emit('net:ping', (err: Error | null) => {
-      if (!err) store.get(code)?.setPing(playerId, Date.now() - sent);
-    });
-  }
-}, PING_EVERY_MS).unref();
+function pingSocket(s: { data: unknown; timeout(ms: number): { emit(ev: string, cb: (err: Error | null) => void): unknown } }) {
+  const { code, playerId } = s.data as { code?: string; playerId?: string };
+  if (!code || !playerId) return;
+  const sent = Date.now();
+  s.timeout(5000).emit('net:ping', (err: Error | null) => {
+    if (!err) store.get(code)?.setPing(playerId, Date.now() - sent);
+  });
+}
+setInterval(() => { for (const s of io.sockets.sockets.values()) pingSocket(s); }, PING_EVERY_MS).unref();
 
 // An admin changed someone's XP: their open screens and any room they're in show the new level.
 accounts.onLevel = (accountId, level) => {
@@ -367,6 +367,7 @@ io.on('connection', (socket) => {
       socket.join(`p:${room.s.code}:${playerId}`);
       ack({ ok: true, code: room.s.code, playerId, token: tok, chat: room.chatHistory(playerId) });
       room.broadcast();
+      pingSocket(socket); // measure now, so the buzz lag window fits this connection from the first tossup
     } catch (e) {
       ack({ ok: false, error: e instanceof ActionError ? e.message : 'Could not join.' });
     }
@@ -428,6 +429,11 @@ io.on('connection', (socket) => {
     try {
       const day = daily.today();
       if (await daily.result(day, playerKey)) return ack({ ok: false, error: 'You’ve already played today’s challenge. A new one comes out at midnight Eastern.' });
+      // Played (or started) as a guest on this browser, then logged in: no second go at the same ten questions.
+      const guestKey = playerKey.startsWith('a:') ? playerKeyFor(undefined, key) : null;
+      if (guestKey && ((await daily.result(day, guestKey)) || daily.active.has(guestKey))) {
+        return ack({ ok: false, error: 'This browser already played today’s challenge as a guest. A new one comes out at midnight Eastern.' });
+      }
       // Reloaded mid-challenge: send them back to their own room.
       const activeCode = daily.active.get(playerKey);
       const activeRoom = activeCode ? store.get(activeCode) : undefined;

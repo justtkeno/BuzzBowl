@@ -11,6 +11,9 @@ import { Icon } from './Icon';
 import { Info } from './Info';
 import { keyLabel, useKeyBindings } from '../keys';
 
+/** How long after a tossup starts reading that taps on BUZZ are ignored (see `tapBuzz`). */
+const TAP_GUARD_MS = 700;
+
 export function Stage({ s }: { s: PublicState }) {
   const keys = useKeyBindings();
   const r = roles(s);
@@ -54,9 +57,18 @@ export function Stage({ s }: { s: PublicState }) {
     keeper.current.value = '';
     keeper.current.focus({ preventScroll: true });
   };
+  // A second tap on "Next tossup" lands on BUZZ, which takes its place as the new tossup starts reading: ignore
+  // taps (not the buzz key) for a moment at the start of each tossup. Nobody really buzzes on the first two words.
+  const readingSince = useRef<{ num?: number; at: number }>({ at: 0 });
+  if (s.phase === 'reading' && t && readingSince.current.num !== t.num) readingSince.current = { num: t.num, at: Date.now() };
+  const tapBuzz = (e: { preventDefault(): void }) => {
+    if (Date.now() - readingSince.current.at < TAP_GUARD_MS) { e.preventDefault(); return; }
+    buzz(e);
+  };
   const buzz = (e?: { preventDefault(): void }) => {
     openKeyboard();
     if (!canBuzz || buzzing || !t) return;
+    if (!t.revealed.length) { e?.preventDefault(); return; } // the lead-in before the first word: nothing to buzz on yet
     e?.preventDefault();
     setBuzzing(true);
     vibrate(25);
@@ -71,9 +83,12 @@ export function Stage({ s }: { s: PublicState }) {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.code === keys.buzz) {
         e.preventDefault();
+        if (e.repeat) return; // holding the key down buzzes (or pauses) once
         if (r.isReader && s.phase === 'reading' && t) act('game:pause', !t.paused);
         else buzz();
       } else if (e.code === keys.next) {
+        // Held down, the key would skip tossup after tossup; and a second press just after Next would skip the new one.
+        if (e.repeat || (s.phase === 'reading' && Date.now() - readingSince.current.at < TAP_GUARD_MS)) return;
         if (canNext || s.vote || (canSkip && !s.survival && (s.phase === 'reading' || s.phase === 'bonus'))) act('game:next');
       } else if (s.vote && /^[1-9]$/.test(e.key) && s.vote.options[Number(e.key) - 1]) {
         act('vote', s.vote.options[Number(e.key) - 1]);
@@ -99,7 +114,7 @@ export function Stage({ s }: { s: PublicState }) {
         )}
         {s.buzz?.awaitingRuling && r.isReader && <RulingBox given={s.buzz.awaitingRuling.given} suggestion={s.buzz.awaitingRuling.suggestion} />}
         {s.phase === 'reading' && !r.isReader && (
-          <button className={`buzzer ${canBuzz ? '' : 'disabled'} ${buzzing ? 'pressed' : ''}`} onPointerDown={buzz} onTouchEnd={openKeyboard} onClick={() => buzz()} disabled={!canBuzz}>
+          <button className={`buzzer ${canBuzz ? '' : 'disabled'} ${buzzing ? 'pressed' : ''}`} onPointerDown={tapBuzz} onTouchEnd={openKeyboard} onClick={tapBuzz} disabled={!canBuzz}>
             {!r.myTeam ? 'Spectating' : myTeamLocked ? 'Locked out' : s.paused ? 'Paused' : buzzing ? '…' : 'BUZZ'}
             <small>{canBuzz ? (isTouch() ? 'tap' : `${keyLabel(keys.buzz)} / tap`) : ''}</small>
           </button>
@@ -397,6 +412,7 @@ function AnswerBox({ event, deadline, total, prompted, spelling, placeholder, la
     return () => clearTimeout(t);
   }, []);
   const submit = () => {
+    if (sent.current || !text.trim()) return; // an empty box isn't an answer: keep typing, or let the timer run out
     if (sent.current) return;
     sent.current = true;
     act(event, text);

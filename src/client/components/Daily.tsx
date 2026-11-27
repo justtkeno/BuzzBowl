@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { DailyEntry, DailyStatus } from '../../shared/types';
 import { MARK_LABEL, shareText, untilText, useDailyStatus } from '../daily';
 import { isTouch, toast } from './util';
+import { useAccount } from '../account';
 
 const pctIn = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -25,6 +26,8 @@ async function share(number: number, me: DailyEntry) {
 /** Your result, a share button and today's leaderboard. */
 export function DailyBoard({ status }: { status: DailyStatus }) {
   const me = status.me;
+  // Only accounts are ranked: anyone can be a new guest, so a guest's score would be easy to fake.
+  const guest = !useAccount().me;
   return (
     <div className="daily-board">
       <div className="row between daily-head">
@@ -33,7 +36,7 @@ export function DailyBoard({ status }: { status: DailyStatus }) {
       </div>
       {me && (
         <div className="daily-me">
-          <div className="daily-score"><b>{me.points}</b> pts <span className="muted">· #{me.rank} of {status.players}</span></div>
+          <div className="daily-score"><b>{me.points}</b> pts <span className="muted">{guest ? '· not ranked as a guest' : `· #${me.rank} of ${status.players}`}</span></div>
           <Marks marks={me.marks} />
           <div className="muted small">{me.powers} power{me.powers === 1 ? '' : 's'} · {me.tens} ten{me.tens === 1 ? '' : 's'} · {me.negs} neg{me.negs === 1 ? '' : 's'}{me.depth != null ? ` · average buzz ${pctIn(me.depth)} in` : ''}</div>
           <button className="btn primary" onClick={() => share(status.number, me)}>Share result</button>

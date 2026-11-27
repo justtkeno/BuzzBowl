@@ -729,7 +729,7 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .bm-pin { position: absolute; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column-reverse; align-items: center; }
 .bm-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--pc); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--pc); animation: pop-in .3s ease-out; }
 .bm-pin.r-neg .bm-dot, .bm-pin.r-zero .bm-dot { background: var(--surface); border: 3px solid var(--pc); }
-.bm-name { position: absolute; bottom: 18px; font-size: .7rem; white-space: nowrap; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0 .3rem; }
+.bm-name { position: absolute; bottom: 18px; font-size: .7rem; white-space: nowrap; max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0 .3rem; }
 .bm-pin:nth-child(even) .bm-name { bottom: auto; top: 18px; }
 .bm-pin.r-power .bm-name b { color: var(--power); }
 .bm-pin.r-ten .bm-name b { color: var(--ok); }
@@ -1047,7 +1047,7 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 /* ---------- phone tab bar ---------- */
 .phone-tabs { display: none; }
 @media (max-width: 860px) {
-  .phone-tabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--border); padding: .3rem .4rem max(.3rem, env(safe-area-inset-bottom)); }
+  .phone-tabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--border); padding: .3rem .4rem max(.3rem, env(safe-area-inset-bottom)); }
   .phone-tabs button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .15rem; padding: .35rem 0 .25rem; border: 0; background: none; color: var(--muted); font: 500 .72rem/1 var(--font); cursor: pointer; border-radius: 10px; position: relative; transition: color var(--dur) var(--ease-out), transform var(--dur) var(--ease-spring); }
   .phone-tabs button:active { transform: scale(.92); transition-duration: 60ms; }
   /* The open tab: a short accent bar above its icon. */
@@ -1251,4 +1251,45 @@ h3 { font-weight: 700; }
   .phone-tabs button.on { color: var(--text); }
   .phone-tabs button.on span { text-decoration: underline; text-decoration-color: var(--pencil); text-decoration-thickness: 2px; text-underline-offset: 6px; }
   .phone-tabs button::before { display: none; }
+}
+
+/* ---------- long names and small screens (found by the fake-player test) ---------- */
+/* One long word as a name wraps instead of pushing the score columns off the screen. */
+.scoreboard td.name, .summary .stats td:first-child, .summary .stats th:first-child { white-space: normal; overflow-wrap: anywhere; }
+.summary h3, .summary h2 { overflow-wrap: anywhere; }
+/* Phones: room under the fixed "Next tossup" bar, so nothing (like the Report form's Send) hides beneath it. */
+@media (max-width: 860px) { .stage-col:has(.next-btn) { padding-bottom: 92px; } }
+/* The smallest phones: the four tab words fit. */
+@media (max-width: 359px) { .phone-tabs button { letter-spacing: .02em; font-size: .62rem; } }
+
+/* ---------- phones held sideways ----------
+   Too short for the stacked phone layout: the question went off screen while reading and answering.
+   Here the question gets the left side at full height and the buzzer, answer box and Next sit in a
+   column on the right, so you always see what you're buzzing on. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .topbar { padding-top: max(.3rem, var(--safe-top)); padding-bottom: .3rem; }
+  .mobile-strip { padding: .2rem max(12px, env(safe-area-inset-left)); }
+  .ms-pts { font-size: 1.15rem; }
+  .ms-lead { display: none; }
+  .ms-btn { min-height: 36px; padding: .25rem .65rem; }
+  .layout { padding: .5rem max(12px, env(safe-area-inset-right)) .5rem max(12px, env(safe-area-inset-left)); }
+  .stage-col:has(.next-btn) { padding-bottom: 0; }
+
+  .stage { --room-h: calc(100dvh - var(--topbar-h, 48px) - 58px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, 33%); column-gap: 12px; align-items: start; }
+  .stage > * { grid-column: 1; min-width: 0; }
+  .stage > .card { max-height: var(--room-h); overflow-y: auto; overscroll-behavior: contain; padding: .8rem 1rem; }
+  .qtext { min-height: 0; font-size: calc(1.12rem * var(--qscale, 1)); line-height: 1.5; }
+
+  .stage > .actionbar { grid-column: 2; grid-row: 1 / span 4; position: sticky; top: calc(var(--topbar-h, 48px) + 50px);
+    height: var(--room-h); flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: .5rem; overflow-y: auto; }
+  .actionbar .buzzer { position: static; flex: 1 1 auto; min-height: 96px; font-size: 2rem; }
+  .actionbar .answerbox { flex: none; }
+  .answerbox .answer-row { flex-wrap: wrap; }
+  .answerbox .answer-row input { flex: 1 1 100%; }
+  .answerbox .answer-row .btn { flex: 1; }
+  .actionbar .reader-controls { flex: none; flex-wrap: wrap; justify-content: center; padding: .4rem .5rem; }
+  .actionbar > .btn.ghost, .actionbar .host-tools { flex: none; }
+  .next-btn, .vote { position: static; box-shadow: none; }
+  .next-btn { min-height: 64px; white-space: normal; }
+  .toast { bottom: 12px; }
 }
