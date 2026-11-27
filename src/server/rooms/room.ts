@@ -86,8 +86,8 @@ export const TIMING = {
   /** The smallest window, and the extra on top of 1.5 round trips (jitter, a word arriving mid-press). */
   lagFloorMs: 300,
   lagMarginMs: 200,
-  /** Before the first ping is measured (pings run every 10 s). */
-  lagUnknownMs: 600,
+  /** No ping measured: every player is pinged when they sit down, so only a client that won't answer pings gets this. */
+  lagUnknownMs: 300,
   promptSeconds: 5,
   partRevealMs: 3000,
   startDelayMs: 900,
@@ -774,7 +774,9 @@ export class Room {
     const until = Date.now() + TIMING.seatHoldMs;
     if (this.s.hostId === playerId) {
       this.s.hostId = this.s.players.find((x) => x.online && !x.bot)?.id ?? playerId;
-      if (this.s.hostId !== playerId) (this.s.seatHold ??= {}).host = { id: playerId, until };
+      // A stand-in host who leaves too doesn't overwrite the claim of the host who left first and may still return.
+      const held = this.s.seatHold?.host;
+      if (this.s.hostId !== playerId && !(held && held.until > Date.now() && held.id !== playerId)) (this.s.seatHold ??= {}).host = { id: playerId, until };
     }
     if (this.s.readerId === playerId) {
       // The app reads on its own meanwhile; the reader gets the seat back if they reconnect in time.
@@ -794,8 +796,13 @@ export class Room {
   private autoAssign(p: Player) {
     if (p.id === this.s.readerId) return;
     this.ensureTeams();
-    const open = [...this.s.teams].sort((a, b) => a.playerIds.length - b.playerIds.length).find((t) => t.playerIds.length < TIMING.teamSize);
+    const open = [...this.s.teams].sort((a, b) => this.seatedOnline(a) - this.seatedOnline(b)).find((t) => this.seatedOnline(t) < TIMING.teamSize);
     if (open) { open.playerIds.push(p.id); p.teamId = open.id; }
+  }
+
+  /** Players on a team who are here now. Seats of people who left don't fill a team, so newcomers can still play. */
+  private seatedOnline(team: { playerIds: string[] }): number {
+    return team.playerIds.filter((id) => this.player(id)?.online).length;
   }
 
   private ensureTeams() {
@@ -942,7 +949,7 @@ export class Room {
     if (this.s.phase === 'buzz' || this.s.phase === 'bonus') fail('Switch teams between questions.');
     const team = this.s.teams.find((t) => t.id === teamId) ?? fail('No such team.');
     if (team.playerIds.includes(by)) return;
-    if (team.playerIds.length >= TIMING.teamSize) fail(`Teams have at most ${TIMING.teamSize} players.`);
+    if (this.seatedOnline(team) >= TIMING.teamSize) fail(`Teams have at most ${TIMING.teamSize} players.`);
     this.removeFromTeam(p);
     team.playerIds.push(by);
     p.teamId = team.id;
@@ -959,7 +966,7 @@ export class Room {
     if (teamId === null) { this.removeFromTeam(p); this.broadcast(); return; }
     const team = this.s.teams.find((t) => t.id === teamId) ?? fail('No such team.');
     if (team.playerIds.includes(p.id)) return;
-    if (team.playerIds.length >= TIMING.teamSize) fail(`Teams have at most ${TIMING.teamSize} players.`);
+    if (this.seatedOnline(team) >= TIMING.teamSize) fail(`Teams have at most ${TIMING.teamSize} players.`);
     this.removeFromTeam(p);
     team.playerIds.push(p.id);
     p.teamId = team.id;
@@ -1182,6 +1189,13 @@ export class Room {
   recordIfUnfinished() {
     // A survival run left open ends where it stands: the tossups already played count, nothing more.
     if (this.s.survival && !this.s.survival.done && this.s.phase !== 'lobby') this.finishSurvival();
+    // So does a daily challenge left half played: it's recorded as it stands (unplayed tossups count as misses),
+    // otherwise its room being cleaned up would let the player start it again, already knowing the answers.
+    if (this.s.daily && !this.s.daily.done && this.s.phase !== 'lobby') {
+      this.s.daily.done = true;
+      const outcome = this.dailyOutcome();
+      if (outcome) this.onDailyDone?.(outcome);
+    }
     if (this.s.phase !== 'lobby' && this.s.phase !== 'gameOver' && this.s.heard.length >= 3) this.recordResults(true);
   }
 

@@ -80,6 +80,16 @@ describe('daily room', () => {
   }
   const waitFor = async (room: Room, phase: string) => { for (let i = 0; i < 400 && room.s.phase !== phase; i++) await vi.advanceTimersByTimeAsync(50); };
 
+  it('records a half-played daily once when its room is cleaned up, so it cannot be started over', async () => {
+    const { room, done } = await playDaily();
+    await waitFor(room, 'reading');
+    room.recordIfUnfinished(); // what idle cleanup and an admin closing the room do
+    expect(done).toHaveLength(1);
+    expect(room.s.daily!.done).toBe(true);
+    room.recordIfUnfinished();
+    expect(done).toHaveLength(1); // once only
+  });
+
   it('plays the fixed set in order and reports the result once', async () => {
     const { room, me, done } = await playDaily();
     await waitFor(room, 'reading');

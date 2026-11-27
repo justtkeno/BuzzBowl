@@ -137,6 +137,15 @@ describe('tossup flow', () => {
     expect(room.s.settings.answerSeconds).not.toBe(3);
   });
 
+  it('does not count players who left toward a team\'s size, so a newcomer still gets a team', async () => {
+    const room = new Room('TEAM', io, { qbreader: fakeProvider() });
+    const ids = Array.from({ length: 8 }, (_, i) => room.join(`P${i}`).playerId);
+    room.updateSettings(ids[0], { mode: 'teams' });
+    for (const id of ids.slice(1)) room.disconnect(id); // seven leave; their seats stay on the teams
+    const newcomer = room.join('New').playerId;
+    expect(room.s.players.find((p) => p.id === newcomer)!.teamId).toBeTruthy();
+  });
+
   it('times out to a wrong answer and ends when everyone is locked out', async () => {
     const { room, ids } = await setup();
     await readTo(room, 10);

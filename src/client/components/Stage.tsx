@@ -68,6 +68,7 @@ export function Stage({ s }: { s: PublicState }) {
   const buzz = (e?: { preventDefault(): void }) => {
     openKeyboard();
     if (!canBuzz || buzzing || !t) return;
+    if (!t.revealed.length) { e?.preventDefault(); return; } // the lead-in before the first word: nothing to buzz on yet
     e?.preventDefault();
     setBuzzing(true);
     vibrate(25);

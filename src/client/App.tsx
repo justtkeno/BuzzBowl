@@ -44,7 +44,8 @@ function Player() {
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [connected, setConnected] = useState(socket.connected);
   const [error, setError] = useState<string | null>(null);
-  const joined = useRef<{ code: string; name: string } | null>(null);
+  // The seat token is also kept here: with site storage blocked, prefs can't hold it, and every reconnect made a new seat.
+  const joined = useRef<{ code: string; name: string; token?: string } | null>(null);
   const lastBuzzer = useRef<string | null>(null);
   const autoJoined = useRef(false);
   // True when this player was dropped into a room with a random name, so the lobby offers a rename.
@@ -53,14 +54,15 @@ function Player() {
   useTheme();
 
   const enter = useCallback(async (code: string, name: string) => {
-    const res = await call<{ code: string; playerId: string; token: string; chat: ChatMessage[] }>('room:join', { code, name, token: prefs.token(code) });
+    const token = prefs.token(code) ?? (joined.current?.code === code ? joined.current.token : undefined);
+    const res = await call<{ code: string; playerId: string; token: string; chat: ChatMessage[] }>('room:join', { code, name, token });
     afterJoin(res, name);
   }, []);
 
   function afterJoin(res: { code: string; token: string; chat: ChatMessage[] }, name: string) {
     prefs.setToken(res.code, res.token);
     prefs.setName(name);
-    joined.current = { code: res.code, name };
+    joined.current = { code: res.code, name, token: res.token };
     setChat(res.chat ?? []);
     setError(null);
     if (codeFromPath() !== res.code) history.replaceState(null, '', `/r/${res.code}`);
@@ -103,7 +105,13 @@ function Player() {
       setConnected(true);
       // Rejoin after a dropped connection with the saved token.
       const j = joined.current;
-      if (j) enter(j.code, j.name).catch((e) => setError(e.message));
+      // If the room is gone (cleaned up while the phone slept), go home and say so instead of showing a frozen room.
+      if (j) enter(j.code, j.name).catch((e) => {
+        joined.current = null;
+        setState(null);
+        history.replaceState(null, '', '/');
+        setError(e.message);
+      });
     };
     const onDisconnect = () => setConnected(false);
     // The host, reader or admin removed us from the room.
