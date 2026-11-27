@@ -62,6 +62,16 @@ const SETTING_LABELS: [keyof Settings, string, string][] = [
   ['bounty', 'bounty tossups', ''],
 ];
 
+/**
+ * A display name: one line, at most 24 characters (whole emoji, never half of one), and never only invisible
+ * characters such as zero-width spaces, which would leave a blank player everywhere.
+ */
+export function cleanName(name: unknown): string {
+  const one = String(name ?? '').replace(/[\u200B\u200C\u2060\uFEFF\u00AD]/g, '').replace(/\s+/g, ' ').trim();
+  const s = Array.from(one).slice(0, 24).join('').trim();
+  return /[^\s\p{Cf}\p{M}]/u.test(s) ? s : '';
+}
+
 export const TIMING = {
   /** A host or reader who drops gets their seat back if they reconnect within this long. */
   seatHoldMs: 3 * 60_000,
@@ -443,7 +453,7 @@ export class Room {
   // ---------- membership ----------
 
   join(name: string, token?: string, account?: JoinAccount): { playerId: string; token: string } {
-    const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
+    const clean = cleanName(name);
     const ban = this.s.banned;
     if (ban && ((token && ban.tokens.includes(token)) || (account && ban.accounts.includes(account.id)))) fail('You were banned from this room.');
     let existing = token ? this.s.players.find((p) => p.token === token) : undefined;
@@ -748,7 +758,7 @@ export class Room {
 
   renamePlayer(playerId: string, name: string) {
     const p = this.mustPlayer(playerId);
-    const clean = String(name ?? '').replace(/\s+/g, ' ').trim().slice(0, 24);
+    const clean = cleanName(name);
     if (!clean) fail('Pick a display name.');
     if (clean === p.name) return;
     const old = p.name;
@@ -824,6 +834,8 @@ export class Room {
     if (!this.isController(by)) fail('Only the host or reader can change settings.');
     if (this.s.daily) fail('The daily challenge uses the same settings for everyone.');
     if (this.s.survival) fail('Survival uses the same settings for everyone.');
+    // Check everything that can refuse before changing anything, so a refused update changes nothing.
+    if (patch.source === 'upload' && !this.uploadProvider) fail('Upload a packet first.');
     const s = this.s.settings;
     const questionsKey = this.questionsKey();
     const before = { ...s };
@@ -850,7 +862,6 @@ export class Room {
     if (patch.negValue !== undefined) s.negValue = clamp(patch.negValue, -50, 0, s.negValue);
     if (patch.bonusPartValue !== undefined) s.bonusPartValue = clamp(patch.bonusPartValue, 0, 50, s.bonusPartValue);
     if (patch.source && ['qbreader', 'sample', 'upload', 'lightning'].includes(patch.source)) {
-      if (patch.source === 'upload' && !this.uploadProvider) fail('Upload a packet first.');
       s.source = patch.source;
     }
     if (patch.filters) {
@@ -909,7 +920,7 @@ export class Room {
   renameTeam(by: string, teamId: string, name: string) {
     const team = this.s.teams.find((t) => t.id === teamId) ?? fail('No such team.');
     if (!this.isController(by) && !team.playerIds.includes(by)) fail('Only team members, the host or the reader can rename a team.');
-    const clean = String(name ?? '').trim().slice(0, 24);
+    const clean = cleanName(name);
     if (clean) team.name = clean;
     this.broadcast();
   }
@@ -1407,6 +1418,8 @@ export class Room {
     if (t!.paused === paused) return;
     t!.paused = paused;
     if (paused) { this.clearTimer('read', 'dead'); t!.deadline = undefined; this.broadcast(); }
+    // A buzz is waiting to be decided: reading stays stopped; resolveBuzz takes it from here.
+    else if (this.pending.length) this.broadcast();
     else if (t!.revealed >= t!.words.length) this.openDeadWindow();
     else { this.broadcast(); this.setTimer('read', 150, () => this.readNext()); }
   }
@@ -1427,6 +1440,7 @@ export class Room {
   buzz(by: string, clientCount: number) {
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading' || t.ended) fail('You cannot buzz right now.');
+    if (t!.revealed === 0) fail('Wait for the first word.');
     this.notPaused();
     const teamId = this.teamOf(by) ?? fail(by === this.s.readerId ? 'The reader cannot buzz.' : 'Join a team to buzz.');
     // A frozen buzzer just does nothing: no error, no buzz.
@@ -1459,6 +1473,8 @@ export class Room {
     if (!t || !candidates.length) return;
     candidates.sort((a, b) => a.count - b.count || a.at - b.at);
     const win = candidates[0];
+    // Whatever restarted the reading or dead-window timers during the grace period, the buzz stops them now.
+    this.clearTimer('read', 'dead');
     const name = this.player(win.playerId)!.name;
     this.s.buzz = {
       playerId: win.playerId, teamId: win.teamId, wordIndex: win.count,

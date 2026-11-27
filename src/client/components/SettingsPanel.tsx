@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CATEGORIES, DIFFICULTIES, VOTE_SECONDS, type PublicState, type Settings } from '../../shared/types';
 import { TOPICS } from '../../shared/topics';
 import { DEFAULT_RULES, presetMatches } from '../../shared/presets';
@@ -16,6 +16,11 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const midGame = ['loading', 'reading', 'buzz', 'bonus'].includes(s.phase);
   const tabs = only ? QUESTION_TABS : ALL_TABS;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const [tab, setTabState] = useState<Tab>(() => (tabs.includes(lastTab[only ?? 'all']) ? lastTab[only ?? 'all'] : tabs[0]));
   const setTab = (t: Tab) => { lastTab[only ?? 'all'] = t; setTabState(t); };
   const filterCount = (f.filters.topics?.length ?? 0) + f.filters.categories.length + f.filters.subcategories.length
@@ -25,11 +30,14 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
   const rules = midGame ? { ...DEFAULT_RULES, mode: f.mode } : DEFAULT_RULES;
   const isDefault = presetMatches(rules, f);
 
-  const save = async () => {
+  // Save & start: one tap only, and only start when the save went through.
+  const [starting, setStarting] = useState(false);
+  const save = async (): Promise<boolean> => {
     try {
       await call('settings:update', only === 'questions' ? { source: f.source, filters: f.filters } : f);
       onClose();
-    } catch (e: any) { toast(e.message); }
+      return true;
+    } catch (e: any) { toast(e.message); return false; }
   };
 
   const [uploading, setUploading] = useState(false);
@@ -214,7 +222,10 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
           <div className="row gap end">
             <button className="btn ghost" onClick={onClose}>Cancel</button>
             <button className="btn primary" onClick={save}>{only ? 'Use these questions' : 'Save'}</button>
-            {s.phase === 'lobby' && !only && <button className="btn primary" onClick={async () => { await save(); act('game:start'); }}>Save &amp; start</button>}
+            {s.phase === 'lobby' && !only && <button className="btn primary" disabled={starting} onClick={async () => {
+              setStarting(true);
+              if (await save()) act('game:start'); else setStarting(false);
+            }}>Save &amp; start</button>}
           </div>
         </div>
       </div>

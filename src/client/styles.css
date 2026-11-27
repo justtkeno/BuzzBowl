@@ -729,7 +729,7 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .bm-pin { position: absolute; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column-reverse; align-items: center; }
 .bm-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--pc); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--pc); animation: pop-in .3s ease-out; }
 .bm-pin.r-neg .bm-dot, .bm-pin.r-zero .bm-dot { background: var(--surface); border: 3px solid var(--pc); }
-.bm-name { position: absolute; bottom: 18px; font-size: .7rem; white-space: nowrap; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0 .3rem; }
+.bm-name { position: absolute; bottom: 18px; font-size: .7rem; white-space: nowrap; max-width: 7.5em; overflow: hidden; text-overflow: ellipsis; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0 .3rem; }
 .bm-pin:nth-child(even) .bm-name { bottom: auto; top: 18px; }
 .bm-pin.r-power .bm-name b { color: var(--power); }
 .bm-pin.r-ten .bm-name b { color: var(--ok); }
@@ -1047,7 +1047,7 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 /* ---------- phone tab bar ---------- */
 .phone-tabs { display: none; }
 @media (max-width: 860px) {
-  .phone-tabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--border); padding: .3rem .4rem max(.3rem, env(safe-area-inset-bottom)); }
+  .phone-tabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--border); padding: .3rem .4rem max(.3rem, env(safe-area-inset-bottom)); }
   .phone-tabs button { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .15rem; padding: .35rem 0 .25rem; border: 0; background: none; color: var(--muted); font: 500 .72rem/1 var(--font); cursor: pointer; border-radius: 10px; position: relative; transition: color var(--dur) var(--ease-out), transform var(--dur) var(--ease-spring); }
   .phone-tabs button:active { transform: scale(.92); transition-duration: 60ms; }
   /* The open tab: a short accent bar above its icon. */
@@ -1252,3 +1252,12 @@ h3 { font-weight: 700; }
   .phone-tabs button.on span { text-decoration: underline; text-decoration-color: var(--pencil); text-decoration-thickness: 2px; text-underline-offset: 6px; }
   .phone-tabs button::before { display: none; }
 }
+
+/* ---------- long names and small screens (found by the fake-player test) ---------- */
+/* One long word as a name wraps instead of pushing the score columns off the screen. */
+.scoreboard td.name, .summary .stats td:first-child, .summary .stats th:first-child { white-space: normal; overflow-wrap: anywhere; }
+.summary h3, .summary h2 { overflow-wrap: anywhere; }
+/* Phones: room under the fixed "Next tossup" bar, so nothing (like the Report form's Send) hides beneath it. */
+@media (max-width: 860px) { .stage-col:has(.next-btn) { padding-bottom: 92px; } }
+/* The smallest phones: the four tab words fit. */
+@media (max-width: 359px) { .phone-tabs button { letter-spacing: .02em; font-size: .62rem; } }
