@@ -55,12 +55,19 @@ describe('leaderboard', () => {
   });
   it('ranks by points, then earlier buzzes, then who finished first; one result per player', async () => {
     const s = new FileDailyStore(null);
-    await s.addResult(row('a', 40, 0.6, 1));
-    await s.addResult(row('b', 55, 0.8, 2));
-    await s.addResult(row('c', 40, 0.4, 3));
-    expect(await s.addResult(row('a', 100, 0.1, 4))).toBe(false);
-    expect((await s.top('2026-11-19', 10)).map((r) => r.playerKey)).toEqual(['b', 'c', 'a']);
-    expect(await s.rankOf((await s.result('2026-11-19', 'a'))!)).toBe(3);
+    await s.addResult(row('a:a', 40, 0.6, 1));
+    await s.addResult(row('a:b', 55, 0.8, 2));
+    await s.addResult(row('a:c', 40, 0.4, 3));
+    expect(await s.addResult(row('a:a', 100, 0.1, 4))).toBe(false);
+    expect((await s.top('2026-11-19', 10)).map((r) => r.playerKey)).toEqual(['a:b', 'a:c', 'a:a']);
+    expect(await s.rankOf((await s.result('2026-11-19', 'a:a'))!)).toBe(3);
+  });
+  it('keeps guests off the board and out of ranks: anyone can be a new guest', async () => {
+    const s = new FileDailyStore(null);
+    await s.addResult(row('a:acct', 20, 0.6, 1));
+    await s.addResult(row('g:guest00000001', 99, 0.1, 2)); // a guest's perfect run after a practice go
+    expect((await s.top('2026-11-19', 10)).map((r) => r.playerKey)).toEqual(['a:acct']);
+    expect(await s.rankOf((await s.result('2026-11-19', 'a:acct'))!)).toBe(1);
   });
 });
 
@@ -157,20 +164,20 @@ describe('daily record on profiles', () => {
     const d = new Daily(s, okProvider());
     // 4 days ago: alone (played, but no win). 3 days ago: missed. 2 days ago: won a tie on earlier buzzes.
     // Yesterday: 3rd of 3. Today: leading, but today doesn't count as a win yet.
-    await s.addResult(row(shift(today, -4), 'me', 30));
-    await s.addResult(row(shift(today, -2), 'me', 40, 0.3));
-    await s.addResult(row(shift(today, -2), 'rival', 40, 0.6));
-    await s.addResult(row(shift(today, -1), 'me', 10));
-    await s.addResult(row(shift(today, -1), 'rival', 50));
-    await s.addResult(row(shift(today, -1), 'third', 20));
-    await s.addResult(row(today, 'me', 60));
-    await s.addResult(row(today, 'rival', 20));
-    const p = (await d.profile('me'))!;
+    await s.addResult(row(shift(today, -4), 'a:me', 30));
+    await s.addResult(row(shift(today, -2), 'a:me', 40, 0.3));
+    await s.addResult(row(shift(today, -2), 'a:rival', 40, 0.6));
+    await s.addResult(row(shift(today, -1), 'a:me', 10));
+    await s.addResult(row(shift(today, -1), 'a:rival', 50));
+    await s.addResult(row(shift(today, -1), 'a:third', 20));
+    await s.addResult(row(today, 'a:me', 60));
+    await s.addResult(row(today, 'a:rival', 20));
+    const p = (await d.profile('a:me'))!;
     expect(p).toMatchObject({ played: 4, wins: 1, podiums: 1, bestRank: 1, bestScore: 60, avgPoints: 35, streak: 3, longestStreak: 3, leadingToday: true });
     expect(p.recent.map((x) => [x.day, x.rank, x.players])).toEqual([
       [today, 1, 2], [shift(today, -1), 3, 3], [shift(today, -2), 1, 2], [shift(today, -4), 1, 1],
     ]);
-    expect(await d.profile('nobody')).toBeNull();
+    expect(await d.profile('a:nobody')).toBeNull();
   });
 
   it('keeps a streak alive until today is over', async () => {

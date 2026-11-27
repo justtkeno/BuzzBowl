@@ -34,21 +34,21 @@ describe.each(stores)('daily store (%s)', (_name, make) => {
     const day = `test-${Date.now()}-${++n}`;
     const t = 1_700_000_000_000;
     const rows = [
-      row(day, 'g:ann', 25, 0.5348, t + 3),
-      row(day, 'g:bob', 25, 0.41, t + 4), // same points, buzzed earlier on average: ahead of Ann
-      row(day, 'g:cy', 25, 0.41, t + 9), // tied with Bob but finished later
-      row(day, 'g:dee', 10, null, t + 1), // no correct buzz: depth unknown
-      row(day, 'g:eve', 30, 0.9, t + 2),
+      row(day, 'a:ann', 25, 0.5348, t + 3),
+      row(day, 'a:bob', 25, 0.41, t + 4), // same points, buzzed earlier on average: ahead of Ann
+      row(day, 'a:cy', 25, 0.41, t + 9), // tied with Bob but finished later
+      row(day, 'a:dee', 10, null, t + 1), // no correct buzz: depth unknown
+      row(day, 'a:eve', 30, 0.9, t + 2),
     ];
     for (const r of rows) expect(await store.addResult(r)).not.toBe(false);
     const rank = async (key: string) => store.rankOf((await store.result(day, key))!);
-    expect(await rank('g:eve')).toBe(1);
-    expect(await rank('g:bob')).toBe(2);
-    expect(await rank('g:cy')).toBe(3);
-    expect(await rank('g:ann')).toBe(4);
-    expect(await rank('g:dee')).toBe(5);
-    expect((await store.top(day, 10)).map((r) => r.playerKey)).toEqual(['g:eve', 'g:bob', 'g:cy', 'g:ann', 'g:dee']);
+    expect(await rank('a:eve')).toBe(1);
+    expect(await rank('a:bob')).toBe(2);
+    expect(await rank('a:cy')).toBe(3);
+    expect(await rank('a:ann')).toBe(4);
+    expect(await rank('a:dee')).toBe(5);
+    expect((await store.top(day, 10)).map((r) => r.playerKey)).toEqual(['a:eve', 'a:bob', 'a:cy', 'a:ann', 'a:dee']);
     expect(await store.count(day)).toBe(5);
-    expect((await store.result(day, 'g:ann'))!.depth).toBeCloseTo(0.5348);
+    expect((await store.result(day, 'a:ann'))!.depth).toBeCloseTo(0.5348);
   });
 });

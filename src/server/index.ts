@@ -429,6 +429,11 @@ io.on('connection', (socket) => {
     try {
       const day = daily.today();
       if (await daily.result(day, playerKey)) return ack({ ok: false, error: 'You’ve already played today’s challenge. A new one comes out at midnight Eastern.' });
+      // Played (or started) as a guest on this browser, then logged in: no second go at the same ten questions.
+      const guestKey = playerKey.startsWith('a:') ? playerKeyFor(undefined, key) : null;
+      if (guestKey && ((await daily.result(day, guestKey)) || daily.active.has(guestKey))) {
+        return ack({ ok: false, error: 'This browser already played today’s challenge as a guest. A new one comes out at midnight Eastern.' });
+      }
       // Reloaded mid-challenge: send them back to their own room.
       const activeCode = daily.active.get(playerKey);
       const activeRoom = activeCode ? store.get(activeCode) : undefined;

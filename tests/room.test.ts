@@ -146,6 +146,28 @@ describe('tossup flow', () => {
     expect(room.s.players.find((p) => p.id === newcomer)!.teamId).toBeTruthy();
   });
 
+  it('ends a whole-game pause by itself after 5 minutes, so an idle host can\'t freeze the room', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 3);
+    room.pauseGame(ids[0], true);
+    await vi.advanceTimersByTimeAsync(TIMING.pauseLimitMs - 1000);
+    expect(room.s.paused).toBe(true);
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(room.s.paused).toBe(false);
+    const before = room.s.tossup!.revealed;
+    await vi.advanceTimersByTimeAsync(300);
+    expect(room.s.tossup!.revealed).toBeGreaterThan(before); // reading carried on
+  });
+
+  it('ends a reading pause by itself after 5 minutes', async () => {
+    const { room, ids } = await setup();
+    await readTo(room, 3);
+    room.setPaused(ids[0], true);
+    await vi.advanceTimersByTimeAsync(TIMING.pauseLimitMs + 1000);
+    expect(room.s.tossup!.paused).toBe(false);
+    expect(room.s.tossup!.revealed).toBeGreaterThan(3);
+  });
+
   it('times out to a wrong answer and ends when everyone is locked out', async () => {
     const { room, ids } = await setup();
     await readTo(room, 10);

@@ -22,7 +22,7 @@ export const GLOSSARY = {
   ffa: { title: 'Free-for-all', text: 'Everyone plays for themselves and gets their own score.' },
   teams: { title: 'Teams', text: 'Players join teams of up to 4. A buzz locks out the whole team, and the team that gets a tossup right plays the bonus together.' },
   party: { title: 'Party mode', text: 'Free-for-all where, between tossups, everyone votes on the next topic.' },
-  daily: { title: 'Daily challenge', text: 'The same 10 tossups for everyone, once a day (it resets at midnight US Eastern). Play once, then see how you rank.' },
+  daily: { title: 'Daily challenge', text: 'The same 10 tossups for everyone, once a day (it resets at midnight US Eastern). Play once, then see how you rank. Guests can play too, but only signed-in players are ranked.' },
   survival: { title: 'Survival', text: 'Solo tossups that keep coming and slowly get harder, until you miss three. Try to beat your best run.' },
   lightning: { title: 'Lightning round', text: 'Short, quick questions instead of full-length tossups.' },
   ppg: { title: 'Points per game', text: 'Your average score per game.' },

@@ -86,6 +86,8 @@ export const TIMING = {
   /** The smallest window, and the extra on top of 1.5 round trips (jitter, a word arriving mid-press). */
   lagFloorMs: 300,
   lagMarginMs: 200,
+  /** A pause (the whole game, or the reading) ends by itself after this long, so a host who walks away can't freeze the room. */
+  pauseLimitMs: 5 * 60_000,
   /** No ping measured: every player is pinged when they sit down, so only a client that won't answer pings gets this. */
   lagUnknownMs: 300,
   promptSeconds: 5,
@@ -413,8 +415,38 @@ export class Room {
       this.s.paused = true;
       this.s.pausedAt = Date.now();
       for (const t of this.timers.values()) if (t.h) { clearTimeout(t.h); t.h = null; }
+      this.armPauseLimit('game');
       this.system(`${this.player(by)?.name ?? 'The host'} paused the game.`);
     } else {
+      this.resumeGame('Game resumed.');
+      return;
+    }
+    this.broadcast();
+  }
+
+  /**
+   * The timers that end a pause on their own (TIMING.pauseLimitMs). They're plain timeouts, not `setTimer`, because
+   * they have to keep running while the game is paused: freezing them is exactly what the whole-game pause does.
+   */
+  private pauseLimits: { game?: ReturnType<typeof setTimeout>; reading?: ReturnType<typeof setTimeout> } = {};
+  private armPauseLimit(kind: 'game' | 'reading') {
+    clearTimeout(this.pauseLimits[kind]);
+    this.pauseLimits[kind] = setTimeout(() => {
+      this.pauseLimits[kind] = undefined;
+      if (kind === 'game') { if (this.s.paused) this.resumeGame('The pause ran out after 5 minutes, so the game carried on.'); return; }
+      const t = this.s.tossup;
+      if (!t?.paused || this.s.phase !== 'reading') return;
+      if (this.s.paused) { this.armPauseLimit('reading'); return; } // whole game is paused too: that limit comes first
+      this.system('The pause ran out after 5 minutes, so the reading carried on.');
+      this.unpauseReading();
+    }, TIMING.pauseLimitMs);
+  }
+  private clearPauseLimit(kind: 'game' | 'reading') { clearTimeout(this.pauseLimits[kind]); this.pauseLimits[kind] = undefined; }
+
+  private resumeGame(message: string) {
+    if (!this.s.paused) return;
+    this.clearPauseLimit('game');
+    {
       const shift = Date.now() - (this.s.pausedAt ?? Date.now());
       this.s.paused = false;
       this.s.pausedAt = null;
@@ -424,11 +456,11 @@ export class Room {
       if (b?.deadline) b.deadline += shift;
       if (bn?.deadline) bn.deadline += shift;
       if (this.s.vote) this.s.vote.deadline += shift;
-      this.system('Game resumed.');
+      this.system(message);
     }
     this.broadcast();
   }
-  dispose() { for (const n of [...this.timers.keys()]) this.clearTimer(n); }
+  dispose() { for (const n of [...this.timers.keys()]) this.clearTimer(n); this.clearPauseLimit('game'); this.clearPauseLimit('reading'); }
 
   private wordMs(word: string) {
     const base = 60_000 / this.s.settings.wpm;
@@ -1430,11 +1462,18 @@ export class Room {
     const t = this.s.tossup;
     if (!t || this.s.phase !== 'reading') fail('Nothing is being read.');
     if (t!.paused === paused) return;
-    t!.paused = paused;
-    if (paused) { this.clearTimer('read', 'dead'); t!.deadline = undefined; this.broadcast(); }
+    if (paused) { t!.paused = true; this.clearTimer('read', 'dead'); t!.deadline = undefined; this.armPauseLimit('reading'); this.broadcast(); }
+    else this.unpauseReading();
+  }
+
+  private unpauseReading() {
+    const t = this.s.tossup;
+    if (!t) return;
+    t.paused = false;
+    this.clearPauseLimit('reading');
     // A buzz is waiting to be decided: reading stays stopped; resolveBuzz takes it from here.
-    else if (this.pending.length) this.broadcast();
-    else if (t!.revealed >= t!.words.length) this.openDeadWindow();
+    if (this.pending.length) this.broadcast();
+    else if (t.revealed >= t.words.length) this.openDeadWindow();
     else { this.broadcast(); this.setTimer('read', 150, () => this.readNext()); }
   }
 
@@ -2031,6 +2070,9 @@ export class Room {
     if (room.s.upload) room.uploadProvider = new LocalProvider(room.s.upload.tossups, room.s.upload.bonuses);
     if (room.s.survival) room.useSurvivalQuestions();
     room.rearm();
+    // A restored game comes back paused; that pause runs out like any other.
+    if (room.s.paused) room.armPauseLimit('game');
+    if (room.s.tossup?.paused && room.s.phase === 'reading') room.armPauseLimit('reading');
     return room;
   }
 
