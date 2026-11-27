@@ -67,8 +67,17 @@ export const TIMING = {
   seatHoldMs: 3 * 60_000,
   /** After the first buzz arrives, wait this long for earlier (laggier) buzzes before awarding it. */
   graceMs: 120,
-  /** A client may claim it buzzed before a word only if that word went out at most this long ago. */
+  /**
+   * A client may claim it buzzed before a word only if that word went out at most this long ago. The window is
+   * sized to the player's own measured connection (`lagAllowance`): an honest claim is never older than about one
+   * round trip, so a fast connection can't claim the whole window to win close buzzes and extra powers.
+   */
   maxLagMs: 1200,
+  /** The smallest window, and the extra on top of 1.5 round trips (jitter, a word arriving mid-press). */
+  lagFloorMs: 300,
+  lagMarginMs: 200,
+  /** Before the first ping is measured (pings run every 10 s). */
+  lagUnknownMs: 600,
   promptSeconds: 5,
   partRevealMs: 3000,
   startDelayMs: 900,
@@ -476,7 +485,7 @@ export class Room {
   /** A signed-in player's level changed (after a game was saved): show the new one. */
   /**
    * The server measured this player's round trip. Smoothed, and only broadcast when it moves between good, ok and bad,
-   * so measuring doesn't flood the room with updates. Display only: rulings never look at it.
+   * so measuring doesn't flood the room with updates. Rulings never look at it; it only sizes how far back a buzz may claim (`lagAllowance`).
    */
   setPing(playerId: string, ms: number) {
     const p = this.player(playerId);
@@ -1427,13 +1436,20 @@ export class Room {
     const now = Date.now();
     // Trust the client's word count only as far back as plausible network lag allows.
     let count = Math.max(0, Math.min(Math.floor(Number(clientCount)) || 0, t!.revealed));
-    while (count < t!.revealed && now - t!.revealTimes[count] > TIMING.maxLagMs) count++;
+    const allowed = this.lagAllowance(this.player(by)!.ping);
+    while (count < t!.revealed && now - t!.revealTimes[count] > allowed) count++;
     if (this.player(by)!.slowed) count = Math.min(t!.revealed, count + SLOW_WORDS);
     this.pending.push({ playerId: by, teamId, count, at: now });
     if (this.pending.length === 1) {
       this.clearTimer('read', 'dead');
       this.setTimer('grace', TIMING.graceMs, () => this.resolveBuzz());
     }
+  }
+
+  /** How far back (ms) this player's buzz may claim to have been pressed, from their measured round trip. */
+  private lagAllowance(ping: number | undefined): number {
+    if (ping == null || !Number.isFinite(ping)) return TIMING.lagUnknownMs;
+    return Math.min(TIMING.maxLagMs, Math.max(TIMING.lagFloorMs, ping * 1.5 + TIMING.lagMarginMs));
   }
 
   private resolveBuzz() {

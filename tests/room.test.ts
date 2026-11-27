@@ -92,6 +92,23 @@ describe('tossup flow', () => {
     expect(room.s.rulings[0].kind).toBe('ten');
   });
 
+  it('sizes the lag window to the buzzer\'s measured connection, so a fast one cannot rewind a whole second', async () => {
+    const { room, ids } = await setup();
+    room.setPing(ids[0], 40); // honest, fast connection
+    room.setPing(ids[1], 40); // fast connection that lies about its word count
+    await readTo(room, 8);
+    const now = Date.now();
+    // What a 40 ms connection may honestly claim: words revealed within 1.5 round trips + margin (at least the floor).
+    const allowed = Math.max(TIMING.lagFloorMs, 40 * 1.5 + TIMING.lagMarginMs);
+    let honest = 8;
+    while (honest > 0 && now - room.s.tossup!.revealTimes[honest - 1] <= allowed) honest--;
+    room.buzz(ids[0], 8); // pressed now
+    room.buzz(ids[1], 0); // pressed a moment later, claims it saw nothing
+    await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
+    expect(room.s.buzz!.wordIndex).toBeGreaterThanOrEqual(honest); // clamped to its own window, not the full 1.2 s
+    expect(room.s.buzz!.wordIndex).toBeGreaterThan(0); // the lie bought at most a few words, not the whole question
+  });
+
   it('times out to a wrong answer and ends when everyone is locked out', async () => {
     const { room, ids } = await setup();
     await readTo(room, 10);
