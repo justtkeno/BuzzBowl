@@ -46,8 +46,8 @@ export const prefs = {
   textSize: () => (store.get('qb:textSize') as 's' | 'm' | 'l' | null) ?? 'm',
   setTextSize: (t: 's' | 'm' | 'l') => store.set('qb:textSize', t),
   setTheme: (t: string) => store.set('qb:theme', t),
-  /** Accent color on this device (see ACCENTS in App.tsx); 'ember' is the default orange. */
-  accent: () => store.get('qb:accent') ?? 'ember',
+  /** Accent color on this device (see ACCENTS in App.tsx); 'ink' (the Packet look's blue) is the default. */
+  accent: () => store.get('qb:accent') ?? 'ink',
   setAccent: (a: string) => store.set('qb:accent', a),
   /** The last room settings this player used as host, reused when they create a new room. */
   settings: (): Record<string, unknown> | undefined => {

@@ -218,7 +218,7 @@ export function useTheme() {
       else document.documentElement.removeAttribute('data-palette');
       document.documentElement.setAttribute('data-text', prefs.textSize());
       const a = prefs.accent();
-      if (a === 'ember' || !ACCENTS.some(([k]) => k === a)) document.documentElement.removeAttribute('data-accent');
+      if (a === 'ink' || !ACCENTS.some(([k]) => k === a)) document.documentElement.removeAttribute('data-accent');
       else document.documentElement.setAttribute('data-accent', a);
       // The phone's status bar matches the top bar, in the theme the player picked.
       const fixed = 'bar' in th ? th.bar : undefined;
@@ -242,7 +242,7 @@ export function setTextSizeChoice(t: 's' | 'm' | 'l') {
 }
 
 /** Accent colors a player can pick for this device. The values live in styles.css (`[data-accent=…]`). */
-export const ACCENTS = [['ember', 'Ember'], ['ocean', 'Ocean'], ['rose', 'Rose'], ['teal', 'Teal'], ['mono', 'Mono']] as const;
+export const ACCENTS = [['ink', 'Ink'], ['ember', 'Ember'], ['ocean', 'Ocean'], ['rose', 'Rose'], ['teal', 'Teal'], ['mono', 'Mono']] as const;
 export type Accent = (typeof ACCENTS)[number][0];
 
 export function setAccentChoice(a: Accent) {

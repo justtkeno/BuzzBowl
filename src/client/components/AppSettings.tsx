@@ -78,7 +78,7 @@ function GameSettings({ onClose }: { onClose: () => void }) {
   const [vibe, setVibe] = useState(vibrationOn());
   const [size, setSize] = useState<Size>(prefs.textSize());
   const [theme, setTheme] = useState<Theme>(() => (THEMES.find((t) => t.id === prefs.theme())?.id ?? 'auto'));
-  const [accent, setAccent] = useState<Accent>(() => (ACCENTS.find(([k]) => k === prefs.accent())?.[0] ?? 'ember'));
+  const [accent, setAccent] = useState<Accent>(() => (ACCENTS.find(([k]) => k === prefs.accent())?.[0] ?? 'ink'));
 
   const toggleSound = (on: boolean) => { setSoundOn(on); setSound(on); if (on) play('correct'); };
   const pickBuzz = (v: BuzzSound) => { setBuzzSound(v); setBuzz(v); };

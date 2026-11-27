@@ -66,9 +66,10 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
     <div className="home with-tabbar">
       <div className="home-card">
         <AccountBar />
-        <div className="brand"><Logo /> Trivio</div>
+        <div className="brand"><Logo /> Trivio <span className="brand-tag">Quiz bowl practice</span></div>
         <BoostChip className="home-boost" />
-        <p className="muted">Quiz bowl practice: questions read word by word, and you race to buzz in. Play with friends or on your own.<Info term="tossup" /></p>
+        <h1 className="home-head">Buzz before the clue gives it away.</h1>
+        <p className="muted home-sub">Questions are read word by word. The earlier you buzz in, the more it’s worth.<Info term="tossup" /></p>
 
         <label className="field">
           <span>Your name</span>
@@ -89,7 +90,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
           </button>
         ) : (
           <div className="choices">
-            <ChoiceCard icon="users" title="Play with friends" sub="Make a room and invite people, or join one with a code." open={open === 'friends'} onToggle={() => toggle('friends')}>
+            <ChoiceCard title="Play with friends" sub="Make a room and send the code, or join one." open={open === 'friends'} onToggle={() => toggle('friends')}>
               <button className="btn primary big" disabled={busy || !connected} onClick={() => run(() => onCreate(name.trim(), false))}>Create a room</button>
               <p className="muted small">You’ll get a link and QR code to invite people. You pick the rules before starting.</p>
               <div className="divider"><span>or join with a code</span></div>
@@ -99,14 +100,14 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
               </form>
             </ChoiceCard>
 
-            <ChoiceCard icon="user" title="Play solo" sub="Practice at your own pace, or see how long you survive." open={open === 'solo'} onToggle={() => toggle('solo')}>
+            <ChoiceCard title="Play solo" sub="Your speed. Add bots for a race, or try survival." open={open === 'solo'} onToggle={() => toggle('solo')}>
               <button className="btn primary big" disabled={busy || !connected} onClick={() => run(() => onCreate(name.trim(), true))}>Practice</button>
               <p className="muted small">Questions just for you. In the room you can add computer opponents and pick topics.</p>
               <div className="choice-sub-head">Survival<Info term="survival" /></div>
               <SurvivalCard busy={busy} connected={connected} onPlay={() => run(() => onSurvival(name.trim()))} openOnLoad={survivalOpen} />
             </ChoiceCard>
 
-            <ChoiceCard icon="calendar" title="Today’s challenge" sub="One short set for everyone, new every day. See how you rank." open={open === 'daily'} onToggle={() => toggle('daily')}>
+            <ChoiceCard className="choice-daily" title="Today’s challenge" sub="Ten tossups, the same for everyone. One try a day." open={open === 'daily'} onToggle={() => toggle('daily')}>
               <DailyCard busy={busy} connected={connected} onPlay={() => run(() => onDaily(name.trim()))} openOnLoad={dailyOpen} />
               <p className="muted small">You get one try per day; it resets at midnight US Eastern.<Info term="daily" /></p>
             </ChoiceCard>
@@ -140,11 +141,10 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
 }
 
 /** One of the three big choices on the home screen. Tap to open its options; only one is open at a time. */
-function ChoiceCard({ icon, title, sub, open, onToggle, children }: { icon: IconName; title: string; sub: string; open: boolean; onToggle: () => void; children: React.ReactNode }) {
+function ChoiceCard({ title, sub, open, onToggle, children, className = '' }: { title: string; sub: string; open: boolean; onToggle: () => void; children: React.ReactNode; className?: string }) {
   return (
-    <section className={`choice ${open ? 'open' : ''}`}>
+    <section className={`choice ${className} ${open ? 'open' : ''}`}>
       <button className="choice-head" aria-expanded={open} onClick={onToggle}>
-        <span className="choice-icon"><Icon name={icon} /></span>
         <span className="choice-text"><b>{title}</b><small>{sub}</small></span>
         <Icon name="next" className="choice-chev" />
       </button>
