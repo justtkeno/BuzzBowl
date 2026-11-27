@@ -193,15 +193,36 @@ function Player() {
 /** The top bar's color (--surface) in each theme. */
 const LIGHT_BAR = '#ffffff', DARK_BAR = '#1d1c1a';
 
+/**
+ * Themes a player can pick for this device. Auto follows the system. The full themes (midnight, sand, slate) sit on
+ * top of light or dark mode: `data-theme` gets the mode, so every dark/light rule still applies, and `data-palette`
+ * swaps the surfaces (values in styles.css). Accent colors combine with any of them.
+ */
+export const THEMES = [
+  { id: 'auto', label: 'Auto' }, { id: 'light', label: 'Light' }, { id: 'dark', label: 'Dark' },
+  { id: 'midnight', label: 'Midnight', mode: 'dark', bar: '#121a2e' },
+  { id: 'sand', label: 'Sand', mode: 'light', bar: '#fbf6ec' },
+  { id: 'slate', label: 'Slate', mode: 'light', bar: '#ffffff' },
+] as const;
+export type Theme = (typeof THEMES)[number]['id'];
+const themeOf = (id: string) => THEMES.find((t) => t.id === id) ?? THEMES[0];
+
 export function useTheme() {
   useEffect(() => {
     const apply = () => {
-      const t = prefs.theme();
+      const th = themeOf(prefs.theme());
+      const t = 'mode' in th ? th.mode : th.id;
       if (t === 'auto') document.documentElement.removeAttribute('data-theme');
       else document.documentElement.setAttribute('data-theme', t);
+      if ('mode' in th) document.documentElement.setAttribute('data-palette', th.id);
+      else document.documentElement.removeAttribute('data-palette');
       document.documentElement.setAttribute('data-text', prefs.textSize());
+      const a = prefs.accent();
+      if (a === 'ink' || !ACCENTS.some(([k]) => k === a)) document.documentElement.removeAttribute('data-accent');
+      else document.documentElement.setAttribute('data-accent', a);
       // The phone's status bar matches the top bar, in the theme the player picked.
-      const light = t === 'dark' ? DARK_BAR : LIGHT_BAR, dark = t === 'light' ? LIGHT_BAR : DARK_BAR;
+      const fixed = 'bar' in th ? th.bar : undefined;
+      const light = fixed ?? (t === 'dark' ? DARK_BAR : LIGHT_BAR), dark = fixed ?? (t === 'light' ? LIGHT_BAR : DARK_BAR);
       document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
         m.content = /dark/.test(m.media) ? dark : light;
       });
@@ -220,8 +241,17 @@ export function setTextSizeChoice(t: 's' | 'm' | 'l') {
   window.dispatchEvent(new Event('qb-theme'));
 }
 
+/** Accent colors a player can pick for this device. The values live in styles.css (`[data-accent=…]`). */
+export const ACCENTS = [['ink', 'Ink'], ['ember', 'Ember'], ['ocean', 'Ocean'], ['rose', 'Rose'], ['teal', 'Teal'], ['mono', 'Mono']] as const;
+export type Accent = (typeof ACCENTS)[number][0];
+
+export function setAccentChoice(a: Accent) {
+  prefs.setAccent(a);
+  window.dispatchEvent(new Event('qb-theme'));
+}
+
 /** Pick a theme for this device: auto follows the system's light or dark setting. */
-export function setThemeChoice(t: 'auto' | 'light' | 'dark') {
+export function setThemeChoice(t: Theme) {
   prefs.setTheme(t);
   window.dispatchEvent(new Event('qb-theme'));
 }

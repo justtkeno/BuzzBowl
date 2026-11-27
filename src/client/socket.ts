@@ -40,11 +40,15 @@ export const prefs = {
   setName: (n: string) => store.set('qb:name', n),
   token: (code: string) => store.get(`qb:token:${code}`) ?? undefined,
   setToken: (code: string, t: string) => store.set(`qb:token:${code}`, t),
-  theme: () => (store.get('qb:theme') as 'auto' | 'light' | 'dark' | null) ?? 'auto',
+  /** 'auto' | 'light' | 'dark', or a full theme from THEMES in App.tsx (midnight, sand, slate). */
+  theme: () => store.get('qb:theme') ?? 'auto',
   /** Question text size on this device. */
   textSize: () => (store.get('qb:textSize') as 's' | 'm' | 'l' | null) ?? 'm',
   setTextSize: (t: 's' | 'm' | 'l') => store.set('qb:textSize', t),
   setTheme: (t: string) => store.set('qb:theme', t),
+  /** Accent color on this device (see ACCENTS in App.tsx); 'ink' (the Packet look's blue) is the default. */
+  accent: () => store.get('qb:accent') ?? 'ink',
+  setAccent: (a: string) => store.set('qb:accent', a),
   /** The last room settings this player used as host, reused when they create a new room. */
   settings: (): Record<string, unknown> | undefined => {
     try { return JSON.parse(store.get('qb:settings') ?? 'null') ?? undefined; } catch { return undefined; }

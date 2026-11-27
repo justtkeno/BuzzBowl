@@ -5,4 +5,5 @@ dist
 .claude/*
 !.claude/settings.json
 !.claude/launch.json
+!.claude/skills/
 data/
