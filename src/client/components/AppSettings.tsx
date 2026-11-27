@@ -3,6 +3,7 @@ import { ACCENTS, THEMES, TEXT_SIZE_LABEL, setAccentChoice, setTextSizeChoice, s
 import { prefs } from '../socket';
 import { BUZZ_SOUNDS, buzzSound, play, setBuzzSound, setSoundOn, setVolume, soundOn, volume, type BuzzSound } from '../sounds';
 import { useAccount } from '../account';
+import { chosenVoiceId, currentVoice, previewVoice, setSpeechOn, setVoice, speechOn, speechSupported, useVoices } from '../speech';
 import { AccountSettings } from './AccountSettings';
 import { KeyboardSettings } from './KeyboardSettings';
 import { Icon } from './Icon';
@@ -113,6 +114,8 @@ function GameSettings({ onClose }: { onClose: () => void }) {
             </div>
           </section>
 
+          {speechSupported() && <ReadAloudSettings />}
+
           {canVibrate() && (
             <section className="as-group">
               <h3>Vibration</h3>
@@ -157,6 +160,35 @@ function GameSettings({ onClose }: { onClose: () => void }) {
 
         <div className="row end as-foot"><button className="btn primary" onClick={onClose}>Done</button></div>
     </>
+  );
+}
+
+/** Read aloud on this device: on/off, which voice (best first), and a preview. */
+function ReadAloudSettings() {
+  const [on, setOn] = useState(speechOn());
+  const voices = useVoices();
+  const [voice, setVoiceState] = useState(() => chosenVoiceId() || currentVoice()?.voiceURI || '');
+  const selected = voices.find((v) => v.voiceURI === voice) ?? voices[0];
+  return (
+    <section className="as-group">
+      <h3>Read aloud</h3>
+      <label className="as-row">
+        <span>Read questions aloud<small>this device speaks each question as the words appear. Off whenever a person is reading.</small></span>
+        <Switch on={on} onChange={(v) => { setSpeechOn(v); setOn(v); if (v) previewVoice(selected?.voiceURI); }} label="Read questions aloud" />
+      </label>
+      {on && (voices.length ? (
+        <div className="as-sub">
+          <span className="as-label">Voice <small>the most natural ones on this device are listed first</small></span>
+          <div className="row gap">
+            <select className="grow" value={selected?.voiceURI ?? ''} aria-label="Voice"
+              onChange={(e) => { setVoice(e.target.value); setVoiceState(e.target.value); previewVoice(e.target.value); }}>
+              {voices.map((v, i) => <option key={v.voiceURI} value={v.voiceURI}>{v.name.replace(/\s*\(.*?\)\s*$/, '')}{i === 0 ? ' (best)' : ''}</option>)}
+            </select>
+            <button type="button" className="btn" onClick={() => previewVoice(selected?.voiceURI)}>Preview</button>
+          </div>
+        </div>
+      ) : <p className="muted small">This device has no English voices installed.</p>)}
+    </section>
   );
 }
 

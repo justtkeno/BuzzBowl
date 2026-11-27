@@ -333,7 +333,6 @@ export class Room {
   }
   private readerOnline() { return !!this.s.readerId && !!this.player(this.s.readerId)?.online; }
   /** Lightning round with no reader: each prompt is shown all at once instead of word by word. */
-  private instantReveal() { return this.s.settings.source === 'lightning' && !this.readerOnline(); }
 
   /** Who may advance / start / pause: the reader (and host) when there is a reader, otherwise anyone. */
   private canDirect(id: string) { return this.readerOnline() ? this.isController(id) : true; }
@@ -1429,10 +1428,6 @@ export class Room {
     const t = this.s.tossup;
     if (!t || t.ended || this.s.phase !== 'reading' || t.paused) return;
     if (t.revealed >= t.words.length) return this.openDeadWindow();
-    if (this.instantReveal()) {
-      while (t.revealed < t.words.length) this.revealWord();
-      return this.openDeadWindow();
-    }
     this.revealWord();
     if (t.revealed >= t.words.length) this.openDeadWindow();
     else this.setTimer('read', this.wordMs(t.words[t.revealed - 1]), () => this.readNext());

@@ -37,7 +37,7 @@ describe('lightning round in a room', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('shows the whole prompt at once, scores a flat ten and skips bonuses', async () => {
+  it('reads the prompt word by word, then gives at least 8 s to buzz; scores a flat ten and skips bonuses', async () => {
     const room = new Room('TEST', { emitEach: () => {}, emitTo: () => {} });
     const ann = room.join('Ann').playerId;
     const bob = room.join('Bob').playerId;
@@ -45,7 +45,8 @@ describe('lightning round in a room', () => {
     room.start(ann);
     await vi.advanceTimersByTimeAsync(TIMING.startDelayMs + 10);
     const t = room.s.tossup!;
-    expect(t.revealed).toBe(t.words.length);
+    expect(t.revealed).toBeLessThan(t.words.length); // not all at once
+    while (t.revealed < t.words.length) await vi.advanceTimersByTimeAsync(50);
     expect(t.deadline! - Date.now()).toBeGreaterThan(7000);
     room.buzz(bob, t.revealed);
     await vi.advanceTimersByTimeAsync(TIMING.graceMs + 1);
