@@ -1290,6 +1290,7 @@ export class Room {
   }
 
   next(by: string) {
+    this.clearTimer('readerWait');
     const admin = !!this.player(by)?.admin;
     if (!this.canDirect(by) && !admin) fail('The reader decides when to move on.');
     this.notPaused();
@@ -1566,14 +1567,42 @@ export class Room {
     if (given && this.s.settings.readerRules && this.readerOnline()) {
       b!.awaiting = { given, suggestion: verdict };
       b!.deadline = null;
+      this.armReaderWait();
       return this.broadcast();
     }
     this.applyTossupVerdict(spelling && b!.spellingUsed ? 'incorrect' : verdict, given, correctedTo, spelling);
   }
 
+  /**
+   * While a reader is seated, only they (or the host) move on after a question and rule on answers, so a reader who
+   * walks away with their phone still connected would hold the room forever. After TIMING.pauseLimitMs of waiting on
+   * them, the game carries on: a pending answer gets the automatic check's ruling, a finished question moves on.
+   * A `setTimer`, so a whole-game pause freezes it too.
+   */
+  private armReaderWait() {
+    if (this.readerOnline()) this.setTimer('readerWait', TIMING.pauseLimitMs, () => this.readerTimedOut());
+  }
+  private readerTimedOut() {
+    if (!this.readerOnline() || this.s.paused) return;
+    const b = this.s.buzz, bn = this.s.bonus;
+    if (b?.awaiting) {
+      this.system('The reader didn’t rule for 5 minutes, so the automatic check decided.');
+      return this.applyTossupVerdict(b.awaiting.suggestion, b.awaiting.given);
+    }
+    if (bn?.awaiting) {
+      this.system('The reader didn’t rule for 5 minutes, so the automatic check decided.');
+      return this.applyBonusVerdict(bn.awaiting.suggestion, bn.awaiting.given);
+    }
+    if (this.s.phase === 'tossupEnd' || (this.s.phase === 'bonus' && bn?.done)) {
+      this.system('The reader stepped away for 5 minutes, so the game moved on.');
+      try { this.next(this.s.readerId!); } catch { /* nothing to move on to */ }
+    }
+  }
+
   /** The reader's ruling on the current tossup or bonus answer. */
   rule(by: string, verdict: Verdict) {
     if (by !== this.s.readerId && by !== this.s.hostId) fail('Only the reader rules on answers.');
+    this.clearTimer('readerWait');
     if (!['correct', 'prompt', 'incorrect'].includes(verdict)) fail('Unknown ruling.');
     const waiting = this.s.buzz?.awaiting ?? this.s.bonus?.awaiting;
     if (waiting && verdict === 'correct' && waiting.suggestion !== 'correct') this.s.unranked = true;
@@ -1649,6 +1678,7 @@ export class Room {
     t.bonusTeam = winnerTeam && this.s.settings.bonuses && this.s.settings.source !== 'lightning' ? winnerTeam : null;
     if (this.s.survival && !this.s.survival.done) this.survivalTossupOver(t.num, !!winnerTeam);
     this.s.phase = 'tossupEnd';
+    this.armReaderWait();
     if (!t.bonusTeam) this.openVote();
     this.broadcast();
   }
@@ -1775,6 +1805,7 @@ export class Room {
     const { verdict, correctedTo, spelling } = given ? checkAnswerDetailed(given, bn!.q.answers[bn!.current]) : { verdict: 'incorrect' as const, correctedTo: undefined, spelling: false };
     if (given && this.s.settings.readerRules && this.readerOnline()) {
       bn!.awaiting = { given, suggestion: verdict };
+      this.armReaderWait();
       bn!.deadline = null;
       return this.broadcast();
     }
@@ -1811,7 +1842,7 @@ export class Room {
     const bn = this.s.bonus;
     if (!bn) return;
     bn.current++;
-    if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.openVote(); this.broadcast(); }
+    if (bn.current >= bn.q.parts.length) { bn.done = true; bn.revealing = false; bn.current = bn.q.parts.length - 1; this.openVote(); this.armReaderWait(); this.broadcast(); }
     else this.startBonusPart();
   }
 
