@@ -1209,7 +1209,7 @@ h3 { font-weight: 700; }
 .home .field input:focus { border-bottom-color: var(--accent); box-shadow: 0 1.5px 0 var(--accent); }
 
 /* The three choices: a ruled list. */
-.choices { gap: 0; border-top: 2px solid var(--edge); }
+.choices { gap: 0; border-top: 2px solid var(--text); }
 .choice { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: transparent; box-shadow: none; }
 .choice:hover { border-color: var(--border); }
 .choice.open { border-color: var(--border); box-shadow: none; background: color-mix(in srgb, var(--surface) 70%, transparent); }
@@ -1234,7 +1234,7 @@ h3 { font-weight: 700; }
 }
 
 /* ---------- room ---------- */
-.topbar { border-bottom: 2px solid var(--edge); }
+.topbar { border-bottom: 2px solid var(--text); }
 .card.tossup { border-color: var(--border); box-shadow: var(--shadow); }
 .qtext { line-height: 1.6; }
 .qtext .power { color: var(--text); }
@@ -1245,7 +1245,7 @@ h3 { font-weight: 700; }
 
 /* ---------- phone tab bar: printed words, a red pencil underline on the open one ---------- */
 @media (max-width: 860px) {
-  .phone-tabs { background: var(--surface); backdrop-filter: none; border-top: 2px solid var(--edge); padding-top: .2rem; }
+  .phone-tabs { background: var(--surface); backdrop-filter: none; border-top: 2px solid var(--text); padding-top: .2rem; }
   .phone-tabs button { font: 600 .7rem/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; min-height: 44px; justify-content: center; }
   .phone-tabs button .ic { display: none; }
   .phone-tabs button.on { color: var(--text); }
