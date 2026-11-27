@@ -10,13 +10,11 @@ import { ReportQuestion } from './Report';
 import { Icon } from './Icon';
 import { Info } from './Info';
 import { keyLabel, useKeyBindings } from '../keys';
-import { useReadAloud } from '../speech';
 
 /** How long after a tossup starts reading that taps on BUZZ are ignored (see `tapBuzz`). */
 const TAP_GUARD_MS = 700;
 
 export function Stage({ s }: { s: PublicState }) {
-  useReadAloud(s); // only if this device turned it on in Game settings
   const keys = useKeyBindings();
   const r = roles(s);
   const t = s.tossup;

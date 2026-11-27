@@ -3,7 +3,6 @@ import { Logo } from './Logo';
 import { useEffect, useState } from 'react';
 import type { PublicState } from '../../shared/types';
 import { useTheme } from '../App';
-import { useReadAloud } from '../speech';
 import { call, socket } from '../socket';
 import { InviteQR, inviteUrl } from './Invite';
 import { ScoreGraph } from './ScoreGraph';
@@ -23,7 +22,6 @@ export function Spectate({ code }: { code: string }) {
   const [connected, setConnected] = useState(socket.connected);
   const [settings, setSettings] = useState(false);
   useTheme();
-  useReadAloud(s); // a big screen in a room is a good place to read aloud, if turned on here
 
   useEffect(() => {
     const watch = () => call<{ state: PublicState }>('room:watch', { code }).then((r) => { setS(r.state); setError(null); }, (e) => setError(e.message));

@@ -161,9 +161,6 @@ No question repeats within a room's session.
 Pick **⚡ Lightning round** as the question source in Settings for fast one-line prompts ("What element has the symbol Fe?"). There are about 200 original questions across every category, from Middle School to Medium College difficulty, and the category and difficulty filters work as usual. Each prompt is read word by word like a tossup (they're short, so it's quick), and everyone has at least 8 seconds to buzz after the last word. A right answer is 10 points, a wrong one is 0, and there are no bonuses. With a reader, they read each prompt aloud as normal.
 
 
-### Read aloud
-
-Turn on **Read questions aloud** in Game settings (the gear) and this device speaks each question as the words appear, in the most natural voice it has (Siri-style Enhanced or Premium voices on Apple devices, Google's on Android and Chrome, Natural voices on Edge). You can pick another voice and preview it. It keeps pace with the room's reading speed and never says a word before it's on screen. It's off whenever a person is reading.
 ### Answer checking
 
 `src/server/game/answerCheck.ts` normalizes case, accents, punctuation and articles, tolerates small typos (Levenshtein, word by word, exact numbers; a slip onto a neighbouring phone key counts half; a near miss gets one "check your spelling" retry with the typed answer kept), and reads answer lines: bold/underlined text is the required part, `[or …]`/`accept …` add alternatives, `prompt on …` triggers a prompt (up to 2, 5 seconds each), and `do not accept …` rejects.
