@@ -16,6 +16,7 @@ import { PhoneTabs } from './PhoneTabs';
 import { SharedPresetCard, sharedPresetFromUrl } from './Presets';
 import { Tutorial } from './Tutorial';
 import { SendFeedback } from './SendFeedback';
+import { PracticeSettings, practiceSummary, usePractice } from './PracticeSettings';
 
 interface Props {
   initialCode: string | null;
@@ -40,6 +41,8 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [feedback, setFeedback] = useState(false);
+  const [practiceOpen, setPracticeOpen] = useState(false);
+  const practice = usePractice();
   const [open, setOpen] = useState<Choice | null>(dailyOpen ? 'daily' : survivalOpen ? 'solo' : null);
   // A preset someone shared (?preset=…): offer to start a room with it, or save it.
   const [shared, setShared] = useState(sharedPresetFromUrl);
@@ -102,7 +105,12 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
 
             <ChoiceCard title="Play solo" sub="Your speed. Add bots for a race, or try survival." open={open === 'solo'} onToggle={() => toggle('solo')}>
               <button className="btn primary big" disabled={busy || !connected} onClick={() => run(() => onCreate(name.trim(), true))}>Practice</button>
-              <p className="muted small">Questions just for you. In the room you can add computer opponents and pick topics.</p>
+              <div className="practice-q">
+                <span className="practice-q-label">Questions</span>
+                <span className="practice-q-what">{practiceSummary(practice)}</span>
+                <button type="button" className="link" onClick={() => setPracticeOpen(true)}>Change</button>
+              </div>
+              <p className="muted small">Add computer opponents in the room for a race.</p>
               <div className="choice-sub-head">Survival<Info term="survival" /></div>
               <SurvivalCard busy={busy} connected={connected} onPlay={() => run(() => onSurvival(name.trim()))} openOnLoad={survivalOpen} />
             </ChoiceCard>
@@ -134,6 +142,7 @@ export function Home({ initialCode, error, connected, onJoin, onCreate, onDaily,
       </div>
       {tour && <Tutorial onClose={() => setTour(false)} onPlay={initialCode ? undefined : () => run(() => onCreate(name.trim(), true))} />}
       {feedback && <SendFeedback where="home" name={name.trim()} onClose={() => setFeedback(false)} />}
+      {practiceOpen && <PracticeSettings onClose={() => setPracticeOpen(false)} />}
       <FriendsTab disabled={busy || !connected} onJoin={(c) => run(() => onJoin(c, name.trim()))} />
       <PhoneTabs active="play" />
     </div>

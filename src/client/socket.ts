@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client';
+import { DEFAULT_SETTINGS, type Settings, type SourceKind } from '../shared/types';
 
 export const socket: Socket = io({ autoConnect: true, transports: ['websocket', 'polling'] });
 
@@ -60,4 +61,25 @@ export const prefs = {
     store.set('qb:settings', json);
     if (sync) window.dispatchEvent(new CustomEvent('qb-settings', { detail: s }));
   },
+  /** Solo practice's own questions (source + topic filters), kept apart from the room settings above so a
+   *  Lightning game with friends doesn't turn every practice into Lightning. */
+  practice: (): PracticeQuestions => {
+    try {
+      const p = JSON.parse(store.get('qb:practice') ?? 'null');
+      if (p && PRACTICE_SOURCES.includes(p.source) && p.filters && typeof p.filters === 'object') return { source: p.source, filters: { ...DEFAULT_SETTINGS.filters, ...p.filters } };
+    } catch { /* fall through */ }
+    return { source: DEFAULT_SETTINGS.source, filters: structuredClone(DEFAULT_SETTINGS.filters) };
+  },
+  setPractice: (p: PracticeQuestions) => {
+    if (!PRACTICE_SOURCES.includes(p.source)) return;
+    store.set('qb:practice', JSON.stringify({ source: p.source, filters: p.filters }));
+    window.dispatchEvent(new Event('qb-practice'));
+  },
+  /** The code of the practice room this device last created, so changes made in it update practice, not room settings. */
+  practiceRoom: () => store.get('qb:practiceRoom'),
+  setPracticeRoom: (code: string | null) => store.set('qb:practiceRoom', code ?? ''),
 };
+
+export type PracticeQuestions = Pick<Settings, 'source' | 'filters'>;
+/** Uploaded packets belong to one room, so practice never starts from one. */
+export const PRACTICE_SOURCES: SourceKind[] = ['qbreader', 'sample', 'lightning'];

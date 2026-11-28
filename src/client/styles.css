@@ -495,6 +495,7 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .settings-tabs button:hover { color: var(--text); }
 .settings-tabs button.on { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
 .settings-tabs button { position: relative; }
+.settings-tabs.few { justify-content: flex-start; gap: 1.2rem; }
 /* Filters are on: a small dot in the tab's corner (takes no width, so all five tabs still fit). */
 .tab-dot { position: absolute; top: .45rem; right: .05rem; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 /* The settings panel keeps one height: title and tabs stay on top, Save stays at the bottom, and only the
@@ -1038,6 +1039,10 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .choice-body { display: flex; flex-direction: column; gap: .65rem; padding: .2rem .9rem .95rem; animation: rise-in var(--dur) var(--ease-out); }
 .choice-body p { margin: 0; }
 .choice-body .daily-card { border: 0; padding: 0; background: none; }
+.practice-q { display: flex; align-items: baseline; gap: .55rem; flex-wrap: wrap; padding: .15rem 0; border-bottom: 1px solid var(--rule); }
+.practice-q-label { font-family: var(--mono); font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.practice-q-what { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.practice-q .link { min-height: 44px; padding: 0 .1rem; }
 .choice-sub-head { margin-top: .4rem; padding-top: .7rem; border-top: 1px solid var(--border); font-weight: 600; display: flex; align-items: center; }
 .home-foot { display: flex; flex-direction: column; align-items: center; gap: .45rem; margin-top: .3rem; padding-top: .8rem; border-top: 1px solid var(--border); text-align: center; }
 .home-foot p { margin: 0; }

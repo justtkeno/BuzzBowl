@@ -69,7 +69,10 @@ function Player() {
   }
 
   const create = useCallback(async (name: string, solo: boolean, preset?: PresetSettings) => {
-    const res = await call<{ code: string; playerId: string; token: string; chat: ChatMessage[] }>('room:create', { name, solo, settings: prefs.settings() });
+    // Solo practice uses its own question choice (Practice settings on Home) over the host's usual rules.
+    const settings = solo ? { ...prefs.settings(), ...prefs.practice() } : prefs.settings();
+    const res = await call<{ code: string; playerId: string; token: string; chat: ChatMessage[] }>('room:create', { name, solo, settings });
+    prefs.setPracticeRoom(solo ? res.code : null);
     afterJoin(res, name);
     // A shared preset's rules go on top of the host's usual settings.
     if (preset) await call('settings:update', preset).catch((e) => setError(e.message));

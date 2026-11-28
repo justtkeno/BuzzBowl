@@ -13,7 +13,6 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
   const [f, setF] = useState<Settings>(structuredClone(s.settings));
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setF((x) => ({ ...x, [k]: v }));
   const setFilter = (patch: Partial<Settings['filters']>) => setF((x) => ({ ...x, filters: { ...x.filters, ...patch } }));
-  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const midGame = ['loading', 'reading', 'buzz', 'bonus'].includes(s.phase);
   const tabs = only ? QUESTION_TABS : ALL_TABS;
   useEffect(() => {
@@ -23,8 +22,7 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
   }, [onClose]);
   const [tab, setTabState] = useState<Tab>(() => (tabs.includes(lastTab[only ?? 'all']) ? lastTab[only ?? 'all'] : tabs[0]));
   const setTab = (t: Tab) => { lastTab[only ?? 'all'] = t; setTabState(t); };
-  const filterCount = (f.filters.topics?.length ?? 0) + f.filters.categories.length + f.filters.subcategories.length
-    + f.filters.difficulties.length + (f.filters.minYear ? 1 : 0) + (f.filters.maxYear ? 1 : 0);
+  const filterCount = countFilters(f.filters);
 
   // Back to the rules a new room starts with. Questions stay; mid-game the format can't change, so it stays too.
   const rules = midGame ? { ...DEFAULT_RULES, mode: f.mode } : DEFAULT_RULES;
@@ -176,43 +174,7 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
 
         {tab === 'topics' && (
         <section>
-          <h4>Topics <small className="muted">(mix any; with topics picked, questions come only from them and any categories below)</small></h4>
-          <div className="chips topic-chips">
-            {TOPICS.map((t) => {
-              const on = (f.filters.topics ?? []).includes(t.id);
-              return (
-                <button key={t.id} className={`chip ${on ? 'on' : ''}`} aria-pressed={on} title={t.sources.length ? undefined : 'Built-in questions'}
-                  onClick={() => setFilter({ topics: toggle(f.filters.topics ?? [], t.id) })}>{t.icon} {t.name}</button>
-              );
-            })}
-          </div>
-          <h4>Categories <small className="muted">(none = all)</small></h4>
-          <div className="chips">
-            {Object.keys(CATEGORIES).map((c) => (
-              <button key={c} className={`chip ${f.filters.categories.includes(c) ? 'on' : ''}`} onClick={() => setFilter({ categories: toggle(f.filters.categories, c) })}>{c}</button>
-            ))}
-          </div>
-          {f.filters.categories.some((c) => CATEGORIES[c]?.length) && (
-            <>
-              <h4>Subcategories <small className="muted">(none = all within the category)</small></h4>
-              <div className="chips">
-                {f.filters.categories.flatMap((c) => CATEGORIES[c] ?? []).map((sc) => (
-                  <button key={sc} className={`chip ${f.filters.subcategories.includes(sc) ? 'on' : ''}`} onClick={() => setFilter({ subcategories: toggle(f.filters.subcategories, sc) })}>{sc}</button>
-                ))}
-              </div>
-            </>
-          )}
-          <h4>Difficulty <small className="muted">(none = all)</small></h4>
-          <div className="chips">
-            {Object.entries(DIFFICULTIES).map(([d, label]) => (
-              <button key={d} className={`chip ${f.filters.difficulties.includes(Number(d)) ? 'on' : ''}`} onClick={() => setFilter({ difficulties: toggle(f.filters.difficulties, Number(d)) })}>{d} · {label}</button>
-            ))}
-          </div>
-          <div className="grid2">
-            <label className="field inline"><span>From year</span><input type="number" min={1990} max={2100} placeholder="any" value={f.filters.minYear ?? ''} onChange={(e) => setFilter({ minYear: e.target.value ? Number(e.target.value) : undefined })} /></label>
-            <label className="field inline"><span>To year</span><input type="number" min={1990} max={2100} placeholder="any" value={f.filters.maxYear ?? ''} onChange={(e) => setFilter({ maxYear: e.target.value ? Number(e.target.value) : undefined })} /></label>
-          </div>
-          {filterCount > 0 && <button type="button" className="link clear-filters" onClick={() => setFilter({ topics: [], categories: [], subcategories: [], difficulties: [], minYear: undefined, maxYear: undefined })}>Clear all filters</button>}
+          <TopicFilters filters={f.filters} onChange={setFilter} />
         </section>
         )}
         </div>
@@ -232,6 +194,56 @@ export function SettingsPanel({ s, onClose, only }: { s: PublicState; onClose: (
     </div>
   );
 }
+
+/** Topic, category, difficulty and year filters: the Topics tab of Room settings, also used by Practice settings on Home. */
+export function TopicFilters({ filters, onChange }: { filters: Settings['filters']; onChange: (patch: Partial<Settings['filters']>) => void }) {
+  const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  const filterCount = countFilters(filters);
+  return (
+    <>
+      <h4>Topics <small className="muted">(mix any; with topics picked, questions come only from them and any categories below)</small></h4>
+      <div className="chips topic-chips">
+        {TOPICS.map((t) => {
+          const on = (filters.topics ?? []).includes(t.id);
+          return (
+            <button key={t.id} className={`chip ${on ? 'on' : ''}`} aria-pressed={on} title={t.sources.length ? undefined : 'Built-in questions'}
+              onClick={() => onChange({ topics: toggle(filters.topics ?? [], t.id) })}>{t.icon} {t.name}</button>
+          );
+        })}
+      </div>
+      <h4>Categories <small className="muted">(none = all)</small></h4>
+      <div className="chips">
+        {Object.keys(CATEGORIES).map((c) => (
+          <button key={c} className={`chip ${filters.categories.includes(c) ? 'on' : ''}`} onClick={() => onChange({ categories: toggle(filters.categories, c) })}>{c}</button>
+        ))}
+      </div>
+      {filters.categories.some((c) => CATEGORIES[c]?.length) && (
+        <>
+          <h4>Subcategories <small className="muted">(none = all within the category)</small></h4>
+          <div className="chips">
+            {filters.categories.flatMap((c) => CATEGORIES[c] ?? []).map((sc) => (
+              <button key={sc} className={`chip ${filters.subcategories.includes(sc) ? 'on' : ''}`} onClick={() => onChange({ subcategories: toggle(filters.subcategories, sc) })}>{sc}</button>
+            ))}
+          </div>
+      </>
+    )}
+    <h4>Difficulty <small className="muted">(none = all)</small></h4>
+    <div className="chips">
+      {Object.entries(DIFFICULTIES).map(([d, label]) => (
+        <button key={d} className={`chip ${filters.difficulties.includes(Number(d)) ? 'on' : ''}`} onClick={() => onChange({ difficulties: toggle(filters.difficulties, Number(d)) })}>{d} · {label}</button>
+      ))}
+    </div>
+    <div className="grid2">
+      <label className="field inline"><span>From year</span><input type="number" min={1990} max={2100} placeholder="any" value={filters.minYear ?? ''} onChange={(e) => onChange({ minYear: e.target.value ? Number(e.target.value) : undefined })} /></label>
+      <label className="field inline"><span>To year</span><input type="number" min={1990} max={2100} placeholder="any" value={filters.maxYear ?? ''} onChange={(e) => onChange({ maxYear: e.target.value ? Number(e.target.value) : undefined })} /></label>
+    </div>
+    {filterCount > 0 && <button type="button" className="link clear-filters" onClick={() => onChange({ topics: [], categories: [], subcategories: [], difficulties: [], minYear: undefined, maxYear: undefined })}>Clear all filters</button>}
+    </>
+  );
+}
+
+export const countFilters = (f: Settings['filters']) => (f.topics?.length ?? 0) + f.categories.length + f.subcategories.length
+  + f.difficulties.length + (f.minYear ? 1 : 0) + (f.maxYear ? 1 : 0);
 
 type Tab = 'game' | 'scoring' | 'questions' | 'topics' | 'reading';
 const ALL_TABS: Tab[] = ['game', 'scoring', 'questions', 'topics', 'reading'];

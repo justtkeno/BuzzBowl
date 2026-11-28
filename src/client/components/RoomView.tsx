@@ -90,7 +90,15 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   }, [connected]);
 
   // Remember the host's settings for the next room they create.
-  useEffect(() => { if (r.isHost) prefs.setSettings(s.settings); }, [s.settings, r.isHost]);
+  // In a practice room, question changes go to practice instead (the next practice starts with them; rooms with friends don't).
+  useEffect(() => {
+    if (!r.isHost) return;
+    if (s.code !== prefs.practiceRoom()) return prefs.setSettings(s.settings);
+    const { source, filters, ...rules } = s.settings;
+    prefs.setPractice({ source, filters });
+    const prev = prefs.settings() ?? {};
+    prefs.setSettings({ ...rules, ...('source' in prev ? { source: prev.source } : {}), ...('filters' in prev ? { filters: prev.filters } : {}) });
+  }, [s.settings, r.isHost]);
 
   // Unread chat: messages that arrived while the chat wasn't on screen.
   const isPhone = useIsPhone();
