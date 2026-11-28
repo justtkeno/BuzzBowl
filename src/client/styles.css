@@ -1102,7 +1102,10 @@ html.ios-app { --safe-top: calc(env(safe-area-inset-top, 0px) + 10px); }
 .nw { white-space: nowrap; }
 @media (max-width: 420px) { .preset { padding: .55rem .6rem; } .preset small { font-size: .76rem; } }
 /* The room's ⋯ menu, on every screen size. */
-.menu { max-height: calc(100dvh - 80px); overflow-y: auto; }
+.menu { max-height: calc(100dvh - 80px); overflow-y: auto; overscroll-behavior: contain; }
+/* An open ⋯ menu lifts the room's top bar above the fixed BUZZ / Next buttons (z-index 10) so its last items (Leave room) aren't hidden behind them. The tap-away backdrop is portalled to <body> because the top bar's backdrop-filter would otherwise trap it inside the bar. */
+.topbar.menu-open { z-index: 31; }
+.menu { max-height: calc(100dvh - var(--topbar-h, 56px) - 16px - env(safe-area-inset-bottom)); }
 .menu a[role='menuitem'] { display: block; padding: .7rem .75rem; border-radius: 8px; font-size: .95rem; color: var(--text); text-decoration: none; }
 .menu a[role='menuitem']:hover { background: var(--surface-2); }
 .menu a[role='menuitem'] .ic { margin-right: .6rem; color: var(--muted); }

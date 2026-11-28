@@ -1,5 +1,6 @@
 import { Logo } from './Logo';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ChatMessage, PublicState } from '../../shared/types';
 import { SettingsMenu } from './AppSettings';
 import { prefs } from '../socket';
@@ -116,7 +117,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
   return (
     <div className={`room ${s.phase === 'reading' ? 'is-reading' : ''}`}>
       {!connected && <div className="conn-banner" role="status"><span className="spinner" /> Connection lost — reconnecting…</div>}
-      <header className="topbar" ref={topbar}>
+      <header className={`topbar ${menu ? 'menu-open' : ''}`} ref={topbar}>
         <button className="brand small brand-home" onClick={leave} aria-label="Leave room and go home" title="Home"><Logo /><span className="hide-sm">Trivio</span></button>
         {s.daily ? (
           <span className="chip daily-chip">Daily <b>#{s.daily.number}</b>{s.tossup && s.phase !== 'gameOver' ? ` · ${s.tossup.num}/${s.daily.total}` : ''}</span>
@@ -137,7 +138,7 @@ export function RoomView({ state: s, chat, connected, fresh, onRename, onLeave, 
           <button className="btn ghost menu-btn" aria-label="Menu" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)}>⋯<span className="hide-sm"> Menu</span></button>
           {menu && (
             <>
-              <div className="menu-back" onClick={() => setMenu(false)} />
+              {createPortal(<div className="menu-back" onClick={() => setMenu(false)} />, document.body)}
               <div className="menu" role="menu" onClick={() => setMenu(false)}>
                 <div className="menu-label">This room</div>
                 {!r.fixed && <button role="menuitem" onClick={() => setShowInvite(true)}><Icon name="qr" /> Invite people</button>}
